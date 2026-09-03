@@ -1,0 +1,49 @@
+# 💰 Budget
+
+A mobile-first personal budget tracker for a single user. Works fully offline — all data lives in your browser's local storage and never leaves the device.
+
+Built with React + TypeScript + Vite. See `REQUIREMENTS.md` for the full spec.
+
+## Features
+
+- **Transactions** — add, edit, and delete income & expenses (amount, category, date, note)
+- **Category budgets** — monthly limit per category with progress bars and over-budget alerts
+- **Savings goals** — create goals (name, target, deadline), add/withdraw money, and mark transactions as contributing to a goal
+- **Dashboard** — period summary: income, expenses, net, plus budget and goal snapshots
+- **Settings** — manage categories, export/import JSON backups, reset all data
+- **COP currency** — amounts formatted `$1'234,567.89` (apostrophe then comma group thousands, period decimals), stored as integer centavos
+
+## Budget periods
+
+A budget period runs from the **25th** of one month to the **24th** of the next (e.g., "October" = Oct 25 – Nov 24).
+
+## Getting started
+
+```bash
+npm install
+npm run dev        # start the dev server (default: http://localhost:5173)
+npm run build      # type-check + production build into dist/
+npm run preview    # serve the production build locally
+npm test           # run the logic smoke test (currency, periods, goal math)
+```
+
+## Data & persistence
+
+- Data auto-saves to `localStorage` on every change and survives reloads and browser restarts.
+- **Export a JSON backup** regularly from Settings → Data → Export. The backup is the only copy if you clear site data or change devices.
+- Import a backup to restore on another device.
+
+## Project structure
+
+```
+src/
+  lib/          # pure logic: types, money, dates, periods, storage adapter, selectors, import/export
+  state/        # React store (context + reducer) with localStorage persistence
+  components/   # reusable UI: tabs, sheets, forms, progress bars
+  pages/        # Home, Transactions, Budgets, Goals, Settings
+```
+
+## Notes
+
+- The storage layer (`src/lib/storage.ts`) is an adapter interface, so the backend can be swapped (e.g., SQLite via WASM) without touching UI code.
+- A transaction marked as "contributes to a goal" still counts as an expense in your totals; it *additionally* counts toward that goal's saved amount.
