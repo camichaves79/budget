@@ -33,6 +33,24 @@ npm test           # run the logic smoke test (currency, periods, goal math)
 - **Export a JSON backup** regularly from Settings → Data → Export. The backup is the only copy if you clear site data or change devices.
 - Import a backup to restore on another device.
 
+## Deploying to GitHub Pages
+
+The repo includes `.github/workflows/deploy.yml`, which builds and deploys automatically on every push to `main`.
+
+1. Create a repository on GitHub (e.g. `budget`) — **do not** initialize it with a README.
+2. Push this repo:
+   ```bash
+   git remote add origin https://github.com/<your-username>/budget.git
+   git push -u origin main
+   ```
+3. In the repo on GitHub: **Settings → Pages → Source: GitHub Actions**.
+4. The first push triggers the deploy. Your site will be live at `https://<your-username>.github.io/budget/` (check the Actions tab for progress).
+
+Notes:
+
+- `vite.config.ts` uses `base: './'` (relative paths), so the app works from the `/<repo>/` subpath without any extra configuration.
+- Data is stored per browser per origin: data you enter on `localhost:5173` is separate from data on the GitHub Pages URL. Move it with Settings → Export/Import.
+
 ## Project structure
 
 ```
