@@ -16,7 +16,10 @@ export default function App() {
 
   return (
     <div className="app">
-      <main className={tab === 'dashboard' ? 'app-main dashboard-main' : 'app-main'} key={tab}>
+      <main
+        className={tab === 'dashboard' || tab === 'budgets' ? 'app-main fixed-main' : 'app-main'}
+        key={tab}
+      >
         {tab === 'dashboard' && (
           <Dashboard period={period} onShiftPeriod={shift} onToday={jumpToToday} />
         )}

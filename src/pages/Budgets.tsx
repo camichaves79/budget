@@ -39,25 +39,29 @@ export function Budgets({
   const [editing, setEditing] = useState<Category | null>(null);
 
   return (
-    <div>
-      <PeriodNav period={period} onShift={onShiftPeriod} onToday={onToday} />
+    <div className="pinned-page">
+      <div className="pinned-head">
+        <PeriodNav period={period} onShift={onShiftPeriod} onToday={onToday} />
 
-      {cats.length === 0 ? (
-        <EmptyState emoji="🎯" title="No expense categories" hint="Add an expense category in Settings first." />
-      ) : (
-        <>
-          {withBudget.length > 0 && (
-            <section className="card">
-              <div className="budget-summary">
-                <span>
-                  <strong>{formatCOP(totalSpent)}</strong> spent of {formatCOP(totalLimit)} budgeted
-                </span>
-                <span className={totalSpent > totalLimit ? 'over' : 'muted'}>
-                  {formatCOP(totalLimit - totalSpent)} left
-                </span>
-              </div>
-            </section>
-          )}
+        {withBudget.length > 0 && (
+          <section className="card">
+            <div className="budget-summary">
+              <span>
+                <strong>{formatCOP(totalSpent)}</strong> spent of {formatCOP(totalLimit)} budgeted
+              </span>
+              <span className={totalSpent > totalLimit ? 'over' : 'muted'}>
+                {formatCOP(totalLimit - totalSpent)} left
+              </span>
+            </div>
+          </section>
+        )}
+      </div>
+
+      <div className="pinned-scroll">
+        {cats.length === 0 ? (
+          <EmptyState emoji="🎯" title="No expense categories" hint="Add an expense category in Settings first." />
+        ) : (
+          <>
 
           {withBudget.length > 0 && (
             <section className="card" aria-label="Categories with budgets">
@@ -112,7 +116,8 @@ export function Budgets({
             </section>
           )}
         </>
-      )}
+        )}
+      </div>
 
       <Sheet open={editing !== null} onClose={() => setEditing(null)} title={editing ? `${editing.emoji} ${editing.name}` : ''}>
         {editing && (

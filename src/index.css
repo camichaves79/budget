@@ -76,27 +76,27 @@ select:focus-visible {
   padding: max(8px, env(safe-area-inset-top)) 16px calc(88px + env(safe-area-inset-bottom));
 }
 
-/* Dashboard: no scrolling of the page — pinned head, internal list scroll. */
-.app-main.dashboard-main {
+/* Tabs with pinned headers: the page never scrolls, only the inner list area does. */
+.app-main.fixed-main {
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 
-.dashboard {
+.pinned-page {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
 }
 
-/* Pinned top: period selector, cash flow, section header. */
-.dashboard-head {
+/* Pinned top: period selector, summary, section headers. */
+.pinned-head {
   flex-shrink: 0;
 }
 
-/* Only the transaction list scrolls. */
-.dashboard-scroll {
+/* Only the content below the pinned head scrolls. */
+.pinned-scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;

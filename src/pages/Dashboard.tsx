@@ -52,8 +52,8 @@ export function Dashboard({
   };
 
   return (
-    <div className="dashboard">
-      <div className="dashboard-head">
+    <div className="pinned-page">
+      <div className="pinned-head">
         <PeriodNav period={period} onShift={onShiftPeriod} onToday={onToday} />
 
         <h2 className="section-title page-label">Cash flow:</h2>
@@ -77,7 +77,7 @@ export function Dashboard({
         <h2 className="section-title page-label divider">Transactions:</h2>
       </div>
 
-      <div className="dashboard-scroll">
+      <div className="pinned-scroll">
         {txs.length === 0 ? (
           <EmptyState
             emoji="🧾"
