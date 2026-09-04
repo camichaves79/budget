@@ -8,13 +8,6 @@ import { Budgets } from './pages/Budgets';
 import { Goals } from './pages/Goals';
 import { Settings } from './pages/Settings';
 
-const TITLES: Record<TabKey, string> = {
-  dashboard: 'Dashboard',
-  budgets: 'Budgets',
-  goals: 'Goals',
-  settings: 'Settings',
-};
-
 export default function App() {
   const [tab, setTab] = useState<TabKey>('dashboard');
   const [period, setPeriod] = useState<Period>(() => currentPeriod());
@@ -24,13 +17,6 @@ export default function App() {
 
   return (
     <div className="app">
-      <header className="app-header">
-        <span className="app-logo" aria-hidden="true">
-          💰
-        </span>
-        <h1>{TITLES[tab]}</h1>
-      </header>
-
       <main className="app-main" key={tab}>
         {tab === 'dashboard' && (
           <Dashboard period={period} onShiftPeriod={shift} onToday={jumpToToday} goTo={setTab} />

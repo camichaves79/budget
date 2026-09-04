@@ -65,30 +65,9 @@ select:focus-visible {
   flex-direction: column;
 }
 
-.app-header {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 16px;
-  background: var(--bg);
-}
-
-.app-logo {
-  font-size: 20px;
-}
-
-.app-header h1 {
-  margin: 0;
-  font-size: 19px;
-  font-weight: 700;
-}
-
 .app-main {
   flex: 1;
-  padding: 0 16px calc(88px + env(safe-area-inset-bottom));
+  padding: max(8px, env(safe-area-inset-top)) 16px calc(88px + env(safe-area-inset-bottom));
 }
 
 /* ---------- Tab bar ---------- */
