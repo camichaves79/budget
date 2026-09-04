@@ -10,8 +10,6 @@ permissions:
   contents: read
   pages: write
   id-token: write
-  # Needed once: lets configure-pages enable Pages on the repo automatically.
-  administration: write
 
 concurrency:
   group: pages
