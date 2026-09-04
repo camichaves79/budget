@@ -3,22 +3,20 @@ import type { Period } from './lib/periods';
 import { currentPeriod, shiftPeriod } from './lib/periods';
 import { TabBar } from './components/TabBar';
 import type { TabKey } from './components/TabBar';
-import { Home } from './pages/Home';
-import { Transactions } from './pages/Transactions';
+import { Dashboard } from './pages/Dashboard';
 import { Budgets } from './pages/Budgets';
 import { Goals } from './pages/Goals';
 import { Settings } from './pages/Settings';
 
 const TITLES: Record<TabKey, string> = {
-  home: 'Home',
-  transactions: 'Transactions',
+  dashboard: 'Dashboard',
   budgets: 'Budgets',
   goals: 'Goals',
   settings: 'Settings',
 };
 
 export default function App() {
-  const [tab, setTab] = useState<TabKey>('home');
+  const [tab, setTab] = useState<TabKey>('dashboard');
   const [period, setPeriod] = useState<Period>(() => currentPeriod());
 
   const shift = (delta: number) => setPeriod((p) => shiftPeriod(p, delta));
@@ -34,9 +32,8 @@ export default function App() {
       </header>
 
       <main className="app-main" key={tab}>
-        {tab === 'home' && <Home period={period} onShiftPeriod={shift} onToday={jumpToToday} goTo={setTab} />}
-        {tab === 'transactions' && (
-          <Transactions period={period} onShiftPeriod={shift} onToday={jumpToToday} />
+        {tab === 'dashboard' && (
+          <Dashboard period={period} onShiftPeriod={shift} onToday={jumpToToday} goTo={setTab} />
         )}
         {tab === 'budgets' && <Budgets period={period} onShiftPeriod={shift} onToday={jumpToToday} />}
         {tab === 'goals' && <Goals />}

@@ -6,10 +6,9 @@ Built with React + TypeScript + Vite. See `REQUIREMENTS.md` for the full spec.
 
 ## Features
 
-- **Transactions** — add, edit, and delete income & expenses (amount, category, date, note)
+- **Dashboard** — one scrollable view: period summary (income, expenses, net), the transaction list (add / edit / delete), budget progress, and goal snapshots
 - **Category budgets** — monthly limit per category with progress bars and over-budget alerts
 - **Savings goals** — create goals (name, target, deadline), add/withdraw money, and mark transactions as contributing to a goal
-- **Dashboard** — period summary: income, expenses, net, plus budget and goal snapshots
 - **Settings** — manage categories, export/import JSON backups, reset all data
 - **COP currency** — amounts formatted `$1'234,567.89` (apostrophe then comma group thousands, period decimals), stored as integer centavos
 
@@ -59,7 +58,7 @@ src/
   lib/          # pure logic: types, money, dates, periods, storage adapter, selectors, import/export
   state/        # React store (context + reducer) with localStorage persistence
   components/   # reusable UI: tabs, sheets, forms, progress bars
-  pages/        # Home, Transactions, Budgets, Goals, Settings
+  pages/        # Dashboard, Budgets, Goals, Settings
 ```
 
 ## Notes

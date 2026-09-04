@@ -1,4 +1,4 @@
-export type TabKey = 'home' | 'transactions' | 'budgets' | 'goals' | 'settings';
+export type TabKey = 'dashboard' | 'budgets' | 'goals' | 'settings';
 
 const ICON_PROPS = {
   width: 22,
@@ -13,24 +13,14 @@ const ICON_PROPS = {
 
 const TABS: Array<{ key: TabKey; label: string; icon: React.ReactNode }> = [
   {
-    key: 'home',
-    label: 'Home',
+    key: 'dashboard',
+    label: 'Dashboard',
     icon: (
       <svg {...ICON_PROPS}>
-        <path d="M3 11.5 12 4l9 7.5" />
-        <path d="M5.5 10.5V20h13v-9.5" />
-      </svg>
-    ),
-  },
-  {
-    key: 'transactions',
-    label: 'Transactions',
-    icon: (
-      <svg {...ICON_PROPS}>
-        <path d="M7 4v13" />
-        <path d="m4 14 3 3 3-3" />
-        <path d="M17 20V7" />
-        <path d="m14 10 3-3 3 3" />
+        <rect x="4" y="4" width="7" height="7" rx="1.5" />
+        <rect x="13" y="4" width="7" height="7" rx="1.5" />
+        <rect x="4" y="13" width="7" height="7" rx="1.5" />
+        <rect x="13" y="13" width="7" height="7" rx="1.5" />
       </svg>
     ),
   },

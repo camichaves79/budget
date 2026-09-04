@@ -2,29 +2,43 @@ import { useState } from 'react';
 import type { Period } from '../lib/periods';
 import type { Transaction } from '../lib/types';
 import { useStore } from '../state/store';
-import { categoryById, periodTransactions } from '../lib/selectors';
+import {
+  categoryById,
+  goalSavedCents,
+  periodTransactions,
+  spentByCategory,
+  totalsFor,
+} from '../lib/selectors';
 import { formatCOP } from '../lib/money';
 import { formatDateFull } from '../lib/dates';
 import { PeriodNav } from '../components/PeriodNav';
+import { ProgressBar } from '../components/ProgressBar';
+import { EmptyState } from '../components/EmptyState';
 import { Sheet } from '../components/Sheet';
 import { TransactionForm } from '../components/TransactionForm';
-import { EmptyState } from '../components/EmptyState';
+import type { TabKey } from '../components/TabBar';
 
-export function Transactions({
+/** Merged Home + Transactions: period summary, transaction list, budgets, goals. */
+export function Dashboard({
   period,
   onShiftPeriod,
   onToday,
+  goTo,
 }: {
   period: Period;
   onShiftPeriod: (delta: number) => void;
   onToday: () => void;
+  goTo: (tab: TabKey) => void;
 }) {
   const { data, dispatch } = useStore();
   const txs = periodTransactions(data, period);
+  const totals = totalsFor(data, period);
+  const spent = spentByCategory(data, period);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Transaction | null>(null);
 
+  // Group transactions by date (newest first); track the net per day.
   const groups: Array<[string, Transaction[]]> = [];
   const dayNet = new Map<string, number>();
   for (const t of txs) {
@@ -34,6 +48,19 @@ export function Transactions({
     if (last && last[0] === t.date) last[1].push(t);
     else groups.push([t.date, [t]]);
   }
+
+  const budgetRows = data.budgets
+    .map((b) => {
+      const cat = categoryById(data, b.categoryId);
+      return cat && !cat.archived
+        ? { cat, limit: b.amountCents, spent: spent.get(b.categoryId) ?? 0 }
+        : null;
+    })
+    .filter((r): r is NonNullable<typeof r> => r !== null)
+    .sort((a, b) => b.spent / b.limit - a.spent / a.limit)
+    .slice(0, 4);
+
+  const goalRows = data.goals.map((g) => ({ goal: g, saved: goalSavedCents(data, g.id) }));
 
   const openAdd = () => {
     setEditing(null);
@@ -51,6 +78,23 @@ export function Transactions({
   return (
     <div>
       <PeriodNav period={period} onShift={onShiftPeriod} onToday={onToday} />
+
+      <section className="summary-grid" aria-label="Period summary">
+        <div className="summary-card">
+          <span className="summary-label">Income</span>
+          <span className="summary-value income">{formatCOP(totals.income)}</span>
+        </div>
+        <div className="summary-card">
+          <span className="summary-label">Expenses</span>
+          <span className="summary-value expense">{formatCOP(totals.expense)}</span>
+        </div>
+        <div className="summary-card">
+          <span className="summary-label">Net</span>
+          <span className={totals.net >= 0 ? 'summary-value income' : 'summary-value expense'}>
+            {formatCOP(totals.net)}
+          </span>
+        </div>
+      </section>
 
       {txs.length === 0 ? (
         <EmptyState
@@ -96,6 +140,60 @@ export function Transactions({
             );
           })}
         </div>
+      )}
+
+      {budgetRows.length > 0 && (
+        <section className="card" aria-label="Budget progress">
+          <div className="card-head">
+            <h3>Budgets</h3>
+            <button type="button" className="link-btn" onClick={() => goTo('budgets')}>
+              See all
+            </button>
+          </div>
+          {budgetRows.map(({ cat, limit, spent: s }) => (
+            <div key={cat.id} className="budget-row">
+              <div className="budget-row-head">
+                <span className="budget-name">
+                  <span className="row-emoji" style={{ background: `${cat.color}1f` }}>
+                    {cat.emoji}
+                  </span>
+                  {cat.name}
+                </span>
+                <span className={s > limit ? 'amounts over' : 'amounts'}>
+                  {formatCOP(s)} <span className="muted">/ {formatCOP(limit)}</span>
+                </span>
+              </div>
+              <ProgressBar value={s} max={limit} color={cat.color} />
+            </div>
+          ))}
+        </section>
+      )}
+
+      {goalRows.length > 0 && (
+        <section className="card" aria-label="Savings goals">
+          <div className="card-head">
+            <h3>Goals</h3>
+            <button type="button" className="link-btn" onClick={() => goTo('goals')}>
+              See all
+            </button>
+          </div>
+          {goalRows.map(({ goal, saved }) => (
+            <div key={goal.id} className="budget-row">
+              <div className="budget-row-head">
+                <span className="budget-name">
+                  <span className="row-emoji" style={{ background: 'var(--accent-soft)' }}>
+                    🎯
+                  </span>
+                  {goal.name}
+                </span>
+                <span className="amounts">
+                  {formatCOP(saved)} <span className="muted">/ {formatCOP(goal.targetCents)}</span>
+                </span>
+              </div>
+              <ProgressBar value={saved} max={goal.targetCents} />
+            </div>
+          ))}
+        </section>
       )}
 
       <button type="button" className="fab" onClick={openAdd} aria-label="Add transaction">
