@@ -56,7 +56,7 @@ export function Dashboard({
       <div className="dashboard-head">
         <PeriodNav period={period} onShift={onShiftPeriod} onToday={onToday} />
 
-        <h2 className="section-title page-label">Cash flow</h2>
+        <h2 className="section-title page-label">Cash flow:</h2>
         <section className="summary-grid" aria-label="Period summary">
           <div className="summary-card">
             <span className="summary-label">Income</span>
@@ -74,7 +74,7 @@ export function Dashboard({
           </div>
         </section>
 
-        <h2 className="section-title page-label divider">Transactions</h2>
+        <h2 className="section-title page-label divider">Transactions:</h2>
       </div>
 
       <div className="dashboard-scroll">
