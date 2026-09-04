@@ -79,7 +79,7 @@ export function Budgets({
                       {formatCOP(s)} <span className="muted">/ {formatCOP(limit)}</span>
                     </span>
                   </div>
-                  <ProgressBar value={s} max={limit} color={cat.color} />
+                  <ProgressBar value={s} max={limit} />
                   {s > limit && <span className="over-chip">Over budget by {formatCOP(s - limit)}</span>}
                 </button>
               ))}
