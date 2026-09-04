@@ -92,7 +92,9 @@ export function Dashboard({
                 <section key={date}>
                   <div className="day-head">
                     <span>{formatDateFull(date)}</span>
-                    <span className={net >= 0 ? 'income' : 'expense'}>{formatCOP(net)}</span>
+                    <span className={`day-total ${net >= 0 ? 'income' : 'expense'}`}>
+                      {formatCOP(net)}
+                    </span>
                   </div>
                   {group.map((t) => {
                     const cat = categoryById(data, t.categoryId);
