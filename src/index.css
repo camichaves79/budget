@@ -139,6 +139,12 @@ select:focus-visible {
   flex-shrink: 0;
 }
 
+/* Compact summary cards inside the pinned head (Budgets). */
+.pinned-head .card {
+  padding-top: var(--pad-sm);
+  padding-bottom: var(--pad-sm);
+}
+
 /* Only the content below the pinned head scrolls. */
 .pinned-scroll {
   flex: 1;
@@ -244,8 +250,8 @@ select:focus-visible {
 
 /* Page label preceded by a hairline divider. */
 .page-label.divider {
-  margin: 20px 0 8px;
-  padding-top: var(--pad-md);
+  margin: var(--pad-md) 0 var(--pad-sm);
+  padding-top: var(--pad-sm);
   border-top: 1px solid var(--border);
 }
 
@@ -268,15 +274,15 @@ select:focus-visible {
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: var(--pad-sm);
+  margin-bottom: var(--pad-sm);
 }
 
 .summary-card {
   background: var(--surface);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
-  padding: var(--pad-md) var(--pad-sm);
+  padding: var(--pad-sm);
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -316,7 +322,7 @@ select:focus-visible {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--pad-sm) 0 var(--pad-md);
+  padding: var(--pad-sm) 0 var(--pad-sm);
 }
 
 .period-label {
@@ -627,8 +633,8 @@ select.input {
 .budget-row {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: var(--pad-md) 0;
+  gap: var(--pad-sm);
+  padding: var(--pad-sm) 0;
   border-bottom: 1px solid var(--border);
 }
 
@@ -704,7 +710,7 @@ select.input {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  padding: var(--pad-md) 0 var(--pad-sm);
+  padding: var(--pad-sm) 0 var(--pad-sm);
   font-size: var(--fs-sm);
   color: var(--muted);
   font-weight: 600;
@@ -796,7 +802,7 @@ select.input {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: var(--pad-md) 0;
+  padding: var(--pad-sm) 0;
   border-bottom: 1px solid var(--border);
 }
 
