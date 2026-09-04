@@ -1,19 +1,15 @@
 /**
  * Colombian Peso money helpers.
- * Display format: "$ 1.234,56" — "$" followed by a space, dots for thousands,
- * comma for decimals (2 digits). Whole values show no decimals: "$ 12.345".
+ * Display format: "$ 1.234" — integer pesos only, dots for thousands,
+ * no decimals (cents are rounded to the nearest peso for display).
  * Amounts are stored as integer centavos to avoid floating-point errors.
  */
 
 export function formatCOP(cents: number): string {
   const sign = cents < 0 ? '-' : '';
-  const abs = Math.abs(Math.round(cents));
-  const pesos = Math.floor(abs / 100);
-  const frac = abs % 100;
-
+  const pesos = Math.round(Math.abs(cents) / 100);
   const grouped = String(pesos).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-  const decimals = frac > 0 ? `,${String(frac).padStart(2, '0')}` : '';
-  return `${sign}$ ${grouped}${decimals}`;
+  return `${sign}$ ${grouped}`;
 }
 
 export function centsToPesos(cents: number): number {

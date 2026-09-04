@@ -9,7 +9,7 @@ Built with React + TypeScript + Vite. See `REQUIREMENTS.md` for the full spec.
 - **Cash Flow** — one scrollable view: period summary (income, expenses, balance), the transaction list (add / edit / delete), and budget progress
 - **Category budgets** — monthly limit per category with progress bars and over-budget alerts
 - **Settings** — manage categories, export/import JSON backups, reset all data
-- **COP currency** — amounts formatted `$ 1.234,56` (dots group thousands, comma decimals, whole values without decimals), stored as integer centavos
+- **COP currency** — amounts formatted `$ 1.234` (integer pesos only, dots for thousands; stored as integer centavos, cents rounded away on display)
 
 ## Budget periods
 

@@ -114,7 +114,7 @@ export function Settings() {
           <br />
           All data stays on this device in your browser's local storage. Use Export to make backups.
           <br />
-          Currency: Colombian Peso (COP), formatted $ 1.234,56 (whole values without decimals).
+          Currency: Colombian Peso (COP), formatted $ 1.234 (integers only).
         </p>
       </div>
 
