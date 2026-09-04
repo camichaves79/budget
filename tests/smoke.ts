@@ -14,16 +14,16 @@ function check(label: string, actual: unknown, expected: unknown) {
 }
 
 // ---- money ----
-check('format millions rounds up', formatCOP(123456789), '$ 1.234.568');
-check('format negative', formatCOP(-123456789), '-$ 1.234.568');
-check('format whole millions', formatCOP(123456700), '$ 1.234.567');
-check('format whole small', formatCOP(500), '$ 5');
-check('format zero', formatCOP(0), '$ 0');
-check('format thousands whole', formatCOP(123400), '$ 1.234');
-check('format one centavo rounds down', formatCOP(1), '$ 0');
-check('format 1.49 rounds down', formatCOP(149), '$ 1');
-check('format 1.50 rounds up', formatCOP(150), '$ 2');
-check('format 1.56 rounds up', formatCOP(156), '$ 2');
+check('format millions rounds up', formatCOP(123456789), '$\u00A01.234.568');
+check('format negative', formatCOP(-123456789), '-$\u00A01.234.568');
+check('format whole millions', formatCOP(123456700), '$\u00A01.234.567');
+check('format whole small', formatCOP(500), '$\u00A05');
+check('format zero', formatCOP(0), '$\u00A00');
+check('format thousands whole', formatCOP(123400), '$\u00A01.234');
+check('format one centavo rounds down', formatCOP(1), '$\u00A00');
+check('format 1.49 rounds down', formatCOP(149), '$\u00A01');
+check('format 1.50 rounds up', formatCOP(150), '$\u00A02');
+check('format 1.56 rounds up', formatCOP(156), '$\u00A02');
 check('parse new format', parseAmountToCents('$ 1.234,56'), 123456);
 check('parse whole with dots', parseAmountToCents('$12.345'), 1234500);
 check('parse whole with dots and space', parseAmountToCents('$ 12.345'), 1234500);

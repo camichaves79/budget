@@ -9,7 +9,8 @@ export function formatCOP(cents: number): string {
   const sign = cents < 0 ? '-' : '';
   const pesos = Math.round(Math.abs(cents) / 100);
   const grouped = String(pesos).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-  return `${sign}$ ${grouped}`;
+  // Non-breaking space keeps the $ glued to the number on narrow screens.
+  return `${sign}$\u00A0${grouped}`;
 }
 
 export function centsToPesos(cents: number): number {

@@ -278,6 +278,17 @@ select:focus-visible {
   margin-bottom: var(--pad-sm);
 }
 
+/* Narrow screens: Income and Expense side by side, Balance full-width below. */
+@media (max-width: 400px) {
+  .summary-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .summary-card.balance {
+    grid-column: 1 / -1;
+  }
+}
+
 .summary-card {
   background: var(--surface);
   border-radius: var(--radius);
