@@ -21,7 +21,6 @@ export function TransactionForm({ initial, onSave, onDelete }: Props) {
   const [categoryId, setCategoryId] = useState(initial?.categoryId ?? '');
   const [date, setDate] = useState(initial?.date ?? todayISO());
   const [note, setNote] = useState(initial?.note ?? '');
-  const [goalId, setGoalId] = useState(initial?.goalId ?? '');
   const [error, setError] = useState('');
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
@@ -31,7 +30,6 @@ export function TransactionForm({ initial, onSave, onDelete }: Props) {
   const switchType = (t: TxType) => {
     if (t === type) return;
     setType(t);
-    setGoalId('');
     const valid = data.categories.some((c) => c.id === categoryId && c.kind === t && !c.archived);
     if (!valid) setCategoryId('');
   };
@@ -57,7 +55,6 @@ export function TransactionForm({ initial, onSave, onDelete }: Props) {
       categoryId,
       date,
       note: note.trim() || undefined,
-      goalId: type === 'expense' && goalId ? goalId : null,
     });
   };
 
@@ -128,25 +125,6 @@ export function TransactionForm({ initial, onSave, onDelete }: Props) {
         />
       </div>
 
-      {type === 'expense' && data.goals.length > 0 && (
-        <div className="field">
-          <label htmlFor="tx-goal">Contribute to goal (optional)</label>
-          <select
-            id="tx-goal"
-            className="input"
-            value={data.goals.some((g) => g.id === goalId) ? goalId : ''}
-            onChange={(e) => setGoalId(e.target.value)}
-          >
-            <option value="">— No goal —</option>
-            {data.goals.map((g) => (
-              <option key={g.id} value={g.id}>
-                🎯 {g.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-
       {error && <p className="error-text">{error}</p>}
 
       <button type="submit" className="btn btn-primary btn-block">
@@ -166,7 +144,7 @@ export function TransactionForm({ initial, onSave, onDelete }: Props) {
       <ConfirmDialog
         open={confirmingDelete}
         title="Delete transaction?"
-        message="This removes the transaction permanently. If it contributed to a goal, that contribution is removed too."
+        message="This removes the transaction permanently."
         onCancel={() => setConfirmingDelete(false)}
         onConfirm={() => {
           setConfirmingDelete(false);

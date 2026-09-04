@@ -5,7 +5,7 @@ import { todayISO } from './dates';
 export function validateAppData(raw: unknown): AppData | null {
   if (!raw || typeof raw !== 'object') return null;
   const d = raw as Partial<AppData>;
-  if (!Array.isArray(d.transactions) || !Array.isArray(d.categories) || !Array.isArray(d.budgets) || !Array.isArray(d.goals)) {
+  if (!Array.isArray(d.transactions) || !Array.isArray(d.categories) || !Array.isArray(d.budgets)) {
     return null;
   }
   for (const t of d.transactions) {
@@ -32,17 +32,6 @@ export function validateAppData(raw: unknown): AppData | null {
   }
   for (const b of d.budgets) {
     if (!b || typeof b !== 'object' || typeof b.categoryId !== 'string' || typeof b.amountCents !== 'number') {
-      return null;
-    }
-  }
-  for (const g of d.goals) {
-    if (
-      !g || typeof g !== 'object' ||
-      typeof g.id !== 'string' ||
-      typeof g.name !== 'string' ||
-      typeof g.targetCents !== 'number' ||
-      !Array.isArray(g.allocations)
-    ) {
       return null;
     }
   }

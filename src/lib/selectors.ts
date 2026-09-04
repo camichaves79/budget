@@ -33,20 +33,6 @@ export function spentByCategory(data: AppData, period: Period): Map<string, numb
   return map;
 }
 
-/**
- * Money saved toward a goal = manual allocations + expenses marked as
- * contributing to the goal.
- */
-export function goalSavedCents(data: AppData, goalId: string): number {
-  const goal = data.goals.find((g) => g.id === goalId);
-  if (!goal) return 0;
-  let sum = goal.allocations.reduce((s, a) => s + a.amountCents, 0);
-  for (const t of data.transactions) {
-    if (t.goalId === goalId && t.type === 'expense') sum += t.amountCents;
-  }
-  return sum;
-}
-
 export function categoryById(data: AppData, id: string): Category | undefined {
   return data.categories.find((c) => c.id === id);
 }

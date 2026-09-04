@@ -685,17 +685,6 @@ select.input {
   text-overflow: ellipsis;
 }
 
-.tx-goal {
-  align-self: flex-start;
-  font-size: 11px;
-  background: var(--accent-soft);
-  color: var(--accent);
-  border-radius: 999px;
-  padding: 2px 8px;
-  margin-top: 3px;
-  font-weight: 600;
-}
-
 .tx-amount {
   font-weight: 700;
   font-size: 15px;
@@ -709,85 +698,6 @@ select.input {
 
 .tx-amount.income {
   color: var(--income);
-}
-
-/* ---------- Goals ---------- */
-
-.goal-card {
-  display: block;
-  width: 100%;
-  text-align: left;
-}
-
-.goal-card-head {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 10px;
-}
-
-.goal-emoji {
-  font-size: 26px;
-}
-
-.goal-card-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.goal-name {
-  font-weight: 700;
-  font-size: 16px;
-}
-
-.goal-deadline {
-  font-size: 12px;
-  color: var(--muted);
-}
-
-.goal-pct {
-  font-weight: 700;
-  font-size: 18px;
-  color: var(--accent);
-  font-variant-numeric: tabular-nums;
-}
-
-.goal-amounts {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  margin-top: 6px;
-  font-size: 14px;
-  font-variant-numeric: tabular-nums;
-}
-
-.goal-big {
-  font-size: 22px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-
-.goal-detail-summary {
-  margin-bottom: 14px;
-}
-
-.alloc-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.alloc-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
 }
 
 .mini-delete {

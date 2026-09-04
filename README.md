@@ -6,9 +6,8 @@ Built with React + TypeScript + Vite. See `REQUIREMENTS.md` for the full spec.
 
 ## Features
 
-- **Dashboard** — one scrollable view: period summary (income, expenses, balance), the transaction list (add / edit / delete), budget progress, and goal snapshots
+- **Dashboard** — one scrollable view: period summary (income, expenses, balance), the transaction list (add / edit / delete), and budget progress
 - **Category budgets** — monthly limit per category with progress bars and over-budget alerts
-- **Savings goals** — create goals (name, target, deadline), add/withdraw money, and mark transactions as contributing to a goal
 - **Settings** — manage categories, export/import JSON backups, reset all data
 - **COP currency** — amounts formatted `$ 1.234,56` (dots group thousands, comma decimals, whole values without decimals), stored as integer centavos
 
@@ -23,7 +22,7 @@ npm install
 npm run dev        # start the dev server (default: http://localhost:5173)
 npm run build      # type-check + production build into dist/
 npm run preview    # serve the production build locally
-npm test           # run the logic smoke test (currency, periods, goal math)
+npm test           # run the logic smoke test (currency and period math)
 ```
 
 ## Data & persistence
@@ -58,10 +57,9 @@ src/
   lib/          # pure logic: types, money, dates, periods, storage adapter, selectors, import/export
   state/        # React store (context + reducer) with localStorage persistence
   components/   # reusable UI: tabs, sheets, forms, progress bars
-  pages/        # Dashboard, Budgets, Goals, Settings
+  pages/        # Dashboard, Budgets, Settings
 ```
 
 ## Notes
 
 - The storage layer (`src/lib/storage.ts`) is an adapter interface, so the backend can be swapped (e.g., SQLite via WASM) without touching UI code.
-- A transaction marked as "contributes to a goal" still counts as an expense in your totals; it *additionally* counts toward that goal's saved amount.

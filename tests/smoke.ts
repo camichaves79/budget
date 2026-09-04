@@ -1,7 +1,6 @@
 import { formatCOP, parseAmountToCents } from '../src/lib/money';
 import { periodForDate, shiftPeriod } from '../src/lib/periods';
-import { goalSavedCents, isInPeriod } from '../src/lib/selectors';
-import type { AppData } from '../src/lib/types';
+import { isInPeriod } from '../src/lib/selectors';
 
 let failures = 0;
 function check(label: string, actual: unknown, expected: unknown) {
@@ -57,29 +56,6 @@ check('in period inclusive start', isInPeriod('2025-10-25', p1), true);
 check('in period inclusive end', isInPeriod('2025-11-24', p1), true);
 check('in period excludes next', isInPeriod('2025-11-25', p1), false);
 check('in period excludes prev', isInPeriod('2025-10-24', p1), false);
-
-// ---- goal saved ----
-const data: AppData = {
-  transactions: [
-    { id: 't1', type: 'expense', amountCents: 100000, categoryId: 'c1', date: '2025-10-26', goalId: 'g1' },
-    { id: 't2', type: 'expense', amountCents: 50000, categoryId: 'c1', date: '2025-10-27' },
-    { id: 't3', type: 'income', amountCents: 99900, categoryId: 'c2', date: '2025-10-27', goalId: 'g1' }, // income never counts
-  ],
-  categories: [],
-  budgets: [],
-  goals: [
-    {
-      id: 'g1',
-      name: 'Vacation',
-      targetCents: 500000,
-      allocations: [
-        { id: 'a1', amountCents: 200000, date: '2025-10-20' },
-        { id: 'a2', amountCents: -50000, date: '2025-10-21' },
-      ],
-    },
-  ],
-};
-check('goal saved = allocs + contributing expenses', goalSavedCents(data, 'g1'), 250000);
 
 if (failures > 0) {
   console.log(`\n${failures} failure(s)`);

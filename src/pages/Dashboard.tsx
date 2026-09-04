@@ -96,7 +96,6 @@ export function Dashboard({
                   </div>
                   {group.map((t) => {
                     const cat = categoryById(data, t.categoryId);
-                    const goal = t.goalId ? data.goals.find((g) => g.id === t.goalId) : undefined;
                     const sign = t.type === 'income' ? '+' : '−';
                     return (
                       <button key={t.id} type="button" className="tx-row" onClick={() => openEdit(t)}>
@@ -109,7 +108,6 @@ export function Dashboard({
                         <span className="tx-main">
                           <span className="tx-name">{cat?.name ?? 'Unknown'}</span>
                           {t.note && <span className="tx-note">{t.note}</span>}
-                          {goal && <span className="tx-goal">🎯 {goal.name}</span>}
                         </span>
                         <span className={`tx-amount ${t.type}`}>
                           {sign}

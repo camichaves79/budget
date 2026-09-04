@@ -5,7 +5,6 @@ import { TabBar } from './components/TabBar';
 import type { TabKey } from './components/TabBar';
 import { Dashboard } from './pages/Dashboard';
 import { Budgets } from './pages/Budgets';
-import { Goals } from './pages/Goals';
 import { Settings } from './pages/Settings';
 
 export default function App() {
@@ -22,7 +21,6 @@ export default function App() {
           <Dashboard period={period} onShiftPeriod={shift} onToday={jumpToToday} />
         )}
         {tab === 'budgets' && <Budgets period={period} onShiftPeriod={shift} onToday={jumpToToday} />}
-        {tab === 'goals' && <Goals />}
         {tab === 'settings' && <Settings />}
       </main>
 

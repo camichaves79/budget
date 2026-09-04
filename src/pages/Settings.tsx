@@ -163,7 +163,7 @@ export function Settings() {
         <div className="setting-row">
           <div>
             <div className="setting-name">Reset app</div>
-            <div className="setting-desc">Erase all transactions, budgets, and goals.</div>
+            <div className="setting-desc">Erase all transactions and budgets.</div>
           </div>
           <button type="button" className="btn btn-soft-danger" onClick={() => setResetStep(1)}>
             Reset
@@ -235,7 +235,7 @@ export function Settings() {
       <ConfirmDialog
         open={resetStep === 1}
         title="Reset the app?"
-        message="This erases ALL transactions, budgets, goals, and custom categories. You should export a backup first."
+        message="This erases ALL transactions, budgets, and custom categories. You should export a backup first."
         confirmLabel="Erase everything"
         onCancel={() => setResetStep(0)}
         onConfirm={() => setResetStep(2)}

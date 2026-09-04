@@ -1,4 +1,4 @@
-export type TabKey = 'dashboard' | 'budgets' | 'goals' | 'settings';
+export type TabKey = 'dashboard' | 'budgets' | 'settings';
 
 const ICON_PROPS = {
   width: 22,
@@ -32,15 +32,6 @@ const TABS: Array<{ key: TabKey; label: string; icon: React.ReactNode }> = [
         <circle cx="12" cy="12" r="8" />
         <circle cx="12" cy="12" r="3" />
         <circle cx="12" cy="12" r="0.5" fill="currentColor" />
-      </svg>
-    ),
-  },
-  {
-    key: 'goals',
-    label: 'Goals',
-    icon: (
-      <svg {...ICON_PROPS}>
-        <path d="M12 3.5 14.7 9l6 .9-4.35 4.2 1.05 6L12 17.3 6.6 20.1l1.05-6L3.3 9.9l6-.9z" />
       </svg>
     ),
   },

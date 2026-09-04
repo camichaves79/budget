@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useReducer } from 'react';
 import type { Dispatch, ReactNode } from 'react';
-import type { Allocation, AppData, Budget, Category, Goal, Transaction } from '../lib/types';
+import type { AppData, Budget, Category, Transaction } from '../lib/types';
 import { localStorageAdapter } from '../lib/storage';
 import { defaultCategories, PALETTE } from '../lib/seed';
 import { newId } from '../lib/id';
@@ -13,11 +13,6 @@ export type Action =
   | { type: 'updateCategory'; id: string; patch: Partial<Omit<Category, 'id'>> }
   | { type: 'deleteCategory'; id: string }
   | { type: 'setBudget'; categoryId: string; amountCents: number | null }
-  | { type: 'addGoal'; goal: Omit<Goal, 'id' | 'allocations'> }
-  | { type: 'updateGoal'; id: string; patch: Partial<Omit<Goal, 'id' | 'allocations'>> }
-  | { type: 'deleteGoal'; id: string }
-  | { type: 'addAllocation'; goalId: string; allocation: Omit<Allocation, 'id'> }
-  | { type: 'deleteAllocation'; goalId: string; allocationId: string }
   | { type: 'importData'; data: AppData }
   | { type: 'resetAll' };
 
@@ -26,7 +21,6 @@ export function initialData(): AppData {
     transactions: [],
     categories: defaultCategories(),
     budgets: [] as Budget[],
-    goals: [],
   };
 }
 
@@ -93,39 +87,6 @@ function reducer(state: AppData, action: Action): AppData {
       }
       return { ...state, budgets: [...state.budgets, { categoryId: action.categoryId, amountCents: action.amountCents as number }] };
     }
-
-    case 'addGoal':
-      return { ...state, goals: [...state.goals, { ...action.goal, id: newId(), allocations: [] }] };
-
-    case 'updateGoal':
-      return { ...state, goals: state.goals.map((g) => (g.id === action.id ? { ...g, ...action.patch } : g)) };
-
-    case 'deleteGoal':
-      return {
-        ...state,
-        goals: state.goals.filter((g) => g.id !== action.id),
-        transactions: state.transactions.map((t) => (t.goalId === action.id ? { ...t, goalId: null } : t)),
-      };
-
-    case 'addAllocation':
-      return {
-        ...state,
-        goals: state.goals.map((g) =>
-          g.id === action.goalId
-            ? { ...g, allocations: [...g.allocations, { ...action.allocation, id: newId() }] }
-            : g,
-        ),
-      };
-
-    case 'deleteAllocation':
-      return {
-        ...state,
-        goals: state.goals.map((g) =>
-          g.id === action.goalId
-            ? { ...g, allocations: g.allocations.filter((a) => a.id !== action.allocationId) }
-            : g,
-        ),
-      };
 
     case 'importData':
       return action.data;

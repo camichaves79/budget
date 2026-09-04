@@ -9,8 +9,6 @@ export interface Transaction {
   /** Local date as YYYY-MM-DD. */
   date: string;
   note?: string;
-  /** When set (expenses only), this transaction's amount also counts toward the goal. */
-  goalId?: string | null;
 }
 
 export interface Category {
@@ -28,26 +26,8 @@ export interface Budget {
   amountCents: number;
 }
 
-export interface Allocation {
-  id: string;
-  /** Positive = add money, negative = withdraw money. */
-  amountCents: number;
-  date: string; // YYYY-MM-DD
-  note?: string;
-}
-
-export interface Goal {
-  id: string;
-  name: string;
-  targetCents: number;
-  deadline?: string | null; // YYYY-MM-DD
-  note?: string;
-  allocations: Allocation[];
-}
-
 export interface AppData {
   transactions: Transaction[];
   categories: Category[];
   budgets: Budget[];
-  goals: Goal[];
 }

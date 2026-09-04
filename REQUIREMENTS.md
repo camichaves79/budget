@@ -6,12 +6,11 @@
 
 ---
 
-## 1. Goals
+## 1. Objectives
 
 1. Track income and expenses quickly and painlessly.
 2. See, at a glance, how much of each category's monthly budget has been spent.
-3. Save toward named goals (vacation, emergency fund, etc.).
-4. Work fully offline and keep data private on the device.
+3. Work fully offline and keep data private on the device.
 
 ## 2. In scope (v1)
 
@@ -27,17 +26,9 @@
 - Budget screen shows, per category: spent / limit with a progress bar and over-budget highlighting.
 - Budgets repeat automatically every period; limits can be changed at any time.
 
-### 2.3 Savings goals
-- Create a goal: **name**, **target amount**, optional **deadline**, optional **note**.
-- Allocate money to a goal (add / withdraw / reassign from the pool).
-- See progress toward the target (amount and percent).
-- Mark a transaction as "contributed to goal X" so its amount counts toward the goal. *(Confirmed in scope.)*
-- Delete a goal (money allocation returns to unassigned, transactions are kept).
-
-### 2.4 Dashboard (home)
-- Current month summary: income, expenses, net, and unassigned balance.
+### 2.3 Dashboard (home)
+- Current month summary: income, expenses, balance.
 - Budget progress for the current month (top categories).
-- Snapshot of active savings goals.
 
 ## 3. Categories
 
@@ -59,10 +50,9 @@ Default categories (editable — user can add, rename, hide, delete):
 
 Bottom tab bar (mobile-first):
 
-1. **Dashboard** — period summary (income / expenses / balance), transaction list with add / edit / delete, budget progress, and goal snapshot. *(Home and Transactions merged into one view.)*
+1. **Dashboard** — period summary (income / expenses / balance), transaction list with add / edit / delete, and budget progress. *(Home and Transactions merged into one view.)*
 2. **Budgets** — set and review monthly limits per category.
-3. **Goals** — create, fund, and track goals.
-4. **Settings** — manage categories; export / import data (JSON backup); reset all data.
+3. **Settings** — manage categories; export / import data (JSON backup); reset all data.
 
 ## 6. Out of scope (v1)
 
@@ -90,8 +80,7 @@ Bottom tab bar (mobile-first):
 
 1. **UI language:** English.
 2. **Budget period:** starts on the 25th of each month (25th → 24th of next month).
-3. **Goal contributions:** yes — transactions can be marked as contributing to a goal.
-4. **Storage:** TBD — see §10.
+3. **Storage:** TBD — see §10.
 
 ## 10. Storage (decided)
 
