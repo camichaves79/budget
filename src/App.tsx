@@ -17,7 +17,7 @@ export default function App() {
 
   return (
     <div className="app">
-      <main className="app-main" key={tab}>
+      <main className={tab === 'dashboard' ? 'app-main dashboard-main' : 'app-main'} key={tab}>
         {tab === 'dashboard' && (
           <Dashboard period={period} onShiftPeriod={shift} onToday={jumpToToday} goTo={setTab} />
         )}

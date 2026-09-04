@@ -76,127 +76,132 @@ export function Dashboard({
   };
 
   return (
-    <div>
-      <PeriodNav period={period} onShift={onShiftPeriod} onToday={onToday} />
+    <div className="dashboard">
+      <div className="dashboard-head">
+        <PeriodNav period={period} onShift={onShiftPeriod} onToday={onToday} />
 
-      <h2 className="section-title page-label">Cash flow</h2>
-      <section className="summary-grid" aria-label="Period summary">
-        <div className="summary-card">
-          <span className="summary-label">Income</span>
-          <span className="summary-value income">{formatCOP(totals.income)}</span>
-        </div>
-        <div className="summary-card">
-          <span className="summary-label">Expenses</span>
-          <span className="summary-value expense">{formatCOP(totals.expense)}</span>
-        </div>
-        <div className="summary-card">
-          <span className="summary-label">Balance</span>
-          <span className={totals.net >= 0 ? 'summary-value income' : 'summary-value expense'}>
-            {formatCOP(totals.net)}
-          </span>
-        </div>
-      </section>
+        <h2 className="section-title page-label">Cash flow</h2>
+        <section className="summary-grid" aria-label="Period summary">
+          <div className="summary-card">
+            <span className="summary-label">Income</span>
+            <span className="summary-value income">{formatCOP(totals.income)}</span>
+          </div>
+          <div className="summary-card">
+            <span className="summary-label">Expenses</span>
+            <span className="summary-value expense">{formatCOP(totals.expense)}</span>
+          </div>
+          <div className="summary-card">
+            <span className="summary-label">Balance</span>
+            <span className={totals.net >= 0 ? 'summary-value income' : 'summary-value expense'}>
+              {formatCOP(totals.net)}
+            </span>
+          </div>
+        </section>
 
-      <h2 className="section-title page-label divider">Transactions</h2>
-      {txs.length === 0 ? (
-        <EmptyState
-          emoji="🧾"
-          title="No transactions in this period"
-          hint="Tap + to record income or an expense."
-        />
-      ) : (
-        <div className="tx-list" aria-label="Transactions">
-          {groups.map(([date, group]) => {
-            const net = dayNet.get(date) ?? 0;
-            return (
-              <section key={date}>
-                <div className="day-head">
-                  <span>{formatDateFull(date)}</span>
-                  <span className={net >= 0 ? 'income' : 'expense'}>{formatCOP(net)}</span>
+        <h2 className="section-title page-label divider">Transactions</h2>
+      </div>
+
+      <div className="dashboard-scroll">
+        {txs.length === 0 ? (
+          <EmptyState
+            emoji="🧾"
+            title="No transactions in this period"
+            hint="Tap + to record income or an expense."
+          />
+        ) : (
+          <div className="tx-list" aria-label="Transactions">
+            {groups.map(([date, group]) => {
+              const net = dayNet.get(date) ?? 0;
+              return (
+                <section key={date}>
+                  <div className="day-head">
+                    <span>{formatDateFull(date)}</span>
+                    <span className={net >= 0 ? 'income' : 'expense'}>{formatCOP(net)}</span>
+                  </div>
+                  {group.map((t) => {
+                    const cat = categoryById(data, t.categoryId);
+                    const goal = t.goalId ? data.goals.find((g) => g.id === t.goalId) : undefined;
+                    const sign = t.type === 'income' ? '+' : '−';
+                    return (
+                      <button key={t.id} type="button" className="tx-row" onClick={() => openEdit(t)}>
+                        <span
+                          className="tx-emoji"
+                          style={{ background: `${cat?.color ?? '#94a3b8'}1f` }}
+                        >
+                          {cat?.emoji ?? '❓'}
+                        </span>
+                        <span className="tx-main">
+                          <span className="tx-name">{cat?.name ?? 'Unknown'}</span>
+                          {t.note && <span className="tx-note">{t.note}</span>}
+                          {goal && <span className="tx-goal">🎯 {goal.name}</span>}
+                        </span>
+                        <span className={`tx-amount ${t.type}`}>
+                          {sign}
+                          {formatCOP(t.amountCents)}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </section>
+              );
+            })}
+          </div>
+        )}
+
+        {budgetRows.length > 0 && (
+          <section className="card" aria-label="Budget progress">
+            <div className="card-head">
+              <h3>Budgets</h3>
+              <button type="button" className="link-btn" onClick={() => goTo('budgets')}>
+                See all
+              </button>
+            </div>
+            {budgetRows.map(({ cat, limit, spent: s }) => (
+              <div key={cat.id} className="budget-row">
+                <div className="budget-row-head">
+                  <span className="budget-name">
+                    <span className="row-emoji" style={{ background: `${cat.color}1f` }}>
+                      {cat.emoji}
+                    </span>
+                    {cat.name}
+                  </span>
+                  <span className={s > limit ? 'amounts over' : 'amounts'}>
+                    {formatCOP(s)} <span className="muted">/ {formatCOP(limit)}</span>
+                  </span>
                 </div>
-                {group.map((t) => {
-                  const cat = categoryById(data, t.categoryId);
-                  const goal = t.goalId ? data.goals.find((g) => g.id === t.goalId) : undefined;
-                  const sign = t.type === 'income' ? '+' : '−';
-                  return (
-                    <button key={t.id} type="button" className="tx-row" onClick={() => openEdit(t)}>
-                      <span
-                        className="tx-emoji"
-                        style={{ background: `${cat?.color ?? '#94a3b8'}1f` }}
-                      >
-                        {cat?.emoji ?? '❓'}
-                      </span>
-                      <span className="tx-main">
-                        <span className="tx-name">{cat?.name ?? 'Unknown'}</span>
-                        {t.note && <span className="tx-note">{t.note}</span>}
-                        {goal && <span className="tx-goal">🎯 {goal.name}</span>}
-                      </span>
-                      <span className={`tx-amount ${t.type}`}>
-                        {sign}
-                        {formatCOP(t.amountCents)}
-                      </span>
-                    </button>
-                  );
-                })}
-              </section>
-            );
-          })}
-        </div>
-      )}
-
-      {budgetRows.length > 0 && (
-        <section className="card" aria-label="Budget progress">
-          <div className="card-head">
-            <h3>Budgets</h3>
-            <button type="button" className="link-btn" onClick={() => goTo('budgets')}>
-              See all
-            </button>
-          </div>
-          {budgetRows.map(({ cat, limit, spent: s }) => (
-            <div key={cat.id} className="budget-row">
-              <div className="budget-row-head">
-                <span className="budget-name">
-                  <span className="row-emoji" style={{ background: `${cat.color}1f` }}>
-                    {cat.emoji}
-                  </span>
-                  {cat.name}
-                </span>
-                <span className={s > limit ? 'amounts over' : 'amounts'}>
-                  {formatCOP(s)} <span className="muted">/ {formatCOP(limit)}</span>
-                </span>
+                <ProgressBar value={s} max={limit} color={cat.color} />
               </div>
-              <ProgressBar value={s} max={limit} color={cat.color} />
-            </div>
-          ))}
-        </section>
-      )}
+            ))}
+          </section>
+        )}
 
-      {goalRows.length > 0 && (
-        <section className="card" aria-label="Savings goals">
-          <div className="card-head">
-            <h3>Goals</h3>
-            <button type="button" className="link-btn" onClick={() => goTo('goals')}>
-              See all
-            </button>
-          </div>
-          {goalRows.map(({ goal, saved }) => (
-            <div key={goal.id} className="budget-row">
-              <div className="budget-row-head">
-                <span className="budget-name">
-                  <span className="row-emoji" style={{ background: 'var(--accent-soft)' }}>
-                    🎯
-                  </span>
-                  {goal.name}
-                </span>
-                <span className="amounts">
-                  {formatCOP(saved)} <span className="muted">/ {formatCOP(goal.targetCents)}</span>
-                </span>
-              </div>
-              <ProgressBar value={saved} max={goal.targetCents} />
+        {goalRows.length > 0 && (
+          <section className="card" aria-label="Savings goals">
+            <div className="card-head">
+              <h3>Goals</h3>
+              <button type="button" className="link-btn" onClick={() => goTo('goals')}>
+                See all
+              </button>
             </div>
-          ))}
-        </section>
-      )}
+            {goalRows.map(({ goal, saved }) => (
+              <div key={goal.id} className="budget-row">
+                <div className="budget-row-head">
+                  <span className="budget-name">
+                    <span className="row-emoji" style={{ background: 'var(--accent-soft)' }}>
+                      🎯
+                    </span>
+                    {goal.name}
+                  </span>
+                  <span className="amounts">
+                    {formatCOP(saved)} <span className="muted">/ {formatCOP(goal.targetCents)}</span>
+                  </span>
+                </div>
+                <ProgressBar value={saved} max={goal.targetCents} />
+              </div>
+            ))}
+          </section>
+        )}
+      </div>
 
       <button type="button" className="fab" onClick={openAdd} aria-label="Add transaction">
         +

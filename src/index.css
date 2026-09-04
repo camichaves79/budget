@@ -70,6 +70,35 @@ select:focus-visible {
   padding: max(8px, env(safe-area-inset-top)) 16px calc(88px + env(safe-area-inset-bottom));
 }
 
+/* Dashboard: fixed viewport height, internal scrolling. */
+.app-main.dashboard-main {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.dashboard {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+/* Pinned top: period selector, cash flow, section header. */
+.dashboard-head {
+  flex-shrink: 0;
+}
+
+/* Only the content below "Transactions" scrolls. */
+.dashboard-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 16px;
+}
+
 /* ---------- Tab bar ---------- */
 
 .tab-bar {
