@@ -103,7 +103,9 @@ export function Dashboard({
                       <button key={t.id} type="button" className="tx-row" onClick={() => openEdit(t)}>
                         <span
                           className="tx-emoji"
-                          style={{ background: `${cat?.color ?? '#94a3b8'}1f` }}
+                          style={{
+                            background: t.type === 'income' ? 'var(--income-soft)' : 'var(--neutral-tint)',
+                          }}
                         >
                           {cat?.emoji ?? '❓'}
                         </span>

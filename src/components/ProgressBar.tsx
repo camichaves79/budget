@@ -1,7 +1,7 @@
 /**
- * Horizontal progress bar.
- * Default color is percentage-based: green up to 50%, yellow up to 95%,
- * red at 95% and beyond (including over-budget). Pass `color` to override.
+ * Horizontal progress bar with tonal (non traffic-light) states:
+ * mint fill 0–75%, engraving green 76–99%, copper at 100% and beyond.
+ * Pass `color` to override.
  */
 export function ProgressBar({
   value,
@@ -15,7 +15,7 @@ export function ProgressBar({
   const pct = max > 0 ? Math.min(100, Math.round((value / max) * 100)) : 0;
   const usage = max > 0 ? (value / max) * 100 : 0;
   const barColor =
-    color ?? (usage >= 95 ? 'var(--danger)' : usage > 50 ? 'var(--warning)' : 'var(--income)');
+    color ?? (usage >= 100 ? 'var(--terracotta)' : usage >= 76 ? 'var(--primary)' : 'var(--accent)');
   return (
     <div
       className="progress"

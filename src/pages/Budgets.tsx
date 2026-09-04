@@ -69,12 +69,12 @@ export function Budgets({
                 <button
                   key={cat.id}
                   type="button"
-                  className="budget-row budget-row-btn"
+                  className={s > limit ? 'budget-row budget-row-btn over-budget-row' : 'budget-row budget-row-btn'}
                   onClick={() => setEditing(cat)}
                 >
                   <div className="budget-row-head">
                     <span className="budget-name">
-                      <span className="row-emoji" style={{ background: `${cat.color}1f` }}>
+                      <span className="row-emoji" style={{ background: 'var(--neutral-tint)' }}>
                         {cat.emoji}
                       </span>
                       {cat.name}
@@ -102,7 +102,7 @@ export function Budgets({
                 >
                   <div className="budget-row-head">
                     <span className="budget-name">
-                      <span className="row-emoji" style={{ background: `${cat.color}1f` }}>
+                      <span className="row-emoji" style={{ background: 'var(--neutral-tint)' }}>
                         {cat.emoji}
                       </span>
                       {cat.name}

@@ -24,7 +24,7 @@
 - Every expense category can have a **monthly limit**.
 - **Budget period:** runs from the **25th of one month to the 24th of the next** (e.g., "October" = Oct 25 – Nov 24). The period is labeled by its start month.
 - Budget screen shows, per category: spent / limit with a progress bar and over-budget highlighting.
-- Progress bar color shows usage level: **green** up to 50%, **yellow** up to 95%, **red** at 95% and beyond.
+- Progress bars are tonal, not traffic-light: thin slate track with mint fill 0–75%, engraving green 76–99%, copper bar at 100%+ with a soft copper row tint.
 - Budgets repeat automatically every period; limits can be changed at any time.
 
 ### 2.3 Dashboard (home)

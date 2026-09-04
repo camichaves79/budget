@@ -273,7 +273,10 @@ function CategoryGroup({
       {cats.map((c) => (
         <div key={c.id} className="cat-row">
           <button type="button" className="cat-main" onClick={() => onEdit(c)}>
-            <span className="row-emoji" style={{ background: `${c.color}1f` }}>
+            <span
+              className="row-emoji"
+              style={{ background: c.kind === 'income' ? 'var(--income-soft)' : 'var(--neutral-tint)' }}
+            >
               {c.emoji}
             </span>
             <span className="tx-name">{c.name}</span>
