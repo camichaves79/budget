@@ -143,6 +143,11 @@ select:focus-visible {
   color: var(--muted);
 }
 
+/* Section label placed directly on the page (not inside a card). */
+.summary-heading {
+  margin: 0 0 8px;
+}
+
 .link-btn {
   color: var(--accent);
   font-weight: 600;

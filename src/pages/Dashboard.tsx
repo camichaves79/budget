@@ -79,6 +79,7 @@ export function Dashboard({
     <div>
       <PeriodNav period={period} onShift={onShiftPeriod} onToday={onToday} />
 
+      <h2 className="section-title summary-heading">Cash flow</h2>
       <section className="summary-grid" aria-label="Period summary">
         <div className="summary-card">
           <span className="summary-label">Income</span>
