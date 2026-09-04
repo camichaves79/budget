@@ -2,7 +2,7 @@
 
 **Product:** Mobile-first web app for personal budgeting (single user).
 **Storage:** TBD (localStorage vs. SQLite — see §10). No accounts, no backend, data never leaves the device.
-**Currency:** Colombian Peso (COP), formatted `$1'234,567.89` (apostrophe groups thousands, then commas, period decimals, 2 decimals).
+**Currency:** Colombian Peso (COP), formatted `$ 1.234,56` (space after $, dots for thousands, comma for decimals, whole values without decimals).
 
 ---
 
@@ -50,10 +50,10 @@ Default categories (editable — user can add, rename, hide, delete):
 
 ## 4. Currency rules
 
-- Format: `$1'234,567.89` — thousands grouped with `'` first then `,`, decimals with `.`, always 2 decimals, `$` prefix.
-- Negative values: `-$1'234,567.89`.
+- Format: `$ 1.234,56` — "$" followed by a space, dots for thousands, comma for decimals (2 digits). Whole values show no decimals: `$ 12.345`.
+- Negative values: `-$ 1.234,56`.
 - Amounts stored as integer **centavos** internally to avoid floating-point errors.
-- Input parser accepts flexible formats (`1.234.567,89`, `1,234.56`, `1234`, `1'234`).
+- Input parser accepts flexible formats (`$ 1.234,56`, `1.234.567,89`, `1,234.56`, `1234`, `1'234`).
 
 ## 5. Pages / navigation
 

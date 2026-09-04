@@ -10,7 +10,7 @@ Built with React + TypeScript + Vite. See `REQUIREMENTS.md` for the full spec.
 - **Category budgets** — monthly limit per category with progress bars and over-budget alerts
 - **Savings goals** — create goals (name, target, deadline), add/withdraw money, and mark transactions as contributing to a goal
 - **Settings** — manage categories, export/import JSON backups, reset all data
-- **COP currency** — amounts formatted `$1'234,567.89` (apostrophe then comma group thousands, period decimals), stored as integer centavos
+- **COP currency** — amounts formatted `$ 1.234,56` (dots group thousands, comma decimals, whole values without decimals), stored as integer centavos
 
 ## Budget periods
 

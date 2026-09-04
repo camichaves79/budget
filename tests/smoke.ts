@@ -15,13 +15,18 @@ function check(label: string, actual: unknown, expected: unknown) {
 }
 
 // ---- money ----
-check('format 1', formatCOP(123456789), "$1'234,567.89");
-check('format 2', formatCOP(-123456789), "-$1'234,567.89");
-check('format with even cents', formatCOP(123456700), "$1'234,567.00");
-check('format 3', formatCOP(500), '$5.00');
-check('format 4', formatCOP(0), '$0.00');
-check('format thousands only', formatCOP(123400), "$1'234.00");
-check('parse apostrophe', parseAmountToCents("$1'234,567.89"), 123456789);
+check('format millions with cents', formatCOP(123456789), '$ 1.234.567,89');
+check('format negative', formatCOP(-123456789), '-$ 1.234.567,89');
+check('format whole millions', formatCOP(123456700), '$ 1.234.567');
+check('format whole small', formatCOP(500), '$ 5');
+check('format zero', formatCOP(0), '$ 0');
+check('format thousands whole', formatCOP(123400), '$ 1.234');
+check('format single cent', formatCOP(1), '$ 0,01');
+check('format peso with cents', formatCOP(156), '$ 1,56');
+check('parse new format', parseAmountToCents('$ 1.234,56'), 123456);
+check('parse whole with dots', parseAmountToCents('$12.345'), 1234500);
+check('parse whole with dots and space', parseAmountToCents('$ 12.345'), 1234500);
+check('parse apostrophe (legacy)', parseAmountToCents("$1'234,567.89"), 123456789);
 check('parse dot-thousands comma-decimal', parseAmountToCents('1.234.567,89'), 123456789);
 check('parse plain decimal', parseAmountToCents('1234.56'), 123456);
 check('parse comma-thousands', parseAmountToCents('1,234'), 123400);

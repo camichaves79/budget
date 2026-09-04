@@ -1,7 +1,7 @@
 /**
  * Colombian Peso money helpers.
- * Display format: $1'234,567.89 — thousands grouped with an apostrophe first,
- * then commas, period decimals, always 2 decimals, "$" prefix.
+ * Display format: "$ 1.234,56" — "$" followed by a space, dots for thousands,
+ * comma for decimals (2 digits). Whole values show no decimals: "$ 12.345".
  * Amounts are stored as integer centavos to avoid floating-point errors.
  */
 
@@ -11,19 +11,9 @@ export function formatCOP(cents: number): string {
   const pesos = Math.floor(abs / 100);
   const frac = abs % 100;
 
-  // Group the integer part into chunks of 3 from the right.
-  const digits = String(pesos);
-  const groups: string[] = [];
-  for (let end = digits.length; end > 0; end -= 3) {
-    groups.unshift(digits.slice(Math.max(0, end - 3), end));
-  }
-  // First (leftmost) separator is an apostrophe, the rest are commas.
-  let intPart = groups[0];
-  for (let i = 1; i < groups.length; i++) {
-    intPart += (i === 1 ? "'" : ',') + groups[i];
-  }
-
-  return `${sign}$${intPart}.${String(frac).padStart(2, '0')}`;
+  const grouped = String(pesos).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  const decimals = frac > 0 ? `,${String(frac).padStart(2, '0')}` : '';
+  return `${sign}$ ${grouped}${decimals}`;
 }
 
 export function centsToPesos(cents: number): number {
@@ -32,7 +22,7 @@ export function centsToPesos(cents: number): number {
 
 /**
  * Parse a user-entered amount into integer centavos.
- * Accepts: "$1'234,567.89", "1.234.567,89", "1,234.56", "1234.56", "1234", "1'234".
+ * Accepts: "$ 1.234,56", "$12.345", "1.234.567,89", "1,234.56", "1234.56", "1234", "1'234".
  * Rules: if both separators appear, the last one is the decimal separator.
  * If only one appears and it is followed by 1–2 digits, it is the decimal separator.
  * Returns null when the input cannot be parsed.
