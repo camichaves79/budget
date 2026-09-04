@@ -144,7 +144,7 @@ select:focus-visible {
 }
 
 /* Section label placed directly on the page (not inside a card). */
-.summary-heading {
+.page-label {
   margin: 0 0 8px;
 }
 
