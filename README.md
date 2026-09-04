@@ -13,7 +13,7 @@ Built with React + TypeScript + Vite. See `REQUIREMENTS.md` for the full spec.
 
 ## Budget periods
 
-A budget period runs from the **25th** of one month to the **24th** of the next (e.g., "October" = Oct 25 – Nov 24).
+A budget period runs from the **25th** of one month to the **24th** of the next (e.g., "November" = Oct 25 – Nov 24), labeled by the month it ends in.
 
 ## Getting started
 

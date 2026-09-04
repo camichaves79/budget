@@ -35,23 +35,27 @@ check('parse invalid', parseAmountToCents('abc'), null);
 check('parse empty', parseAmountToCents('  '), null);
 check('parse negative', parseAmountToCents('-50'), -5000);
 
-// ---- periods ----
-const oct25 = new Date(2025, 9, 25); // Oct 25, 2025
-const oct24 = new Date(2025, 9, 24);
-const jan5 = new Date(2026, 0, 5); // Jan 5, 2026
+// ---- periods (labeled by the month they end in) ----
+const oct25 = new Date(2025, 9, 25); // Oct 25, 2025 → ends Nov 24
+const oct24 = new Date(2025, 9, 24); // → ends Oct 24
+const jan5 = new Date(2026, 0, 5); // Jan 5, 2026 → ends Jan 24
+const aug25 = new Date(2026, 7, 25); // Aug 25, 2026 → ends Sep 24
 const p1 = periodForDate(oct25);
-check('period oct25 key', p1.key, '2025-10');
+check('period oct25 key', p1.key, '2025-11');
+check('period oct25 label', p1.label, 'November 2025');
 check('period oct25 start', p1.startISO, '2025-10-25');
 check('period oct25 end', p1.endISO, '2025-11-24');
 const p2 = periodForDate(oct24);
-check('period oct24 key', p2.key, '2025-09');
+check('period oct24 key', p2.key, '2025-10');
 check('period oct24 start', p2.startISO, '2025-09-25');
 check('period oct24 end', p2.endISO, '2025-10-24');
 const p3 = periodForDate(jan5);
-check('period jan5 key', p3.key, '2025-12');
+check('period jan5 key', p3.key, '2026-01');
 check('period jan5 end', p3.endISO, '2026-01-24');
-check('shift +1 from dec', shiftPeriod(p3, 1).key, '2026-01');
-check('shift -1 from dec', shiftPeriod(p3, -1).key, '2025-11');
+check('user example aug25', periodForDate(aug25).label, 'September 2026');
+check('user example aug25 key', periodForDate(aug25).key, '2026-09');
+check('shift +1 from jan', shiftPeriod(p3, 1).key, '2026-02');
+check('shift -1 from jan', shiftPeriod(p3, -1).key, '2025-12');
 check('in period inclusive start', isInPeriod('2025-10-25', p1), true);
 check('in period inclusive end', isInPeriod('2025-11-24', p1), true);
 check('in period excludes next', isInPeriod('2025-11-25', p1), false);

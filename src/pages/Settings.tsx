@@ -1,59 +1,10 @@
 import { useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import type { Category, Transaction, TxType } from '../lib/types';
+import type { Category, TxType } from '../lib/types';
 import { useStore } from '../state/store';
 import { exportData, validateAppData } from '../lib/importExport';
-import { toISODate } from '../lib/dates';
-import { currentPeriod } from '../lib/periods';
 import { Sheet } from '../components/Sheet';
 import { ConfirmDialog } from '../components/ConfirmDialog';
-
-/** Dev helper: 30 realistic demo transactions spread over the current period. */
-function buildDemoTransactions(cats: Category[]): Omit<Transaction, 'id'>[] {
-  const expenses = cats.filter((c) => c.kind === 'expense' && !c.archived);
-  const incomes = cats.filter((c) => c.kind === 'income' && !c.archived);
-  if (expenses.length === 0 || incomes.length === 0) return [];
-
-  const period = currentPeriod();
-  const now = new Date();
-  const notes = [
-    'Weekly groceries',
-    'Lunch with the team',
-    'Gas',
-    'Pharmacy run',
-    'Streaming service',
-    'Coffee',
-    'Taxi to the office',
-    'Dinner out',
-    'Gym membership',
-    'Snacks at the corner store',
-  ];
-  const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
-
-  const txs: Omit<Transaction, 'id'>[] = [];
-  for (let i = 0; i < 30; i++) {
-    const isExpense = i % 10 < 7; // ~70% expenses
-    const cat = isExpense ? pick(expenses) : pick(incomes);
-    const daysBack = Math.floor(i * 0.8) + (i % 2);
-    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysBack);
-    let dateISO = toISODate(d);
-    if (dateISO < period.startISO) dateISO = period.startISO;
-
-    const amountCents = isExpense
-      ? 40_000 + Math.floor(Math.random() * 900_000) // $400 – $9,400 pesos
-      : 180_000_000 + Math.floor(Math.random() * 140_000_000); // $1.8M – $3.2M pesos
-    const oddCents = i % 5 === 0 ? Math.floor(Math.random() * 100) : 0;
-
-    txs.push({
-      type: isExpense ? 'expense' : 'income',
-      amountCents: amountCents + oddCents,
-      categoryId: cat.id,
-      date: dateISO,
-      note: Math.random() < 0.6 ? pick(notes) : undefined,
-    });
-  }
-  return txs;
-}
 
 export function Settings() {
   const { data, dispatch } = useStore();
@@ -90,12 +41,6 @@ export function Settings() {
       }
     };
     reader.readAsText(file);
-  };
-
-  const seedDemo = () => {
-    for (const tx of buildDemoTransactions(data.categories)) {
-      dispatch({ type: 'addTransaction', tx });
-    }
   };
 
   return (
@@ -151,15 +96,6 @@ export function Settings() {
           />
         </div>
         {importError && <p className="error-text">{importError}</p>}
-        <div className="setting-row">
-          <div>
-            <div className="setting-name">Seed demo transactions</div>
-            <div className="setting-desc">Dev helper: adds 30 demo transactions across the current period to test scrolling. Remove them with Reset.</div>
-          </div>
-          <button type="button" className="btn" onClick={seedDemo}>
-            Seed 30
-          </button>
-        </div>
         <div className="setting-row">
           <div>
             <div className="setting-name">Reset app</div>
