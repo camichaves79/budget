@@ -6,7 +6,7 @@ Built with React + TypeScript + Vite. See `REQUIREMENTS.md` for the full spec.
 
 ## Features
 
-- **Dashboard** — one scrollable view: period summary (income, expenses, net), the transaction list (add / edit / delete), budget progress, and goal snapshots
+- **Dashboard** — one scrollable view: period summary (income, expenses, balance), the transaction list (add / edit / delete), budget progress, and goal snapshots
 - **Category budgets** — monthly limit per category with progress bars and over-budget alerts
 - **Savings goals** — create goals (name, target, deadline), add/withdraw money, and mark transactions as contributing to a goal
 - **Settings** — manage categories, export/import JSON backups, reset all data

@@ -59,7 +59,7 @@ Default categories (editable — user can add, rename, hide, delete):
 
 Bottom tab bar (mobile-first):
 
-1. **Dashboard** — period summary (income / expenses / net), transaction list with add / edit / delete, budget progress, and goal snapshot. *(Home and Transactions merged into one view.)*
+1. **Dashboard** — period summary (income / expenses / balance), transaction list with add / edit / delete, budget progress, and goal snapshot. *(Home and Transactions merged into one view.)*
 2. **Budgets** — set and review monthly limits per category.
 3. **Goals** — create, fund, and track goals.
 4. **Settings** — manage categories; export / import data (JSON backup); reset all data.
