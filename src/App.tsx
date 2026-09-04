@@ -19,7 +19,7 @@ export default function App() {
     <div className="app">
       <main className={tab === 'dashboard' ? 'app-main dashboard-main' : 'app-main'} key={tab}>
         {tab === 'dashboard' && (
-          <Dashboard period={period} onShiftPeriod={shift} onToday={jumpToToday} goTo={setTab} />
+          <Dashboard period={period} onShiftPeriod={shift} onToday={jumpToToday} />
         )}
         {tab === 'budgets' && <Budgets period={period} onShiftPeriod={shift} onToday={jumpToToday} />}
         {tab === 'goals' && <Goals />}
