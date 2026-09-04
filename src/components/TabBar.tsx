@@ -29,9 +29,10 @@ const TABS: Array<{ key: TabKey; label: string; icon: React.ReactNode }> = [
     label: 'Budgets',
     icon: (
       <svg {...ICON_PROPS}>
-        <circle cx="12" cy="12" r="8" />
-        <circle cx="12" cy="12" r="3" />
-        <circle cx="12" cy="12" r="0.5" fill="currentColor" />
+        <path d="M3 3v18h18" />
+        <path d="M18 17V9" />
+        <path d="M13 17V5" />
+        <path d="M8 17v-3" />
       </svg>
     ),
   },
