@@ -35,7 +35,7 @@ npm test           # run the logic smoke test (currency, periods, goal math)
 
 ## Deploying to GitHub Pages
 
-The repo includes `.github/workflows/deploy.yml`, which builds and deploys automatically on every push to `main`.
+The repo includes `.github/workflows/deploy.yml`, which builds and deploys automatically on every push to `main`. The workflow also enables Pages itself (`enablement: true`), so there is no manual setup in the repo settings.
 
 1. Create a repository on GitHub (e.g. `budget`) — **do not** initialize it with a README.
 2. Push this repo:
@@ -43,8 +43,9 @@ The repo includes `.github/workflows/deploy.yml`, which builds and deploys autom
    git remote add origin https://github.com/<your-username>/budget.git
    git push -u origin main
    ```
-3. In the repo on GitHub: **Settings → Pages → Source: GitHub Actions**.
-4. The first push triggers the deploy. Your site will be live at `https://<your-username>.github.io/budget/` (check the Actions tab for progress).
+3. The push triggers the deploy. Your site will be live at `https://<your-username>.github.io/budget/` (watch the Actions tab for progress).
+
+If the deploy step ever complains that Pages is not enabled, set it once in the repo: **Settings → Pages → Source: GitHub Actions**.
 
 Notes:
 
