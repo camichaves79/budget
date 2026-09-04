@@ -97,7 +97,7 @@ export function Dashboard({
         </div>
       </section>
 
-      <h2 className="section-title page-label">Transactions</h2>
+      <h2 className="section-title page-label divider">Transactions</h2>
       {txs.length === 0 ? (
         <EmptyState
           emoji="🧾"

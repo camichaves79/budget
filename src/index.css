@@ -148,6 +148,13 @@ select:focus-visible {
   margin: 0 0 8px;
 }
 
+/* Page label preceded by a hairline divider. */
+.page-label.divider {
+  margin: 20px 0 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
 .link-btn {
   color: var(--accent);
   font-weight: 600;
