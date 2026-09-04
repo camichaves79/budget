@@ -6,7 +6,7 @@ Built with React + TypeScript + Vite. See `REQUIREMENTS.md` for the full spec.
 
 ## Features
 
-- **Dashboard** — one scrollable view: period summary (income, expenses, balance), the transaction list (add / edit / delete), and budget progress
+- **Cash Flow** — one scrollable view: period summary (income, expenses, balance), the transaction list (add / edit / delete), and budget progress
 - **Category budgets** — monthly limit per category with progress bars and over-budget alerts
 - **Settings** — manage categories, export/import JSON backups, reset all data
 - **COP currency** — amounts formatted `$ 1.234,56` (dots group thousands, comma decimals, whole values without decimals), stored as integer centavos
@@ -57,7 +57,7 @@ src/
   lib/          # pure logic: types, money, dates, periods, storage adapter, selectors, import/export
   state/        # React store (context + reducer) with localStorage persistence
   components/   # reusable UI: tabs, sheets, forms, progress bars
-  pages/        # Dashboard, Budgets, Settings
+  pages/        # Cash Flow, Budgets, Settings
 ```
 
 ## Notes

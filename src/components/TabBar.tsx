@@ -14,13 +14,13 @@ const ICON_PROPS = {
 const TABS: Array<{ key: TabKey; label: string; icon: React.ReactNode }> = [
   {
     key: 'dashboard',
-    label: 'Dashboard',
+    label: 'Cash Flow',
     icon: (
       <svg {...ICON_PROPS}>
-        <rect x="4" y="4" width="7" height="7" rx="1.5" />
-        <rect x="13" y="4" width="7" height="7" rx="1.5" />
-        <rect x="4" y="13" width="7" height="7" rx="1.5" />
-        <rect x="13" y="13" width="7" height="7" rx="1.5" />
+        <rect x="2" y="6" width="20" height="12" rx="2" />
+        <circle cx="12" cy="12" r="2" />
+        <path d="M6 12h.01" />
+        <path d="M18 12h.01" />
       </svg>
     ),
   },
