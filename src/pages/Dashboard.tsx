@@ -10,6 +10,8 @@ import { EmptyState } from '../components/EmptyState';
 import { Sheet } from '../components/Sheet';
 import { TransactionForm } from '../components/TransactionForm';
 import { SmartEntry } from '../components/SmartEntry';
+import { Toast } from '../components/Toast';
+import type { ToastData } from '../components/Toast';
 
 /** Merged Home + Transactions: pinned cash flow, scrolling transaction list. */
 export function Dashboard({
@@ -28,6 +30,7 @@ export function Dashboard({
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [smartOpen, setSmartOpen] = useState(false);
+  const [toast, setToast] = useState<ToastData | null>(null);
 
   // Group transactions by date (newest first); track the net per day.
   const groups: Array<[string, Transaction[]]> = [];
@@ -146,8 +149,13 @@ export function Dashboard({
       </button>
 
       <Sheet open={smartOpen} onClose={closeSmart} title="New transaction">
-        <SmartEntry onClose={closeSmart} />
+        <SmartEntry
+          onClose={closeSmart}
+          onToast={(kind, message) => setToast({ id: Date.now(), kind, message })}
+        />
       </Sheet>
+
+      {toast && <Toast key={toast.id} toast={toast} onDismiss={() => setToast(null)} />}
 
       <Sheet open={formOpen} onClose={closeForm} title={editing ? 'Edit transaction' : 'New transaction'}>
         <TransactionForm

@@ -1,7 +1,6 @@
 # Skill — AI-Assisted Transaction Entry (Speech Entry)
 
-**Status:** Planned — ready for implementation
-**Branch:** `speech-entry`
+**Status:** Implemented — UX revised (instant save + fading feedback, 2026-09)
 
 ## Goal
 
@@ -117,14 +116,28 @@ Do not silently create an incorrect transaction. If required information can't b
 determined, let the user provide or select the missing information. No complex
 confidence-scoring system unless it fits naturally.
 
-## 6. Confirmation Before Saving
+## 6. Instant Save with Transient Feedback (revised)
 
-Never auto-save an AI-parsed transaction. After parsing, show a review/edit state
-(type, amount, category, note, date) with Cancel / Add Transaction actions.
-Reuse the existing `TransactionForm` if possible; do not duplicate creation logic.
+The submit button is labeled **Submit** (not "Parse" — keep copy user-friendly).
 
-Preferred flow: natural-language input → LLM parsing → structured transaction →
-review/edit → user confirms → existing transaction creation flow.
+On submit, show a busy state ("Submitting…"), then immediately show a transient
+message: a friendly error that fades away on failure, or a brief success
+confirmation on success. Messages appear, stay long enough to read (~4s), then
+fade out and disappear. Use the existing error/notification patterns and the
+design system.
+
+- **Complete parse** (type, amount, and a category the user actually has): save
+  immediately through the existing persistence (`addTransaction`), close the
+  sheet, and show the fading confirmation (e.g. "Added Restaurantes · $ 35").
+- **Ambiguous parse** (no mappable category): NEVER save silently — fall back to
+  the review/edit form (reuse `TransactionForm`) so the user completes the
+  missing information, then confirm with one tap.
+- **Failure**: show a friendly fading error message and keep the user's text so
+  they can retry or edit.
+
+Preferred flow: natural-language input → Submit → LLM parsing → structured
+transaction → instant save + fading confirmation (or review form for ambiguous
+input) → done.
 
 ## 7. Error Handling
 
@@ -211,7 +224,8 @@ unnecessary cloud/database infrastructure.
 - [ ] Define structured transaction schema
 - [ ] Restrict LLM categories to app-supported categories
 - [ ] Validate LLM output
-- [ ] Implement review/edit state (reuse TransactionForm)
+- [ ] Implement review/edit state ONLY for ambiguous parses (reuse TransactionForm)
+- [ ] Transient fading success/error feedback (~4s)
 - [ ] Reuse existing transaction persistence
 - [ ] Handle errors and ambiguous input
 - [ ] Preserve manual transaction entry
@@ -224,8 +238,9 @@ unnecessary cloud/database infrastructure.
 
 A user can: open the PWA on their phone → tap the transaction button (with lightning
 enhancement) → see a single natural-language input field with focus → dictate e.g.
-*"I spent 35 dollars on lunch yesterday."* → submit → the LLM converts it to
-structured data → the user reviews and edits → confirms → it saves through the
+*"I spent 35 dollars on lunch yesterday."* → tap Submit → the LLM converts it to
+structured data → the app saves it immediately with a brief fading confirmation
+(or shows the review form when the category is unclear) → saved through the
 existing persistence mechanism.
 
 The feature should feel like a natural extension of the existing app, not a separate

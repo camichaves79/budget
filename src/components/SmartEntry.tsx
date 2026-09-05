@@ -3,23 +3,31 @@ import type { FormEvent } from 'react';
 import type { Transaction } from '../lib/types';
 import { useStore } from '../state/store';
 import { parseUtterance } from '../lib/parseService';
-import type { ParseError, ParsedDraft } from '../lib/parseService';
+import type { ParsedDraft } from '../lib/parseService';
+import { formatCOP } from '../lib/money';
 import { todayISO } from '../lib/dates';
 import { TransactionForm } from './TransactionForm';
 
+interface Props {
+  onClose: () => void;
+  onToast: (kind: 'success' | 'error', message: string) => void;
+}
+
 /**
  * AI-assisted transaction entry, rendered inside the "New transaction" sheet.
- * Flow: natural-language text → parse microservice → review/edit
- * (TransactionForm) → user confirms → existing addTransaction persistence.
- * Nothing is saved without explicit confirmation, and the manual form stays
- * one tap away.
+ *
+ * Flow: natural-language text → Submit → parse microservice. When the parse
+ * is complete (amount + a category the user actually has), the transaction is
+ * saved immediately through the existing persistence, the sheet closes, and a
+ * brief fading confirmation appears. Ambiguous parses (no mappable category)
+ * fall back to the review form so nothing incomplete is ever saved silently.
+ * Errors surface as friendly fading messages and the text is kept for retry.
  */
-export function SmartEntry({ onClose }: { onClose: () => void }) {
+export function SmartEntry({ onClose, onToast }: Props) {
   const { data, dispatch } = useStore();
   const [mode, setMode] = useState<'smart' | 'manual'>('smart');
   const [text, setText] = useState('');
   const [parsing, setParsing] = useState(false);
-  const [error, setError] = useState<ParseError | null>(null);
   const [draft, setDraft] = useState<ParsedDraft | null>(null);
   const [draftCount, setDraftCount] = useState(0);
   const textRef = useRef<HTMLTextAreaElement>(null);
@@ -37,38 +45,60 @@ export function SmartEntry({ onClose }: { onClose: () => void }) {
     if (parsing) return;
     const utterance = text.trim();
     if (!utterance) {
-      setError({ kind: 'invalid-response', message: 'Tell me what you spent first.' });
+      onToast('error', 'Tell me what you spent first.');
       return;
     }
     setParsing(true);
-    setError(null);
     const result = await parseUtterance(utterance, data.categories);
     setParsing(false);
-    if (result.ok) {
-      setDraft(result.draft);
-      setDraftCount((n) => n + 1);
-    } else {
-      setError(result.error);
+
+    if (!result.ok) {
+      onToast('error', result.error.message);
+      return;
     }
+
+    const d = result.draft;
+    if (d.categoryId) {
+      // Complete parse: save right away and confirm with a fading message.
+      const cat = data.categories.find((c) => c.id === d.categoryId);
+      dispatch({
+        type: 'addTransaction',
+        tx: {
+          type: d.type,
+          amountCents: d.amountCents,
+          categoryId: d.categoryId,
+          date: d.date ?? todayISO(),
+          note: d.note,
+        },
+      });
+      onToast('success', `Added ${cat?.name ?? 'transaction'} · ${formatCOP(d.amountCents)}`);
+      onClose();
+      return;
+    }
+
+    // Ambiguous parse: review form so the user completes the missing bits.
+    setDraft(d);
+    setDraftCount((n) => n + 1);
   };
 
   const save = (tx: Omit<Transaction, 'id'>) => {
     dispatch({ type: 'addTransaction', tx });
+    onToast('success', `Added · ${formatCOP(tx.amountCents)}`);
     onClose();
   };
 
-  // ---- Review/edit: parsed draft, user confirms before anything is saved ----
+  // ---- Review/edit: only for ambiguous parses, before anything is saved ----
   if (draft) {
     return (
       <>
-        <p className="field-hint">Check the parsed transaction and fix anything that's off. Nothing is saved yet.</p>
+        <p className="field-hint">Almost there — pick the missing details. Nothing is saved yet.</p>
         <p className="smart-quote">{text.trim()}</p>
         <TransactionForm
           key={draftCount}
           initial={{
             type: draft.type,
             amountCents: draft.amountCents,
-            categoryId: draft.categoryId ?? '',
+            categoryId: '',
             date: draft.date ?? todayISO(),
             note: draft.note,
           }}
@@ -117,10 +147,8 @@ export function SmartEntry({ onClose }: { onClose: () => void }) {
         <p className="field-hint">Type, or use your keyboard's microphone to dictate. Amounts are pesos.</p>
       </div>
 
-      {error && <p className="error-text">{error.message}</p>}
-
       <button type="submit" className="btn btn-primary btn-block" disabled={parsing || text.trim() === ''}>
-        {parsing ? 'Parsing…' : 'Parse'}
+        {parsing ? 'Submitting…' : 'Submit'}
       </button>
 
       <button type="button" className="btn btn-block" onClick={() => setMode('manual')}>
