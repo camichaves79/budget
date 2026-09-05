@@ -553,6 +553,12 @@ select:focus-visible {
   border-radius: 20px 20px 0 0;
   padding: var(--pad-sm) var(--pad-md) calc(var(--pad-lg) + env(safe-area-inset-bottom));
   animation: slide-up 0.22s ease-out;
+  transition: border-radius 0.15s ease-out;
+}
+
+/* Lifted above the keyboard, the sheet floats — round its bottom corners. */
+html.kb-open .sheet {
+  border-radius: 20px;
 }
 
 .sheet-grabber {

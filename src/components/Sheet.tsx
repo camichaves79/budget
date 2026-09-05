@@ -32,6 +32,9 @@ export function Sheet({
     const update = () => {
       const inset = vv ? Math.max(0, window.innerHeight - vv.height) : 0;
       document.documentElement.style.setProperty('--kb-inset', `${inset}px`);
+      // While lifted above the keyboard the sheet floats, so round its bottom
+      // corners too (see `html.kb-open .sheet` in index.css).
+      document.documentElement.classList.toggle('kb-open', inset > 0);
     };
     update();
     vv?.addEventListener('resize', update);
@@ -40,6 +43,7 @@ export function Sheet({
       vv?.removeEventListener('resize', update);
       window.removeEventListener('resize', update);
       document.documentElement.style.setProperty('--kb-inset', '0px');
+      document.documentElement.classList.remove('kb-open');
     };
   }, [open]);
 
