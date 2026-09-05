@@ -74,6 +74,19 @@ The Gemini model used is a single constant (`GEMINI_MODEL` in `api/parse.js`, cu
   showing the review form. The LLM output is untrusted external data at every step.
 - Rate limiting is per warm instance (best-effort; serverless instances are ephemeral).
 
+### Troubleshooting the microservice
+
+- **`FUNCTION_INVOCATION_FAILED` / 500 on every call** — Vercel invokes functions with
+  Node-style `handler(req, res)`; the handler must use `req.headers`/`res.end()`, not the
+  Web-standard `Request`/`Response` objects.
+- **`{ ok: false, code: 'provider' }` / 502** — the Gemini call failed. Check the function's
+  logs in Vercel ("gemini error …" lines): 404 usually means the model was retired — update
+  `GEMINI_MODEL` in `api/parse.js` and redeploy (Gemini's error message names the
+  recommended replacement). 429 means the free quota is exhausted.
+- **`{ ok: false, code: 'invalid-response' }` with truncated JSON** — Gemini 3.x models
+  "think" before answering and hidden thoughts consume the output budget. Keep
+  `generationConfig.thinkingConfig.thinkingLevel: 'low'` in the function.
+
 ## Data & persistence
 
 - Data auto-saves to `localStorage` on every change and survives reloads and browser restarts.
