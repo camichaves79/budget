@@ -331,6 +331,15 @@ export default async function handler(req, res) {
   }
 
   if (!geminiRes.ok) {
+    // Log provider metadata only (status + error code) — never user text.
+    try {
+      const errBody = await geminiRes.json();
+      const err = errBody && typeof errBody === 'object' ? /** @type {{ error?: unknown }} */ (errBody).error : null;
+      const code = err && typeof err === 'object' ? /** @type {{ code?: unknown, message?: unknown }} */ (err).code : null;
+      console.error('gemini error', geminiRes.status, String(code ?? ''), String((/** @type {{ message?: unknown }} */ (err ?? {})).message ?? ''));
+    } catch {
+      console.error('gemini error', geminiRes.status, 'no body');
+    }
     // 429 = Gemini quota; 401/403 = key problem; anything else is transient.
     if (geminiRes.status === 429) {
       send(res, 429, { ok: false, code: 'rate-limited' }, cors);
