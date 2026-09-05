@@ -22,8 +22,10 @@
  * See README.md → "Smart entry (AI parsing)" for the full setup.
  */
 
-/** Current free-tier Gemini model (verify at https://ai.google.dev/models). */
-const GEMINI_MODEL = 'gemini-2.5-flash';
+/** Current free-tier Gemini model. Verified 2026-09-05 against this account's
+ *  models list; Google recommends gemini-3.6-flash for new users (2.5-flash
+ *  is deprecated for them). Check https://ai.google.dev/models if it changes. */
+const GEMINI_MODEL = 'gemini-3.6-flash';
 const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/';
 
 /** Origins allowed to call this service (plus localhost for dev). */

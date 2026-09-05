@@ -62,7 +62,7 @@ never leaves the device, and nothing is saved until you confirm it in the review
      (or use `vercel dev`) and set the endpoint to the deployed or local URL.
 
 The Gemini model used is a single constant (`GEMINI_MODEL` in `api/parse.js`, currently
-`gemini-2.5-flash`, free tier) and is trivial to swap.
+`gemini-3.6-flash`, free tier) and is trivial to swap.
 
 ### Architecture notes
 
