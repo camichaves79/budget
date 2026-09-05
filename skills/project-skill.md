@@ -3,6 +3,8 @@
 > Read this file FIRST when starting a new session on this project. It captures the
 > product, architecture, design system, and working conventions as of the latest state.
 > Feature history/spec for smart entry: `skills/speech-entry.md` (implemented, revised).
+> Architecture decisions + "-ilities" scorecard: `ARCHITECTURE.md` (update it whenever
+> the app ships a meaningful change).
 
 ---
 
@@ -295,6 +297,6 @@ Everything below is **shipped and live** (main ≈ `7f8ca31`, 2026-09-05):
   by the user (2026-09-05)**.
 
 Candidate next steps (ask the user, don't assume):
-- Category | Date side-by-side row in TransactionForm (was offered, not done).
+- Nothing queued; the Category | Date side-by-side form row was declined (2026-09).
 - Anything else the user raises; always read `skills/speech-entry.md` for the feature
   spec and this file for conventions before coding.

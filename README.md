@@ -5,14 +5,16 @@ A mobile-first personal budget tracker for a single user. Works fully offline �
 Built with React + TypeScript + Vite. See `REQUIREMENTS.md` for the full spec.
 
 **For AI agents / new sessions:** start by reading `skills/project-skill.md` (full
-project context and conventions) and `skills/speech-entry.md` (next planned feature).
+project context and conventions) and `skills/speech-entry.md` (smart-entry spec).
+Architecture decisions and the "-ilities" scorecard live in `ARCHITECTURE.md`.
 
 ## Features
 
 - **Cash Flow** — one scrollable view: period summary (income, expenses, balance), the transaction list (add / edit / delete), and budget progress
 - **Smart entry (AI parsing)** — the "+" button opens a natural-language field: type or dictate
-  (keyboard mic) something like *"I spent 35 on lunch yesterday"*, and the app turns it into a
-  transaction you review and confirm. Manual entry stays one tap away.
+  (keyboard mic) something like *"I spent 35 on lunch yesterday"* — or a whole list at once.
+  Confident entries save instantly; doubtful or unclear ones are checked first, and a
+  summary shows what was recorded. Manual entry stays one tap away.
 - **Category budgets** — monthly limit per category with progress bars and over-budget alerts
 - **Settings** — manage categories, export/import JSON backups, reset all data
 - **COP currency** — amounts formatted `$ 1.234` (integer pesos only, dots for thousands; stored as integer centavos, cents rounded away on display)
