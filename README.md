@@ -4,6 +4,9 @@ A mobile-first personal budget tracker for a single user. Works fully offline â€
 
 Built with React + TypeScript + Vite. See `REQUIREMENTS.md` for the full spec.
 
+**For AI agents / new sessions:** start by reading `skills/project-skill.md` (full
+project context and conventions) and `skills/speech-entry.md` (next planned feature).
+
 ## Features
 
 - **Cash Flow** â€” one scrollable view: period summary (income, expenses, balance), the transaction list (add / edit / delete), and budget progress
