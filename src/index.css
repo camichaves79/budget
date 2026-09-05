@@ -84,6 +84,12 @@ button {
   background: none;
   color: inherit;
   padding: 0;
+  /* Disables double-tap-to-zoom on rapid taps (iOS Safari). */
+  touch-action: manipulation;
+}
+
+a {
+  touch-action: manipulation;
 }
 
 input,
@@ -533,13 +539,16 @@ select:focus-visible {
   align-items: flex-end;
   justify-content: center;
   animation: fade 0.15s ease-out;
+  /* Lifted by the on-screen keyboard height (set by Sheet via --kb-inset). */
+  padding-bottom: var(--kb-inset, 0px);
 }
 
 .sheet {
   background: var(--surface);
   width: 100%;
   max-width: 640px;
-  max-height: 92dvh;
+  /* Fit the visible area above the keyboard, not the full viewport. */
+  max-height: 100%;
   overflow-y: auto;
   border-radius: 20px 20px 0 0;
   padding: var(--pad-sm) var(--pad-md) calc(var(--pad-lg) + env(safe-area-inset-bottom));
@@ -681,7 +690,8 @@ select:focus-visible {
   border-radius: 12px;
   border: 1px solid var(--border);
   background: var(--surface);
-  font-size: var(--fs-md);
+  /* 16px+ prevents iOS Safari from auto-zooming when the field is focused. */
+  font-size: var(--fs-lg);
   appearance: none;
 }
 

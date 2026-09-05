@@ -23,6 +23,26 @@ export function Sheet({
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
+  // Keep the sheet above the on-screen keyboard. iOS overlays the keyboard on
+  // top of fixed layouts instead of resizing them, so we lift the sheet by the
+  // keyboard's height (the visualViewport delta) while it animates in.
+  useEffect(() => {
+    if (!open) return;
+    const vv = window.visualViewport;
+    const update = () => {
+      const inset = vv ? Math.max(0, window.innerHeight - vv.height) : 0;
+      document.documentElement.style.setProperty('--kb-inset', `${inset}px`);
+    };
+    update();
+    vv?.addEventListener('resize', update);
+    window.addEventListener('resize', update);
+    return () => {
+      vv?.removeEventListener('resize', update);
+      window.removeEventListener('resize', update);
+      document.documentElement.style.setProperty('--kb-inset', '0px');
+    };
+  }, [open]);
+
   if (!open) return null;
 
   return (
