@@ -13,6 +13,12 @@ dist-ssr
 *.local
 .npm-cache
 .smoke
+.vercel
+
+# Vite env files (never commit secrets)
+.env
+.env.*
+!.env.example
 
 # Editor directories and files
 .vscode/*

@@ -1,6 +1,10 @@
 import { formatCOP, parseAmountToCents } from '../src/lib/money';
+import { isValidISODate } from '../src/lib/dates';
 import { periodForDate, shiftPeriod } from '../src/lib/periods';
 import { isInPeriod } from '../src/lib/selectors';
+import { validateParsedTransaction } from '../src/lib/parseService';
+import { checkRateLimit, createRateLimiter, parseGeminiResponse, sanitizeRequest } from '../api/parse.js';
+import type { Category } from '../src/lib/types';
 
 let failures = 0;
 function check(label: string, actual: unknown, expected: unknown) {
@@ -62,6 +66,174 @@ check('in period inclusive start', isInPeriod('2025-10-25', p1), true);
 check('in period inclusive end', isInPeriod('2025-11-24', p1), true);
 check('in period excludes next', isInPeriod('2025-11-25', p1), false);
 check('in period excludes prev', isInPeriod('2025-10-24', p1), false);
+
+// ---- dates: strict ISO calendar validation ----
+check('isodate valid', isValidISODate('2026-09-03'), true);
+check('isodate bad format', isValidISODate('03/09/2026'), false);
+check('isodate bad month', isValidISODate('2026-13-01'), false);
+check('isodate bad day', isValidISODate('2026-02-30'), false);
+check('isodate leap day ok', isValidISODate('2024-02-29'), true);
+check('isodate garbage', isValidISODate('nope'), false);
+
+// ---- AI parsing: pure validation of LLM output (client trust boundary) ----
+const parseCats: Category[] = [
+  { id: 'c-mercado', name: 'Mercado', kind: 'expense', emoji: '🛒', color: '#000', archived: false },
+  { id: 'c-salario', name: 'Salario', kind: 'income', emoji: '💼', color: '#000', archived: false },
+  { id: 'c-old', name: 'Old', kind: 'expense', emoji: '🧾', color: '#000', archived: true },
+];
+
+check(
+  'parse valid expense',
+  validateParsedTransaction({ type: 'expense', amount: 35, categoryId: 'c-mercado', notes: 'Lunch', date: '2026-09-03' }, parseCats),
+  { type: 'expense', amountCents: 3500, categoryId: 'c-mercado', date: '2026-09-03', note: 'Lunch' },
+);
+check(
+  'parse valid income',
+  validateParsedTransaction({ type: 'income', amount: 1200, categoryId: 'c-salario', notes: null, date: '2026-08-31' }, parseCats),
+  { type: 'income', amountCents: 120000, categoryId: 'c-salario', date: '2026-08-31' },
+);
+check(
+  'parse string amount accepted',
+  validateParsedTransaction({ type: 'expense', amount: '35', categoryId: null, date: null }, parseCats),
+  { type: 'expense', amountCents: 3500, categoryId: null, date: null },
+);
+check(
+  'parse rounds to integer centavos',
+  validateParsedTransaction({ type: 'expense', amount: 1234.567, categoryId: null, date: null }, parseCats),
+  { type: 'expense', amountCents: 123457, categoryId: null, date: null },
+);
+check(
+  'parse keeps fractional pesos',
+  validateParsedTransaction({ type: 'expense', amount: 35.5, categoryId: null, date: null }, parseCats),
+  { type: 'expense', amountCents: 3550, categoryId: null, date: null },
+);
+check(
+  'parse missing category stays reviewable',
+  validateParsedTransaction({ type: 'expense', amount: 50, notes: 'Something for the house', date: null }, parseCats),
+  { type: 'expense', amountCents: 5000, categoryId: null, date: null, note: 'Something for the house' },
+);
+check(
+  'parse unsupported category dropped to null',
+  validateParsedTransaction({ type: 'expense', amount: 50, categoryId: 'c-food', date: null }, parseCats),
+  { type: 'expense', amountCents: 5000, categoryId: null, date: null },
+);
+check(
+  'parse wrong-kind category dropped to null',
+  validateParsedTransaction({ type: 'expense', amount: 50, categoryId: 'c-salario', date: null }, parseCats),
+  { type: 'expense', amountCents: 5000, categoryId: null, date: null },
+);
+check(
+  'parse archived category dropped to null',
+  validateParsedTransaction({ type: 'expense', amount: 50, categoryId: 'c-old', date: null }, parseCats),
+  { type: 'expense', amountCents: 5000, categoryId: null, date: null },
+);
+check(
+  'parse non-string category dropped to null',
+  validateParsedTransaction({ type: 'expense', amount: 50, categoryId: 7, date: null }, parseCats),
+  { type: 'expense', amountCents: 5000, categoryId: null, date: null },
+);
+check(
+  'parse bad type rejected',
+  validateParsedTransaction({ type: 'transfer', amount: 50, categoryId: 'c-mercado', date: null }, parseCats),
+  null,
+);
+check(
+  'parse missing type rejected',
+  validateParsedTransaction({ amount: 50, categoryId: 'c-mercado', date: null }, parseCats),
+  null,
+);
+check('parse missing amount rejected', validateParsedTransaction({ type: 'expense', categoryId: 'c-mercado', date: null }, parseCats), null);
+check('parse zero amount rejected', validateParsedTransaction({ type: 'expense', amount: 0, categoryId: 'c-mercado', date: null }, parseCats), null);
+check('parse negative amount rejected', validateParsedTransaction({ type: 'expense', amount: -5, categoryId: 'c-mercado', date: null }, parseCats), null);
+check('parse NaN amount rejected', validateParsedTransaction({ type: 'expense', amount: NaN, categoryId: 'c-mercado', date: null }, parseCats), null);
+check('parse non-numeric amount rejected', validateParsedTransaction({ type: 'expense', amount: 'abc', categoryId: 'c-mercado', date: null }, parseCats), null);
+check('parse huge amount rejected', validateParsedTransaction({ type: 'expense', amount: 1e15, categoryId: 'c-mercado', date: null }, parseCats), null);
+check('parse sub-centavo amount rejected', validateParsedTransaction({ type: 'expense', amount: 0.004, categoryId: 'c-mercado', date: null }, parseCats), null);
+check(
+  'parse invalid month date nulled',
+  validateParsedTransaction({ type: 'expense', amount: 50, categoryId: null, date: '2026-13-01' }, parseCats),
+  { type: 'expense', amountCents: 5000, categoryId: null, date: null },
+);
+check(
+  'parse impossible date nulled',
+  validateParsedTransaction({ type: 'expense', amount: 50, categoryId: null, date: '2026-02-30' }, parseCats),
+  { type: 'expense', amountCents: 5000, categoryId: null, date: null },
+);
+check(
+  'parse valid date kept',
+  validateParsedTransaction({ type: 'expense', amount: 50, categoryId: null, date: '2026-09-03' }, parseCats),
+  { type: 'expense', amountCents: 5000, categoryId: null, date: '2026-09-03' },
+);
+check(
+  'parse missing date nulled',
+  validateParsedTransaction({ type: 'expense', amount: 50, categoryId: null }, parseCats),
+  { type: 'expense', amountCents: 5000, categoryId: null, date: null },
+);
+check(
+  'parse notes trimmed',
+  validateParsedTransaction({ type: 'expense', amount: 50, categoryId: null, date: null, notes: '  Lunch  ' }, parseCats),
+  { type: 'expense', amountCents: 5000, categoryId: null, date: null, note: 'Lunch' },
+);
+check(
+  'parse empty notes dropped',
+  validateParsedTransaction({ type: 'expense', amount: 50, categoryId: null, date: null, notes: '   ' }, parseCats),
+  { type: 'expense', amountCents: 5000, categoryId: null, date: null },
+);
+check(
+  'parse extra keys ignored',
+  validateParsedTransaction({ type: 'expense', amount: 50, categoryId: null, date: null, foo: 'bar' }, parseCats),
+  { type: 'expense', amountCents: 5000, categoryId: null, date: null },
+);
+check('parse null raw rejected', validateParsedTransaction(null, parseCats), null);
+check('parse string raw rejected', validateParsedTransaction('hi', parseCats), null);
+check('parse array raw rejected', validateParsedTransaction([1, 2], parseCats), null);
+check('parse number raw rejected', validateParsedTransaction(42, parseCats), null);
+check('parse malformed JSON-ish object rejected', validateParsedTransaction({ choices: [] }, parseCats), null);
+
+// ---- parse microservice helpers (api/parse.js) ----
+const rl = createRateLimiter({ limit: 3, windowMs: 1000 });
+check(
+  'limiter allows first three',
+  [checkRateLimit(rl, '1.1.1.1', 0), checkRateLimit(rl, '1.1.1.1', 100), checkRateLimit(rl, '1.1.1.1', 200)],
+  [true, true, true],
+);
+check('limiter blocks fourth', checkRateLimit(rl, '1.1.1.1', 300), false);
+check('limiter resets after window', checkRateLimit(rl, '1.1.1.1', 1001), true);
+check('limiter independent keys', checkRateLimit(rl, '2.2.2.2', 1500), true);
+
+const cat = { id: 'c1', name: 'Mercado', kind: 'expense' };
+check(
+  'sanitize valid request',
+  sanitizeRequest({ utterance: '  lunch 35  ', categories: [cat], today: '2026-09-03' }),
+  { utterance: 'lunch 35', categories: [cat], today: '2026-09-03' },
+);
+check('sanitize empty utterance rejected', sanitizeRequest({ utterance: '   ', categories: [cat], today: '2026-09-03' }), null);
+check('sanitize missing categories rejected', sanitizeRequest({ utterance: 'x', today: '2026-09-03' }), null);
+check('sanitize bad kind rejected', sanitizeRequest({ utterance: 'x', categories: [{ ...cat, kind: 'other' }], today: '2026-09-03' }), null);
+check('sanitize empty id rejected', sanitizeRequest({ utterance: 'x', categories: [{ ...cat, id: ' ' }], today: '2026-09-03' }), null);
+check('sanitize bad today rejected', sanitizeRequest({ utterance: 'x', categories: [cat], today: 'yesterday' }), null);
+check('sanitize long utterance rejected', sanitizeRequest({ utterance: 'a'.repeat(501), categories: [cat], today: '2026-09-03' }), null);
+check(
+  'sanitize too many categories rejected',
+  sanitizeRequest({ utterance: 'x', categories: Array.from({ length: 51 }, (_, i) => ({ ...cat, id: `c${i}` })), today: '2026-09-03' }),
+  null,
+);
+check('sanitize non-object rejected', sanitizeRequest(null), null);
+
+check(
+  'gemini response parsed',
+  parseGeminiResponse({ candidates: [{ content: { parts: [{ text: '{"type":"expense","amount":35}' }] } }] }),
+  { type: 'expense', amount: 35 },
+);
+check(
+  'gemini response fenced json parsed',
+  parseGeminiResponse({ candidates: [{ content: { parts: [{ text: '```json\n{"type":"expense","amount":35}\n```' }] } }] }),
+  { type: 'expense', amount: 35 },
+);
+check('gemini response bad json rejected', parseGeminiResponse({ candidates: [{ content: { parts: [{ text: 'not json' }] } }] }), null);
+check('gemini response empty candidates rejected', parseGeminiResponse({ candidates: [] }), null);
+check('gemini response null rejected', parseGeminiResponse(null), null);
+check('gemini response array text part rejected', parseGeminiResponse({ candidates: [{ content: { parts: [{ text: '[1,2]' }] } }] }), null);
 
 if (failures > 0) {
   console.log(`\n${failures} failure(s)`);

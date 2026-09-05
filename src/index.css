@@ -441,6 +441,48 @@ select:focus-visible {
   z-index: 25;
 }
 
+.fab-plus {
+  line-height: 1;
+}
+
+/* Lightning-bolt badge: signals smart/AI-assisted entry, secondary to the "+". */
+.fab-bolt {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 22px;
+  height: 22px;
+  padding: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  border: 2px solid var(--bg);
+}
+
+/* ---------- Smart entry ---------- */
+
+.smart-textarea {
+  resize: vertical;
+  min-height: 76px;
+  font-size: var(--fs-lg);
+  line-height: 1.4;
+}
+
+.smart-quote {
+  margin: 0 0 var(--pad-md);
+  padding: var(--pad-sm) var(--pad-md);
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: 0 10px 10px 0;
+  color: var(--muted);
+  font-size: var(--fs-md);
+  overflow-wrap: anywhere;
+}
+
+.smart-disclosure {
+  margin-top: var(--pad-sm);
+}
+
 /* ---------- Sheet ---------- */
 
 .sheet-backdrop {

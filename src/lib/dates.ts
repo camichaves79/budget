@@ -11,6 +11,16 @@ export function todayISO(): string {
   return toISODate(new Date());
 }
 
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** True when s is a real calendar date in YYYY-MM-DD form (no timezone math). */
+export function isValidISODate(s: string): boolean {
+  if (!ISO_DATE_RE.test(s)) return false;
+  const [y, m, d] = s.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
+}
+
 export function parseISODate(s: string): Date {
   const [y, m, d] = s.split('-').map(Number);
   return new Date(y, m - 1, d);

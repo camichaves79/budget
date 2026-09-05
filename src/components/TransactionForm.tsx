@@ -9,12 +9,13 @@ import { AmountInput, amountHint } from './AmountInput';
 import { ConfirmDialog } from './ConfirmDialog';
 
 interface Props {
-  initial?: Transaction | null;
+  initial?: Omit<Transaction, 'id'> | null;
   onSave: (tx: Omit<Transaction, 'id'>) => void;
   onDelete?: () => void;
+  submitLabel?: string;
 }
 
-export function TransactionForm({ initial, onSave, onDelete }: Props) {
+export function TransactionForm({ initial, onSave, onDelete, submitLabel }: Props) {
   const { data } = useStore();
   const [type, setType] = useState<TxType>(initial?.type ?? 'expense');
   const [amount, setAmount] = useState(initial ? String(initial.amountCents / 100) : '');
@@ -128,7 +129,7 @@ export function TransactionForm({ initial, onSave, onDelete }: Props) {
       {error && <p className="error-text">{error}</p>}
 
       <button type="submit" className="btn btn-primary btn-block">
-        {initial ? 'Save changes' : 'Add transaction'}
+        {submitLabel ?? (initial ? 'Save changes' : 'Add transaction')}
       </button>
 
       {onDelete && (

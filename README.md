@@ -10,6 +10,9 @@ project context and conventions) and `skills/speech-entry.md` (next planned feat
 ## Features
 
 - **Cash Flow** — one scrollable view: period summary (income, expenses, balance), the transaction list (add / edit / delete), and budget progress
+- **Smart entry (AI parsing)** — the "+" button opens a natural-language field: type or dictate
+  (keyboard mic) something like *"I spent 35 on lunch yesterday"*, and the app turns it into a
+  transaction you review and confirm. Manual entry stays one tap away.
 - **Category budgets** — monthly limit per category with progress bars and over-budget alerts
 - **Settings** — manage categories, export/import JSON backups, reset all data
 - **COP currency** — amounts formatted `$ 1.234` (integer pesos only, dots for thousands; stored as integer centavos, cents rounded away on display)
@@ -27,6 +30,49 @@ npm run build      # type-check + production build into dist/
 npm run preview    # serve the production build locally
 npm test           # run the logic smoke test (currency and period math)
 ```
+
+## Smart entry (AI parsing)
+
+Smart entry parses natural language through a small **parse microservice** — this app's
+first backend. The LLM API key lives server-side and never reaches the client.
+
+```
+React PWA (GitHub Pages) → HTTPS → Parse microservice (Vercel Function) → Google Gemini
+```
+
+Only the transaction text you submit and your category list are sent. Transaction history
+never leaves the device, and nothing is saved until you confirm it in the review step.
+
+### One-time setup
+
+1. **Google AI Studio key** — create one at https://aistudio.google.com/apikey (free tier).
+2. **Deploy the microservice** (`api/parse.js`) to Vercel:
+   - Create a Vercel project importing this repo. In *Build and Output Settings* use the
+     **Other** framework preset, no build command, no output directory (only `/api` is needed).
+   - Add environment variables on the project: `GEMINI_API_KEY` (your AI Studio key) and
+     `BUDGET_PARSE_SECRET` (any long random string — pick your own).
+   - Deploy. Note the function URL: `https://<project>.vercel.app/api/parse`.
+3. **Point the app at it** — the app reads two build-time vars (see `.env.example`):
+   - `VITE_PARSE_ENDPOINT` = the function URL above
+   - `VITE_PARSE_SECRET` = the same value as `BUDGET_PARSE_SECRET`
+   - For the live site: set both as **GitHub repo secrets**
+     (Settings → Secrets and variables → Actions → `VITE_PARSE_ENDPOINT`, `VITE_PARSE_SECRET`);
+     the Pages workflow bakes them into the build.
+   - For local dev: copy `.env.example` to `.env` and fill it in; deploy the function once
+     (or use `vercel dev`) and set the endpoint to the deployed or local URL.
+
+The Gemini model used is a single constant (`GEMINI_MODEL` in `api/parse.js`, currently
+`gemini-2.5-flash`, free tier) and is trivial to swap.
+
+### Architecture notes
+
+- `src/lib/parseService.ts` is the only client code that knows about the microservice —
+  the service boundary the UI talks to.
+- The microservice validates the request (origin allow-list, shared-secret header,
+  per-IP rate limit, body whitelisting) and returns only the structured LLM JSON;
+  the app re-validates it (`validateParsedTransaction`, covered by `npm test`) before
+  showing the review form. The LLM output is untrusted external data at every step.
+- Rate limiting is per warm instance (best-effort; serverless instances are ephemeral).
 
 ## Data & persistence
 
@@ -61,6 +107,8 @@ src/
   state/        # React store (context + reducer) with localStorage persistence
   components/   # reusable UI: tabs, sheets, forms, progress bars
   pages/        # Cash Flow, Budgets, Settings
+api/
+  parse.js      # parse microservice (Vercel Function): Gemini proxy, key server-side
 ```
 
 ## Notes

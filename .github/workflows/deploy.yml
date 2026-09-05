@@ -36,6 +36,11 @@ jobs:
 
       - name: Build
         run: npm run build
+        env:
+          # Smart-entry parse microservice (baked into the bundle at build time).
+          # Unset secrets build fine — smart entry then shows a "not set up" hint.
+          VITE_PARSE_ENDPOINT: ${{ secrets.VITE_PARSE_ENDPOINT }}
+          VITE_PARSE_SECRET: ${{ secrets.VITE_PARSE_SECRET }}
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

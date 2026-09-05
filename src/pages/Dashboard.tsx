@@ -9,6 +9,7 @@ import { PeriodNav } from '../components/PeriodNav';
 import { EmptyState } from '../components/EmptyState';
 import { Sheet } from '../components/Sheet';
 import { TransactionForm } from '../components/TransactionForm';
+import { SmartEntry } from '../components/SmartEntry';
 
 /** Merged Home + Transactions: pinned cash flow, scrolling transaction list. */
 export function Dashboard({
@@ -26,6 +27,7 @@ export function Dashboard({
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Transaction | null>(null);
+  const [smartOpen, setSmartOpen] = useState(false);
 
   // Group transactions by date (newest first); track the net per day.
   const groups: Array<[string, Transaction[]]> = [];
@@ -39,9 +41,9 @@ export function Dashboard({
   }
 
   const openAdd = () => {
-    setEditing(null);
-    setFormOpen(true);
+    setSmartOpen(true);
   };
+  const closeSmart = () => setSmartOpen(false);
   const openEdit = (t: Transaction) => {
     setEditing(t);
     setFormOpen(true);
@@ -128,8 +130,24 @@ export function Dashboard({
       </div>
 
       <button type="button" className="fab" onClick={openAdd} aria-label="Add transaction">
-        +
+        <span className="fab-plus">+</span>
+        <svg
+          className="fab-bolt"
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" />
+        </svg>
       </button>
+
+      <Sheet open={smartOpen} onClose={closeSmart} title="New transaction">
+        <SmartEntry onClose={closeSmart} />
+      </Sheet>
 
       <Sheet open={formOpen} onClose={closeForm} title={editing ? 'Edit transaction' : 'New transaction'}>
         <TransactionForm
