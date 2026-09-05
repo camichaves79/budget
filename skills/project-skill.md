@@ -78,7 +78,7 @@ src/
     types.ts        # TxType, Transaction, Category, Budget, AppData
     money.ts        # formatCOP (integer pesos, NBSP), parseAmountToCents
     dates.ts        # toISODate, todayISO, isValidISODate, parseISODate, formatDate*
-    periods.ts      # 25th→24th periods, labeled by END month
+    periods.ts      # configurable start-day periods (1–28), majority-month labels
     storage.ts      # StorageAdapter interface + localStorageAdapter (schema v1)
     seed.ts         # defaultCategories() + PALETTE (category colors unused in UI)
     selectors.ts    # periodTransactions, totalsFor, spentByCategory, categoryById,
@@ -122,8 +122,10 @@ same-kind fallback category), `setBudget` (null = remove), `importData`, `resetA
   pesos, dots thousands, `$` + non-breaking space, `-` prefix for negatives.
   `parseAmountToCents` accepts flexible input. NBSP in output means test expectations
   must use `\u00A0`.
-- **Periods:** start day 25. `periodForDate`, `currentPeriod`, `shiftPeriod`. Key =
-  `YYYY-MM` of the END month. Year rollover regression-tested (`2026-00` bug).
+- **Periods:** configurable start day (1–28, default 25; `clampStartDay`). Functions take
+  `startDay` (`periodForDate(date, day)`, `currentPeriod(day)`, …). Key = start date
+  `YYYY-MM-DD`. Label = month with the majority of the period's days (tie → start month).
+  Year rollover regression-tested.
 - **Categories:** user-editable defaults (Vivienda, Servicios, Mercado, Transporte,
   Salud, Educación, Entretenimiento, Restaurantes, Ropa, Otros + Salario, Freelance,
   Otros ingresos). `kind`, `emoji`, `color` (unused visually), `archived` (model-only).
@@ -240,16 +242,17 @@ in those tight overrides.
 
 ## 10. Current state & next-session context
 
-Everything below is **shipped and live** (main ≈ `8cdfde1`, 2026-09-05):
+Everything below is **shipped and live** (main ≈ `ef9f63e`, 2026-09-05):
 
 - Smart entry end-to-end: PWA → Vercel microservice → Gemini 3.6 Flash → instant save
   with fading toasts; review form only for ambiguous parses. Full spec (revised):
   `skills/speech-entry.md`.
 - iOS keyboard/zoom fixes, floating labels + tight form rhythm, single SVG select
   chevron, "$5 Budget" PWA manifest + mint icons — all approved by the user.
+- Configurable budget period start day (Settings → Budget period, 1–28) with
+  majority-month period labels — approved by the user.
 
 Candidate next steps (ask the user, don't assume):
 - Category | Date side-by-side row in TransactionForm (was offered, not done).
-- Record the iOS/16px and `--kb-inset` conventions here (already done in this file).
 - Anything else the user raises; always read `skills/speech-entry.md` for the feature
   spec and this file for conventions before coding.
