@@ -34,6 +34,12 @@ and (except for smart entry) never leaves the device.
   ambiguous parses (no mappable category) fall back to the review form
   (`TransactionForm`); errors show as fading toasts and keep the text for retry.
   Manual entry stays one tap away ("Enter manually instead").
+  **Multi-transaction (2026-09, approved):** one utterance may list several
+  transactions — the LLM returns an array (one element each, capped at 20).
+  Confident complete entries instant-save; entries under the confidence threshold
+  (0.8) or without a category NEVER save silently — they queue through the review
+  form pre-filled with the guess. After a batch, the sheet shows a "Recorded ✓"
+  summary (rows + total + edit-anytime hint). Single-entry flow unchanged.
 - **Budgets** tab: monthly limit per expense category, progress bars, over-budget
   highlighting, pinned period selector + summary, scrolling category lists
 - **Settings** tab: category management (add / edit / delete), JSON export / import,
@@ -54,12 +60,16 @@ and (except for smart entry) never leaves the device.
 - No app header bar (tab bar is the navigation identity).
 - FAB is a **plain "+"** — a lightning overlay was tried and removed (2026-09).
 - The parse button label is **"Submit"**, not "Parse" (user-friendly copy).
+- **Certainty grading:** each parsed element carries a `confidence` grade (0–1,
+  self-assessed). `needsReview` = no category **or** confidence <
+  `REVIEW_CONFIDENCE_THRESHOLD` (**0.8**, user-chosen). Missing confidence counts as
+  1 (behaves like before); malformed counts as 0 (always review).
 
 ## 3. Tech stack & tooling
 
 - Vite 8 (Rolldown-based) + React 19 + TypeScript 6, plain CSS (no framework)
 - No router, no UI library, no icon library (inline stroke SVGs)
-- Lint: `oxlint` · Tests: hand-rolled smoke suite (`tests/smoke.ts`, ~90 checks)
+- Lint: `oxlint` · Tests: hand-rolled smoke suite (`tests/smoke.ts`, ~157 checks)
 - npm scripts: `dev` · `build` (tsc -b && vite build) · `lint` · `preview` ·
   `test` (bundles tests/smoke.ts via `vite.test.config.ts` into `.smoke/` and runs it)
 - **Local npm quirk:** the global npm cache in this environment has permission issues.
@@ -89,13 +99,17 @@ src/
     importExport.ts # validateAppData, exportData (JSON backup download)
     parseService.ts # THE client service boundary: calls the parse microservice
                     # (VITE_PARSE_ENDPOINT + VITE_PARSE_SECRET, baked at build time),
-                    # pure validateParsedTransaction (LLM-output trust boundary),
+                    # pure validateParsedTransaction + validateParsedTransactions
+                    # (LLM-output trust boundary, array of 1–20 elements),
+                    # needsReview (confidence < 0.8 or no category),
                     # one automatic retry (~2s) on transient busy/provider errors
   state/store.tsx   # Context + useReducer, auto-saves to localStorage on every change
   components/       # TabBar, Sheet (className prop + keyboard inset), ConfirmDialog,
                     # ProgressBar, AmountInput (floating-label variant), PeriodNav,
                     # EmptyState, TransactionForm (submitLabel prop),
-                    # SmartEntry (smart input + instant save + review fallback),
+                    # SmartEntry (smart input + instant save + review fallback +
+                    # batch flow: instant-save confident items, queue the rest
+                    # through review, then a "Recorded ✓" summary),
                     # FloatField (label-inside-box pattern), Toast (fading feedback)
   pages/            # Dashboard.tsx (Cash Flow + smart sheet + toast), Budgets.tsx,
                     # Settings.tsx
@@ -105,8 +119,9 @@ api/parse.js        # Vercel Function (route /api/parse): Gemini proxy. Plain JS
                     # Shared-secret header + origin allow-list + per-IP rate limit
                     # (40/10min) + Gemini retry/backoff + fallback model +
                     # warm-instance response cache (1h TTL).
-tests/smoke.ts      # logic tests: money, periods, selectors, LLM validator,
-                    # microservice helpers (rate limiter, sanitizer, Gemini parser)
+tests/smoke.ts      # logic tests: money, periods, selectors, LLM validators,
+                    # microservice helpers (rate limiter, sanitizer, Gemini array
+                    # parser, retry policy, response cache), ~157 checks
 public/             # favicon.svg (mint + 💰), manifest.webmanifest ("$5 Budget"),
                     # icon-192/512.png, apple-touch-icon.png (banknote vector icon)
 .github/workflows/deploy.yml  # GitHub Pages on push to main; bakes VITE_* repo secrets
@@ -115,8 +130,10 @@ public/             # favicon.svg (mint + 💰), manifest.webmanifest ("$5 Budge
 **Smart-entry flow:** FAB → SmartEntry textarea → `parseUtterance(utterance,
 categories)` → POST microservice → Gemini `gemini-3.6-flash` (free tier,
 `thinkingLevel: 'low'` so hidden thoughts don't eat the output budget) → structured
-JSON → client-side `validateParsedTransaction` → instant `addTransaction` + success
-toast (or review form when categoryId is null).
+JSON **array** (one element per transaction, each with a `confidence` grade) →
+client-side `validateParsedTransactions` → confident complete elements
+instant-`addTransaction` + success toast; doubtful/ambiguous elements queue through
+the review form (never saved silently); batches end in a "Recorded ✓" summary.
 
 **State actions:** `addTransaction`, `updateTransaction`, `deleteTransaction`,
 `addCategory`, `updateCategory`, `deleteCategory` (reassigns transactions to a
@@ -193,9 +210,10 @@ in those tight overrides.
 ## 7. Testing & verification
 
 - `npm test` — smoke suite: money format/parse incl. rounding & NBSP, period math,
-  ISO date validation, **LLM-output validator** (`validateParsedTransaction`),
-  **microservice helpers** (rate limiter, request sanitizer, Gemini response parser).
-  ~90 checks.
+  ISO date validation, **LLM-output validators** (`validateParsedTransaction`,
+  `validateParsedTransactions`, `needsReview`), **microservice helpers** (rate
+  limiter, request sanitizer, Gemini array parser, retry policy, response cache).
+  ~157 checks.
 - `npm run build` + `npm run lint` before shipping. Lint has 3 known harmless
   react-refresh warnings (store.tsx exports).
 - `api/parse.js` logic is tested via tests/smoke.ts imports; the handler itself can be
@@ -207,7 +225,8 @@ in those tight overrides.
 
 - One feature branch per change, created from `main` (user picks the name; recent:
   `speech-entry`, `smart-entry-ux`, `ui-miscelaneous-0002…0007`, `ios-keyboard-fixes`,
-  `floating-field-labels`, `select-chevron-fix`, `icon-color`).
+  `floating-field-labels`, `select-chevron-fix`, `icon-color`, `parse-resilience`,
+  `multi-transaction-entry`).
 - **Only commit/push when the user explicitly says so.**
 - **"ship"** = commit → push branch → fast-forward merge into `main` → push → delete
   branch locally and remotely → verify deploys. History stays linear (no merge commits).
@@ -257,7 +276,7 @@ in those tight overrides.
 
 ## 10. Current state & next-session context
 
-Everything below is **shipped and live** (main ≈ `5347205`, 2026-09-05):
+Everything below is **shipped and live** (main ≈ `7f8ca31`, 2026-09-05):
 
 - Smart entry end-to-end: PWA → Vercel microservice → Gemini 3.6 Flash → instant save
   with fading toasts; review form only for ambiguous parses. Full spec (revised):
@@ -267,9 +286,13 @@ Everything below is **shipped and live** (main ≈ `5347205`, 2026-09-05):
 - Configurable budget period start day (Settings → Budget period, 1–28) with
   majority-month period labels — approved by the user.
 - Parse-service resilience: Gemini retry/backoff, `gemini-3.5-flash-lite` quota
-  fallback, warm-instance response cache, per-IP limiter 40/10min, `provider-busy`
-  diagnostics, one automatic client retry ("Retrying…") — awaiting the user's
-  iPhone testing against prod.
+  fallback (verified available on the user's AI Studio account), warm-instance
+  response cache, per-IP limiter 40/10min, `provider-busy` diagnostics, one
+  automatic client retry ("Retrying…") — approved by the user.
+- Multi-transaction smart entry: one utterance → an array of transactions;
+  confident entries instant-save, doubtful (< 0.8) or ambiguous ones queue through
+  pre-filled review, batches end in a "Recorded ✓" summary — **tested and approved
+  by the user (2026-09-05)**.
 
 Candidate next steps (ask the user, don't assume):
 - Category | Date side-by-side row in TransactionForm (was offered, not done).
