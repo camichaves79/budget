@@ -1,7 +1,7 @@
 # Architecture — $5 Budget App
 
 > **Living record** — updated whenever the app ships a meaningful change.
-> Last updated: **2026-09-05** (main ≈ `01355d4`).
+> Last updated: **2026-09-05** (main ≈ `248e1e6`).
 > Read alongside `skills/project-skill.md` (conventions + current state) and
 > `skills/speech-entry.md` (smart-entry spec). Keep this file honest: if a
 > trade-off changes, update the table, not just the date.
@@ -42,7 +42,6 @@ iPhone PWA ──HTTPS──▶ GitHub Pages (static, CDN)          [free]
 | A8 | Plain stack: no router, no UI library, no icon library, plain CSS design system, hand-rolled smoke suite (~157 checks) | Small surface, no dependency drift, fast builds | Accepted |
 | A9 | Linear git history, feature branch per change, ff-merge to `main`, rollback = a revert commit; Pages Actions + Vercel Git integration auto-deploy | Deterministic, reviewable, instantly reversible | Accepted |
 | A10 | Shared-secret header + origin allow-list + input whitelisting on the function | Cheap defense layers; acknowledged as obfuscation, not auth (see §4) | Accepted |
-| A11 | **Turnkey-first capacity plan for 50+ users** (2026-09-05, "Option 3"): fair-use per-IP daily cap + honest limit messaging + owner stats now; switch the shared key to the **paid Gemini tier as a capacity dial** when the trial proves demand (≈$3–8/mo, also opts out of training use — a billing-only change); **BYOK deferred** as an optional heavy-user escape hatch. BYOK as a *requirement* was rejected — it breaks the ready-to-use UX. | Users must be able to open the app and dictate immediately; free quotas are per-project and can't be multiplied legitimately | Accepted |
 
 ## 3. The "-ilities" — where we stand
 
@@ -81,8 +80,8 @@ iPhone PWA ──HTTPS──▶ GitHub Pages (static, CDN)          [free]
 | Stage | Users | Changes |
 |---|---|---|
 | **Now** | 1 | Keep $0. Watch Vercel logs when "busy" appears (`retryDelay` tells traffic vs daily quota). |
-| **Trial at 50** (agreed 2026-09-05, see A11) | 2–50 | **Fair-use cap**: per-IP daily cap (~30/day) on the shared key + in-app messaging that says what happened and when it resets. **Owner stats**: `GET /api/parse` (with the secret) returns in-memory counters (calls, cache hits, 429s by kind, fallback use). **Capacity dial**: when the beta shows real demand, switch the shared key to the paid Gemini tier — billing-only, zero code, and it ends Google's training use of prompts. BYOK remains an optional escape hatch for heavy users, never a requirement. |
-| **Many users** | 20+ | Real auth (sessions/tokens); paid tier becomes the default with spend caps; server-side sync with SQLite/Postgres behind the existing `StorageAdapter`; shared cache (Redis/KV — paid); a queue to smooth parse bursts; monitoring + 429-rate alerting; staging environment. |
+| **A few trusted users** | 2–20 | **Bring-your-own-key candidate**: each user pastes their own AI Studio key (stored device-side) — quota and blame become per-user, $0 preserved, no backend auth needed. Otherwise: split secrets per build, tighten limiter keys, document free-tier limits in-app, add structured logs + a tiny metrics endpoint. |
+| **Many users** | 20+ | Real auth (sessions/tokens); paid Gemini tier with spend caps (also opts out of training use); server-side sync with SQLite/Postgres behind the existing `StorageAdapter`; shared cache (Redis/KV — paid); a queue to smooth parse bursts; monitoring + 429-rate alerting; staging environment. |
 | **Scale** | 100s+ | Provider abstraction with contracts, multi-region functions, error budgets, incident runbooks, sync conflict policies. |
 
 **Pivots to anticipate** (each is localized by design): A10 shared secret → authenticated

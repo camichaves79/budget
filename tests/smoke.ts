@@ -4,13 +4,12 @@ import { periodForDate, shiftPeriod } from '../src/lib/periods';
 import { isInPeriod } from '../src/lib/selectors';
 import {
   isRetryableParseError, needsReview, validateParsedTransaction, validateParsedTransactions,
-  REVIEW_CONFIDENCE_THRESHOLD, dailyLimitMessage,
+  REVIEW_CONFIDENCE_THRESHOLD,
 } from '../src/lib/parseService';
 import { validateAppData } from '../src/lib/importExport';
 import {
-  cacheGet, cacheKeyFor, cacheSet, checkDailyLimit, checkRateLimit, createDailyLimiter,
-  createRateLimiter, createResponseCache, isTransientGeminiStatus, nextPTMidnight,
-  nextRetryDelayMs, parseGeminiResponse, parseRetryDelaySeconds, sanitizeRequest,
+  cacheGet, cacheKeyFor, cacheSet, checkRateLimit, createRateLimiter, createResponseCache,
+  isTransientGeminiStatus, nextRetryDelayMs, parseGeminiResponse, parseRetryDelaySeconds, sanitizeRequest,
 } from '../api/parse.js';
 import type { Category } from '../src/lib/types';
 
@@ -447,28 +446,6 @@ check('rate-limit error is retryable', isRetryableParseError({ kind: 'rate-limit
 check('provider error is retryable', isRetryableParseError({ kind: 'provider', message: 'x' }), true);
 check('network error is not auto-retried', isRetryableParseError({ kind: 'network', message: 'x' }), false);
 check('invalid-response is not auto-retried', isRetryableParseError({ kind: 'invalid-response', message: 'x' }), false);
-check('daily-limit error is not auto-retried', isRetryableParseError({ kind: 'daily-limit', message: 'x' }), false);
-
-// ---- fair-use daily cap (Option 3, 50-user plan) ----
-const july10 = Date.UTC(2026, 6, 10, 20, 0, 0); // PDT (UTC-7)
-check('next PT midnight in summer (PDT)', nextPTMidnight(july10), Date.UTC(2026, 6, 11, 7, 0, 0));
-const jan10 = Date.UTC(2026, 0, 10, 20, 0, 0); // PST (UTC-8)
-check('next PT midnight in winter (PST)', nextPTMidnight(jan10), Date.UTC(2026, 0, 11, 8, 0, 0));
-check('next PT midnight is in the future', nextPTMidnight(Date.now()) > Date.now(), true);
-const dl = createDailyLimiter({ limit: 3 });
-const t0 = Date.UTC(2026, 6, 10, 20, 0, 0);
-const t1 = Date.UTC(2026, 6, 10, 20, 30, 0);
-check(
-  'daily limiter allows first three',
-  [checkDailyLimit(dl, 'ip1', t0).allowed, checkDailyLimit(dl, 'ip1', t1).allowed, checkDailyLimit(dl, 'ip1', t1 + 1).allowed],
-  [true, true, true],
-);
-check('daily limiter blocks fourth', checkDailyLimit(dl, 'ip1', t1 + 2).allowed, false);
-check('daily limiter retryAt is next PT midnight', checkDailyLimit(dl, 'ip1', t1 + 3).retryAt, Date.UTC(2026, 6, 11, 7, 0, 0));
-check('daily limiter resets after midnight', checkDailyLimit(dl, 'ip1', Date.UTC(2026, 6, 11, 7, 0, 1)).allowed, true);
-check('daily limiter independent keys', checkDailyLimit(dl, 'ip2', t1).allowed, true);
-check('daily limit message names reset time', dailyLimitMessage(Date.UTC(2026, 6, 11, 7, 0, 0)).includes('resets at'), true);
-check('daily limit message fallback copy', dailyLimitMessage(null).includes('tomorrow'), true);
 
 if (failures > 0) {
   console.log(`\n${failures} failure(s)`);
