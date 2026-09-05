@@ -46,6 +46,12 @@ React PWA (GitHub Pages) → HTTPS → Parse microservice (Vercel Function) → 
 Only the transaction text you submit and your category list are sent. Transaction history
 never leaves the device, and nothing is saved until you confirm it in the review step.
 
+One utterance can describe **several transactions at once** ("300 in bread, 2000 bus
+home, 30000 in a hamburger…"). Confident entries save immediately; entries the model is
+unsure about (or can't map to a category) go through the review form — pre-filled with
+the model's guess — before anything is saved, and a summary shows exactly what was
+recorded.
+
 ### One-time setup
 
 1. **Google AI Studio key** — create one at https://aistudio.google.com/apikey (free tier).
@@ -76,9 +82,12 @@ blocked by quota, the function falls back to `GEMINI_FALLBACK_MODEL` (default
 - `src/lib/parseService.ts` is the only client code that knows about the microservice —
   the service boundary the UI talks to.
 - The microservice validates the request (origin allow-list, shared-secret header,
-  per-IP rate limit, body whitelisting) and returns only the structured LLM JSON;
-  the app re-validates it (`validateParsedTransaction`, covered by `npm test`) before
-  showing the review form. The LLM output is untrusted external data at every step.
+  per-IP rate limit, body whitelisting) and returns only the structured LLM JSON — a
+  non-empty array, one element per transaction, each with a `confidence` grade (0–1);
+  the app re-validates every element (`validateParsedTransactions`, covered by
+  `npm test`) before saving anything. The LLM output is untrusted external data at
+  every step; entries below the confidence threshold (`REVIEW_CONFIDENCE_THRESHOLD`
+  in `parseService.ts`, 0.8) or without a category go to review instead of instant-save.
 - Rate limiting is per warm instance (best-effort; serverless instances are ephemeral):
   40 requests / 10 min per IP, applied after the origin and secret checks.
 - Free-tier resilience: transient Gemini failures (429/5xx) are retried with backoff

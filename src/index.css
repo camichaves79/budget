@@ -471,6 +471,28 @@ select:focus-visible {
   margin-top: var(--pad-sm);
 }
 
+/* ---------- Batch (multi-transaction) entry ---------- */
+
+.recorded-list {
+  margin: var(--pad-sm) 0 0;
+}
+
+.batch-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: var(--pad-sm) 0;
+  border-top: 1px solid var(--border);
+  font-weight: 600;
+  font-size: var(--fs-md);
+}
+
+.batch-total-amounts {
+  display: flex;
+  gap: 8px;
+}
+
 /* ---------- Toast (transient feedback) ---------- */
 
 .toast {

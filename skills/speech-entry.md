@@ -1,6 +1,8 @@
 # Skill — AI-Assisted Transaction Entry (Speech Entry)
 
-**Status:** Implemented — UX revised (instant save + fading feedback, 2026-09)
+**Status:** Implemented — UX revised (instant save + fading feedback, 2026-09); extended
+with multi-transaction batch entry and confidence-graded review (2026-09, branch
+`multi-transaction-entry`).
 
 ## Goal
 
@@ -42,6 +44,9 @@ When the user taps the transaction button:
 - The user dictates via the keyboard's native microphone — no custom speech
   recognition.
 - Typing must also work normally.
+- The user may describe SEVERAL transactions in one message ("300 in bread, 2000 bus
+  home, 30000 in a hamburger, and yesterday 20000 in a pizza slice"). Each described
+  transaction must be parsed and recorded separately.
 
 Suggested placeholder: *"Tell me what you spent..."*
 
@@ -77,9 +82,10 @@ The frontend should not call the LLM provider directly if that would expose cred
 
 ## 4. LLM Output
 
-The LLM returns structured JSON, not prose.
+The LLM returns structured JSON, not prose. One utterance → **one JSON array** with one
+element per transaction (usually a single element).
 
-Conceptual schema:
+Conceptual schema (per element):
 
 ```ts
 interface ParsedTransaction {
@@ -88,6 +94,7 @@ interface ParsedTransaction {
   category: string | null;
   notes?: string | null;
   date?: string | null;
+  confidence: number; // 0–1 self-assessed certainty (certainty grading)
 }
 ```
 
@@ -113,6 +120,14 @@ Do not silently create an incorrect transaction. If required information can't b
 determined, let the user provide or select the missing information. No complex
 confidence-scoring system unless it fits naturally.
 
+**Certainty grading (2026-09):** each element carries a `confidence` grade (0–1).
+Entries below `REVIEW_CONFIDENCE_THRESHOLD` (0.8) are flagged as doubtful and go
+through the review form **pre-filled with the model's guess** instead of instant-save
+— even when every field parsed. The review hint states the model's certainty
+("I'm only 62% sure about this one"). Missing confidence defaults to 1 (behaves like
+before); malformed values count as 0 (always review). The prompt also asks the model
+to lower confidence and null out any field it is unsure about.
+
 ## 6. Instant Save with Transient Feedback (revised)
 
 The submit button is labeled **Submit** (not "Parse" — keep copy user-friendly).
@@ -135,6 +150,21 @@ design system.
 Preferred flow: natural-language input → Submit → LLM parsing → structured
 transaction → instant save + fading confirmation (or review form for ambiguous
 input) → done.
+
+**Batch entry (2026-09):** when one utterance parses to several transactions, the
+user's chosen UX is **instant-save with a "Recorded" summary** — no confirm gate:
+
+- Confident, complete entries save immediately (in order).
+- Doubtful or ambiguous entries queue through the review form one at a time
+  (pre-filled when there's a guess; "Save & next" / "Skip this one" / "Back to text").
+  They are NEVER saved silently.
+- Afterwards the sheet shows exactly what was recorded (category, date/note, amount,
+  total) plus a pointer that any entry can be edited from the list anytime, and
+  "Done" / "Record more".
+- Mixed case: the instantly-saved part is announced with a fading toast before the
+  review queue starts.
+- The single-entry flow (1 element) is unchanged: confident → instant save + toast;
+  doubtful/ambiguous → the existing review form.
 
 ## 7. Error Handling
 
@@ -203,7 +233,8 @@ Add appropriate tests for:
 ## 13. Initial Implementation Scope
 
 In: natural-language entry, native keyboard dictation, LLM structured extraction,
-transaction review, existing persistence.
+transaction review, existing persistence, multi-transaction batch entry,
+confidence-graded review (doubtful entries flagged for the user).
 
 Out (for now): conversational chatbot, custom voice recording, custom speech-to-text,
 AI financial advice, AI budgeting recommendations, auto-save without confirmation,
@@ -231,6 +262,11 @@ unnecessary cloud/database infrastructure.
 - [ ] Verify mobile/PWA behavior
 - [ ] Document required environment variables/configuration
 - [ ] Document backend/serverless deployment requirements
+- [x] Batch entry: one utterance → array of transactions, each saved/reviewed
+      independently (2026-09)
+- [x] Confidence grading: doubtful entries (< 0.8) go to pre-filled review, never
+      instant-save (2026-09)
+- [x] "Recorded" summary after a batch saves, with edit-anytime guidance (2026-09)
 
 ## Definition of Done
 
@@ -240,6 +276,11 @@ single natural-language input field with focus → dictate e.g.
 structured data → the app saves it immediately with a brief fading confirmation
 (or shows the review form when the category is unclear) → saved through the
 existing persistence mechanism.
+
+A user can also dictate several transactions at once — *"300 in bread, 2000 in a bus
+home, 30000 in a hamburger, and yesterday 20000 in a pizza slice"* — and each one is
+processed and properly recorded: confident entries save instantly, doubtful or
+unclear ones are checked first, and a summary shows exactly what was recorded.
 
 The feature should feel like a natural extension of the existing app, not a separate
 AI feature bolted on.

@@ -27,6 +27,12 @@ export interface ParsedDraft {
   /** YYYY-MM-DD, or null when undetermined (review defaults to today). */
   date: string | null;
   note?: string;
+  /**
+   * LLM self-assessed certainty (0–1) that this transaction is correctly
+   * understood. Normalized: missing/null → 1 (behave like today), malformed
+   * or out-of-range → 0 (never saved blindly). Drives the review gate only.
+   */
+  confidence: number;
 }
 
 export type ParseErrorKind =
@@ -42,7 +48,7 @@ export interface ParseError {
   message: string;
 }
 
-export type ParseResult = { ok: true; draft: ParsedDraft } | { ok: false; error: ParseError };
+export type ParseResult = { ok: true; drafts: ParsedDraft[] } | { ok: false; error: ParseError };
 
 /**
  * Service-side failures that are usually transient (shared free-tier quota
@@ -98,12 +104,52 @@ export function validateParsedTransaction(raw: unknown, categories: Category[]):
   let date: string | null = null;
   if (typeof r.date === 'string' && isValidISODate(r.date)) date = r.date;
 
-  const draft: ParsedDraft = { type, amountCents, categoryId, date };
+  // Certainty grade: a finite number in [0,1] is kept; missing/null means the
+  // model said nothing (trust as today); anything else is corrupt (review).
+  let confidence = 1;
+  const rawConfidence = r.confidence;
+  if (typeof rawConfidence === 'number' && Number.isFinite(rawConfidence)) {
+    confidence = rawConfidence >= 0 && rawConfidence <= 1 ? rawConfidence : 0;
+  } else if (rawConfidence !== undefined && rawConfidence !== null) {
+    confidence = 0;
+  }
+
+  const draft: ParsedDraft = { type, amountCents, categoryId, date, confidence };
   if (typeof r.notes === 'string') {
     const note = r.notes.trim();
     if (note) draft.note = note;
   }
   return draft;
+}
+
+/** One utterance may yield many transactions, but never unboundedly many. */
+export const MAX_TRANSACTIONS = 20;
+
+/**
+ * Below this grade the entry is flagged for review instead of instant-save,
+ * even when every field parsed. Tuned by the user (0.8, 2026-09).
+ */
+export const REVIEW_CONFIDENCE_THRESHOLD = 0.8;
+
+/** True when the draft must be checked by the user before it is saved. */
+export function needsReview(draft: ParsedDraft): boolean {
+  return draft.categoryId === null || draft.confidence < REVIEW_CONFIDENCE_THRESHOLD;
+}
+
+/**
+ * Trust boundary for a whole parse: a non-empty array (capped) where EVERY
+ * element passes validateParsedTransaction. One bad element rejects the
+ * entire payload — a dubious transaction is never silently dropped.
+ */
+export function validateParsedTransactions(raw: unknown, categories: Category[]): ParsedDraft[] | null {
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > MAX_TRANSACTIONS) return null;
+  const drafts: ParsedDraft[] = [];
+  for (const item of raw) {
+    const draft = validateParsedTransaction(item, categories);
+    if (!draft) return null;
+    drafts.push(draft);
+  }
+  return drafts;
 }
 
 const NOT_CONFIGURED: ParseResult = {
@@ -170,8 +216,8 @@ async function parseUtteranceOnce(utterance: string, categories: Category[]): Pr
   }
 
   if (payload && payload.ok === true && payload.parsed !== undefined) {
-    const draft = validateParsedTransaction(payload.parsed, categories);
-    if (draft) return { ok: true, draft };
+    const drafts = validateParsedTransactions(payload.parsed, categories);
+    if (drafts) return { ok: true, drafts };
     return invalidResponse();
   }
 

@@ -63,6 +63,8 @@ const MAX_UTTERANCE_CHARS = 500;
 const MAX_CATEGORIES = 50;
 const MAX_ID_CHARS = 64;
 const MAX_NAME_CHARS = 64;
+/** One utterance may produce many transactions, but never unboundedly many. */
+const MAX_TRANSACTIONS = 20;
 
 /** @typedef {{ id: string, name: string, kind: 'expense' | 'income' }} CategoryRef */
 /** @typedef {{ utterance: string, categories: CategoryRef[], today: string }} ParseInput */
@@ -276,7 +278,7 @@ export function createResponseCache({ ttlMs = 60 * 60 * 1000, maxEntries = 200 }
   return {
     ttlMs,
     maxEntries,
-    /** @type {Map<string, { at: number, parsed: Record<string, unknown> }>} */
+    /** @type {Map<string, { at: number, parsed: Record<string, unknown>[] }>} */
     entries: new Map(),
   };
 }
@@ -291,7 +293,7 @@ export function cacheKeyFor(input) {
  * @param {ReturnType<typeof createResponseCache>} cache
  * @param {string} key
  * @param {number} [now]
- * @returns {Record<string, unknown> | null}
+ * @returns {Record<string, unknown>[] | null}
  */
 export function cacheGet(cache, key, now = Date.now()) {
   const entry = cache.entries.get(key);
@@ -306,7 +308,7 @@ export function cacheGet(cache, key, now = Date.now()) {
 /**
  * @param {ReturnType<typeof createResponseCache>} cache
  * @param {string} key
- * @param {Record<string, unknown>} parsed
+ * @param {Record<string, unknown>[]} parsed
  * @param {number} [now]
  */
 export function cacheSet(cache, key, parsed, now = Date.now()) {
@@ -326,27 +328,30 @@ export function cacheSet(cache, key, parsed, now = Date.now()) {
 export function buildSystemPrompt(categories, today) {
   const lines = categories.map((c) => `${c.id} | ${c.name} | ${c.kind}`);
   return [
-    'You turn a short natural-language transaction description into structured JSON for a budget app.',
+    'You turn short natural-language transaction descriptions into structured JSON for a budget app.',
     'The user may type or dictate in any language; the JSON keys stay fixed.',
+    'The user may describe SEVERAL transactions in one message (a list of payments or income). Split them into one array element per transaction. Do not merge two items into one, and do not split one item into several.',
     'Amounts are in Colombian pesos (COP). Read the number the user said as pesos — do not convert currencies and do no arithmetic beyond reading the amount.',
     `Today's date is ${today}. Resolve relative dates ("yesterday", "last Friday") against it. If no date can be determined, use null.`,
-    'Respond with ONLY one JSON object with exactly these keys:',
+    'Respond with ONLY a JSON array of transaction objects (usually one element). Each element has exactly these keys:',
     '"type": "expense" or "income"',
     '"amount": positive number in pesos, no thousands separators',
     '"categoryId": one of the category ids below (matching the transaction kind), or null if none fits',
-    '"notes": a very short description, or null',
+    '"notes": a very short description of that transaction, or null',
     '"date": "YYYY-MM-DD", or null',
+    '"confidence": a number from 0 to 1 — how certain you are that this transaction is correctly understood (0 = guessing, 1 = certain). Lower the confidence and use null for any field you are unsure about.',
     'Available categories (id | name | kind):',
     ...(lines.length ? lines : ['(none)']),
   ].join('\n');
 }
 
 /**
- * Extract the structured JSON object from a Gemini generateContent response.
- * The LLM output is untrusted: only a plain object that parsed as JSON is
- * returned; the app re-validates it client-side before creating anything.
+ * Extract the structured JSON array from a Gemini generateContent response.
+ * The LLM output is untrusted: only a NON-EMPTY plain array of plain objects
+ * (capped at MAX_TRANSACTIONS) is returned; the app re-validates every
+ * element client-side before creating anything.
  * @param {unknown} payload
- * @returns {Record<string, unknown> | null}
+ * @returns {Record<string, unknown>[] | null}
  */
 export function parseGeminiResponse(payload) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
@@ -373,7 +378,10 @@ export function parseGeminiResponse(payload) {
   } catch {
     return null;
   }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  if (!Array.isArray(parsed) || parsed.length === 0 || parsed.length > MAX_TRANSACTIONS) return null;
+  for (const item of parsed) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
+  }
   return parsed;
 }
 
@@ -391,7 +399,7 @@ const responseCache = createResponseCache();
  * @param {string} model
  * @param {ParseInput} input
  * @param {string} apiKey
- * @returns {Promise<{ ok: true, parsed: Record<string, unknown> } | { ok: false } & GeminiFailure>}
+ * @returns {Promise<{ ok: true, parsed: Record<string, unknown>[] } | { ok: false } & GeminiFailure>}
  */
 async function callGemini(model, input, apiKey) {
   let geminiRes;
@@ -408,7 +416,9 @@ async function callGemini(model, input, apiKey) {
         generationConfig: {
           responseMimeType: 'application/json',
           temperature: 0,
-          maxOutputTokens: 500,
+          // Long transaction lists need more room than a single entry; the
+          // "low" thinking level keeps hidden thoughts from eating it.
+          maxOutputTokens: 2000,
           // Gemini 3.x thinks by default and hidden thoughts eat the output
           // budget before the answer is produced; "low" keeps extraction fast
           // and leaves the budget for the JSON answer.
@@ -465,7 +475,7 @@ async function callGemini(model, input, apiKey) {
  * quota is separate, so it usually has headroom left). Never throws.
  * @param {ParseInput} input
  * @param {string} apiKey
- * @returns {Promise<{ ok: true, parsed: Record<string, unknown>, model: string } | { ok: false, failure: GeminiFailure }>}
+ * @returns {Promise<{ ok: true, parsed: Record<string, unknown>[], model: string } | { ok: false, failure: GeminiFailure }>}
  */
 async function parseWithGemini(input, apiKey) {
   const models = [GEMINI_MODEL];
