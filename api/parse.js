@@ -323,7 +323,11 @@ export default async function handler(req, res) {
         generationConfig: {
           responseMimeType: 'application/json',
           temperature: 0,
-          maxOutputTokens: 300,
+          maxOutputTokens: 500,
+          // Gemini 3.x thinks by default and hidden thoughts eat the output
+          // budget before the answer is produced; "low" keeps extraction fast
+          // and leaves the budget for the JSON answer.
+          thinkingConfig: { thinkingLevel: 'low' },
         },
       }),
     });
