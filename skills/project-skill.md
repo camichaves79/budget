@@ -66,6 +66,10 @@ and (except for smart entry) never leaves the device.
   self-assessed). `needsReview` = no category **or** confidence <
   `REVIEW_CONFIDENCE_THRESHOLD` (**0.8**, user-chosen). Missing confidence counts as
   1 (behaves like before); malformed counts as 0 (always review).
+- **Growth plan for 50+ users (2026-09-05):** turnkey-first — fair-use daily cap +
+  honest limit messaging + owner stats now; paid Gemini tier as the *capacity dial*
+  (billing-only) when demand proves out; BYOK deferred as an optional escape hatch,
+  never a requirement. Full record: `ARCHITECTURE.md` A11 + §5.
 
 ## 3. Tech stack & tooling
 
@@ -297,6 +301,8 @@ Everything below is **shipped and live** (main ≈ `7f8ca31`, 2026-09-05):
   by the user (2026-09-05)**.
 
 Candidate next steps (ask the user, don't assume):
-- Nothing queued; the Category | Date side-by-side form row was declined (2026-09).
+- **Approved and queued (2026-09-05):** Option-3 50-user plan — per-IP daily fair-use
+  cap (~30/day) + `daily-limit` messaging with reset time + owner stats endpoint
+  (`GET /api/parse` with secret). Paid-tier switch is billing-only, later.
 - Anything else the user raises; always read `skills/speech-entry.md` for the feature
   spec and this file for conventions before coding.

@@ -38,6 +38,7 @@ export interface ParsedDraft {
 export type ParseErrorKind =
   | 'not-configured'
   | 'rate-limit'
+  | 'daily-limit'
   | 'provider'
   | 'network'
   | 'invalid-response';
@@ -208,9 +209,9 @@ async function parseUtteranceOnce(utterance: string, categories: Category[]): Pr
 
   if (res.status === 401 || res.status === 403) return NOT_CONFIGURED;
 
-  let payload: { ok?: boolean; parsed?: unknown; code?: string } | null = null;
+  let payload: { ok?: boolean; parsed?: unknown; code?: string; retryAt?: unknown } | null = null;
   try {
-    payload = (await res.json()) as { ok?: boolean; parsed?: unknown; code?: string };
+    payload = (await res.json()) as { ok?: boolean; parsed?: unknown; code?: string; retryAt?: unknown };
   } catch {
     payload = null;
   }
@@ -222,6 +223,18 @@ async function parseUtteranceOnce(utterance: string, categories: Category[]): Pr
   }
 
   const code = payload?.code;
+  if (code === 'daily-limit') {
+    // Fair-use daily cap on the shared free tier — NOT retried automatically:
+    // a 2s retry can't move midnight. The message tells the user when it
+    // resets and that manual entry still works.
+    return {
+      ok: false,
+      error: {
+        kind: 'daily-limit',
+        message: dailyLimitMessage(payload?.retryAt),
+      },
+    };
+  }
   // rate-limited = our per-IP limiter; provider-busy = Gemini quota/transient
   // after the server's own retries and fallback. Same friendly message, same
   // single automatic retry on the client.
@@ -230,6 +243,15 @@ async function parseUtteranceOnce(utterance: string, categories: Category[]): Pr
   if (code === 'provider' || res.status >= 500) return providerTrouble();
   if (code === 'unauthorized' || code === 'origin-not-allowed') return NOT_CONFIGURED;
   return unexpected();
+}
+
+/** Friendly copy for the daily fair-use cap, with the local reset time. */
+export function dailyLimitMessage(retryAt: unknown): string {
+  const ms = typeof retryAt === 'number' && Number.isFinite(retryAt) ? retryAt : NaN;
+  const when = Number.isFinite(ms)
+    ? new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+    : 'tomorrow';
+  return `The free parsing service hit its daily limit — it resets at ${when}. You can still enter this one manually.`;
 }
 
 function busy(): ParseResult {

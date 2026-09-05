@@ -165,6 +165,77 @@ export function checkRateLimit(limiter, key, now = Date.now()) {
   return true;
 }
 
+/* ---------- Fair-use daily cap (shared free-tier quota protection) ---------- */
+
+/**
+ * Epoch ms of the next 00:00:00 in America/Los_Angeles (handles PDT/PST via
+ * Intl). The daily cap resets at midnight Pacific time, matching Google's
+ * RPD reset. Converges in two iterations: interpret the PT wall time as UTC
+ * to recover the offset, jump to the next PT midnight, re-check.
+ * @param {number} [now]
+ * @returns {number}
+ */
+export function nextPTMidnight(now = Date.now()) {
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Los_Angeles',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+  /** @param {number} ms @returns {{ year: number, month: number, day: number, hour: number, minute: number, second: number }} */
+  const wall = (ms) => {
+    const parts = fmt.formatToParts(new Date(ms));
+    /** @param {string} t */
+    const get = (t) => Number(parts.find((p) => p.type === t)?.value ?? '0');
+    return { year: get('year'), month: get('month'), day: get('day'), hour: get('hour') % 24, minute: get('minute'), second: get('second') };
+  };
+  let guess = now;
+  for (let i = 0; i < 8; i++) {
+    const w = wall(guess);
+    const wallEpoch = Date.UTC(w.year, w.month - 1, w.day, w.hour, w.minute, w.second);
+    const offset = wallEpoch - guess;
+    const ptNow = guess + offset;
+    const sinceMidnight = ((ptNow % 86400000) + 86400000) % 86400000;
+    guess = guess + (86400000 - sinceMidnight);
+    const landed = wall(guess);
+    if (landed.hour === 0 && landed.minute === 0 && landed.second === 0) return guess;
+  }
+  return guess;
+}
+
+/**
+ * Fair-use daily cap (per IP, per warm instance). One device can't exhaust
+ * the shared free-tier daily quota for everyone; when per-user keys exist the
+ * cap should apply to shared-key requests only. Best-effort like the window
+ * limiter: instances are ephemeral, and the window resets at PT midnight.
+ * @param {{ limit?: number }} opts
+ */
+export function createDailyLimiter({ limit = 30 } = {}) {
+  return { limit, /** @type {Map<string, { count: number, resetAt: number }>} */ hits: new Map() };
+}
+
+/**
+ * @param {ReturnType<typeof createDailyLimiter>} limiter
+ * @param {string} key
+ * @param {number} [now]
+ * @returns {{ allowed: boolean, retryAt: number }}
+ */
+export function checkDailyLimit(limiter, key, now = Date.now()) {
+  const entry = limiter.hits.get(key);
+  const retryAt = entry && now < entry.resetAt ? entry.resetAt : nextPTMidnight(now);
+  if (!entry || now >= entry.resetAt) {
+    limiter.hits.set(key, { count: 1, resetAt: retryAt });
+    return { allowed: true, retryAt };
+  }
+  if (entry.count >= limiter.limit) return { allowed: false, retryAt };
+  entry.count += 1;
+  return { allowed: true, retryAt };
+}
+
 /* ---------- Request validation (treat the client as untrusted) ---------- */
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -388,7 +459,22 @@ export function parseGeminiResponse(payload) {
 /* ---------- Handler ---------- */
 
 const rateLimiter = createRateLimiter();
+const dailyLimiter = createDailyLimiter();
 const responseCache = createResponseCache();
+
+/**
+ * In-memory counters for the owner (GET /api/parse with the secret).
+ * Per warm instance and lossy by design — a glance at usage, not a metric
+ * system. Counts only; never user text.
+ */
+const stats = {
+  calls: 0, // authenticated POSTs that reached parsing
+  cacheHits: 0,
+  gemini429: 0,
+  rateLimited: 0, // per-IP 10-min window
+  dailyLimited: 0, // per-IP fair-use daily cap
+  fallbackUsed: 0,
+};
 
 /** @typedef {{ status: number, code: string, retryDelaySeconds: number | null }} GeminiFailure */
 
@@ -451,6 +537,7 @@ async function callGemini(model, input, apiKey) {
     } catch {
       console.error('gemini error', model, geminiRes.status, 'no body', 'retryDelay=n/a');
     }
+    if (geminiRes.status === 429) stats.gemini429++;
     return { ok: false, status: geminiRes.status, code: 'http', retryDelaySeconds };
   }
 
@@ -488,7 +575,10 @@ async function parseWithGemini(input, apiKey) {
     for (;;) {
       const result = await callGemini(model, input, apiKey);
       if (result.ok) {
-        if (model !== GEMINI_MODEL) console.error('gemini fallback model used', model);
+        if (model !== GEMINI_MODEL) {
+          stats.fallbackUsed++;
+          console.error('gemini fallback model used', model);
+        }
         return { ok: true, parsed: result.parsed, model };
       }
       lastFailure = { status: result.status, code: result.code, retryDelaySeconds: result.retryDelaySeconds };
@@ -510,14 +600,17 @@ async function parseWithGemini(input, apiKey) {
 
 /**
  * POST { utterance, categories, today } with header `x-budget-secret` →
- * { ok: true, parsed: <LLM JSON> } or { ok: false, code }.
+ * { ok: true, parsed: <LLM JSON array> } or { ok: false, code }.
+ * GET with the same header + allowed origin → { ok: true, stats } (owner
+ * glance at in-memory counters; per warm instance).
  *
  * Successful parses are cached per warm instance (TTL 1h), so re-submitting
  * identical text — the natural retry after a "busy" response — answers
  * instantly without a Gemini call. Codes: `bad-request`, `unauthorized`,
- * `origin-not-allowed`, `rate-limited` (our per-IP limiter), `provider-busy`
- * (Gemini quota/transient after retries + fallback), `provider`,
- * `invalid-response`.
+ * `origin-not-allowed`, `rate-limited` (our per-IP 10-min limiter),
+ * `daily-limit` (fair-use per-IP daily cap with `retryAt`, PT midnight),
+ * `provider-busy` (Gemini quota/transient after retries + fallback),
+ * `provider`, `invalid-response`.
  * @param {import('node:http').IncomingMessage} req
  * @param {import('node:http').ServerResponse} res
  * @returns {Promise<void>}
@@ -528,10 +621,6 @@ export default async function handler(req, res) {
 
   if (req.method === 'OPTIONS') {
     send(res, 204, null, cors);
-    return;
-  }
-  if (req.method !== 'POST') {
-    send(res, 405, { ok: false, code: 'bad-request' }, cors);
     return;
   }
   if (!isAllowedOrigin(origin)) {
@@ -547,12 +636,30 @@ export default async function handler(req, res) {
     return;
   }
 
+  if (req.method === 'GET') {
+    // Owner stats: a glance at usage (in-memory, per warm instance).
+    send(res, 200, { ok: true, stats: { ...stats } }, cors);
+    return;
+  }
+  if (req.method !== 'POST') {
+    send(res, 405, { ok: false, code: 'bad-request' }, cors);
+    return;
+  }
+
   const forwarded = req.headers['x-forwarded-for'];
   const ip = (typeof forwarded === 'string' ? forwarded.split(',')[0].trim() : 'unknown') || 'unknown';
   if (!checkRateLimit(rateLimiter, ip)) {
+    stats.rateLimited++;
     send(res, 429, { ok: false, code: 'rate-limited' }, cors);
     return;
   }
+  const daily = checkDailyLimit(dailyLimiter, ip);
+  if (!daily.allowed) {
+    stats.dailyLimited++;
+    send(res, 429, { ok: false, code: 'daily-limit', retryAt: daily.retryAt }, cors);
+    return;
+  }
+  stats.calls++;
 
   const bodyText = await readBody(req, MAX_BODY_BYTES);
   let raw;
@@ -580,6 +687,7 @@ export default async function handler(req, res) {
   const cacheKey = cacheKeyFor(input);
   const cached = cacheGet(responseCache, cacheKey);
   if (cached !== null) {
+    stats.cacheHits++;
     send(res, 200, { ok: true, parsed: cached }, cors);
     return;
   }
