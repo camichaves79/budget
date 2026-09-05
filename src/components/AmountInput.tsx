@@ -1,28 +1,57 @@
+import { useState } from 'react';
 import { formatCOP, parseAmountToCents } from '../lib/money';
+import { FloatField } from './FloatField';
 
 export function AmountInput({
   value,
   onChange,
   placeholder = '0',
   autoFocus,
+  label,
 }: {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
   autoFocus?: boolean;
+  /** When given, the label lives inside the box (floating-label variant). */
+  label?: string;
 }) {
+  const [focused, setFocused] = useState(false);
+  const floated = value !== '' || focused;
+
+  const input = (
+    <input
+      className={label ? 'float-amount' : undefined}
+      type="text"
+      inputMode="decimal"
+      value={value}
+      placeholder={floated ? placeholder : undefined}
+      autoFocus={autoFocus}
+      onChange={(e) => onChange(e.target.value)}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      aria-label={label ?? 'Amount'}
+    />
+  );
+
+  if (label) {
+    return (
+      <FloatField
+        id="amount-field"
+        label={label}
+        floated={floated}
+        // No prefix while empty: the centered label occupies the box alone.
+        prefix={floated ? '$' : undefined}
+      >
+        {input}
+      </FloatField>
+    );
+  }
+
   return (
     <div className="amount-input">
       <span className="amount-prefix">$</span>
-      <input
-        type="text"
-        inputMode="decimal"
-        value={value}
-        placeholder={placeholder}
-        autoFocus={autoFocus}
-        onChange={(e) => onChange(e.target.value)}
-        aria-label="Amount"
-      />
+      {input}
     </div>
   );
 }

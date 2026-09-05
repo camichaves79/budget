@@ -174,8 +174,7 @@ function BudgetEditor({
           : 'No spending in this category this period yet.'}
       </p>
       <div className="field">
-        <label htmlFor="budget-limit">Monthly limit</label>
-        <AmountInput value={value} onChange={setValue} autoFocus />
+        <AmountInput label="Monthly limit" value={value} onChange={setValue} autoFocus />
         {hint && <p className={hint.error ? 'field-hint error' : 'field-hint'}>{hint.text}</p>}
       </div>
       {error && <p className="error-text">{error}</p>}

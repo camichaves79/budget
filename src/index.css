@@ -745,6 +745,100 @@ select.input {
   font-variant-numeric: tabular-nums;
 }
 
+/* ---------- Floating-label fields ----------
+   The label lives INSIDE the input box: centered like a placeholder when
+   empty, shrinking to a small label at the top once focused or filled. */
+
+.float-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px var(--pad-md);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  transition: padding 0.12s ease-out;
+}
+
+.float-box:focus-within {
+  border-color: var(--primary);
+  outline: 2px solid var(--primary);
+  outline-offset: 0;
+}
+
+.float-box.floated {
+  padding-top: 20px;
+  padding-bottom: 8px;
+}
+
+.float-label {
+  position: absolute;
+  left: var(--pad-md);
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: var(--fs-lg);
+  color: var(--muted);
+  pointer-events: none;
+  transition:
+    top 0.12s ease-out,
+    transform 0.12s ease-out,
+    font-size 0.12s ease-out;
+}
+
+.float-box.floated .float-label {
+  top: 6px;
+  transform: none;
+  font-size: var(--fs-sm);
+}
+
+.float-prefix {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.float-box input,
+.float-box select {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: var(--fs-lg);
+  color: var(--text);
+  outline: none;
+}
+
+/* Amount values keep their bold, right-aligned look inside the float box. */
+.float-box .float-amount {
+  font-weight: 700;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.float-box select {
+  appearance: none;
+  cursor: pointer;
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: right 2px center, right 7px center;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 16px;
+}
+
+/* While empty, the centered label stands in for these controls' own hint
+   text, which is hidden so the two don't overlap. */
+.float-box select.text-hidden {
+  color: transparent;
+}
+
+.float-box input[type='date'].text-hidden {
+  opacity: 0;
+}
+
 .field-hint {
   font-size: var(--fs-sm);
   color: var(--muted);

@@ -6,6 +6,7 @@ import { parseAmountToCents } from '../lib/money';
 import { todayISO } from '../lib/dates';
 import { activeCategories } from '../lib/selectors';
 import { AmountInput, amountHint } from './AmountInput';
+import { FloatField } from './FloatField';
 import { ConfirmDialog } from './ConfirmDialog';
 
 interface Props {
@@ -24,6 +25,8 @@ export function TransactionForm({ initial, onSave, onDelete, submitLabel }: Prop
   const [note, setNote] = useState(initial?.note ?? '');
   const [error, setError] = useState('');
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  // Which field currently has focus (drives the floating labels).
+  const [active, setActive] = useState<string | null>(null);
 
   const cats = activeCategories(data, type);
   const hint = amountHint(amount);
@@ -79,51 +82,57 @@ export function TransactionForm({ initial, onSave, onDelete, submitLabel }: Prop
       </div>
 
       <div className="field">
-        <label htmlFor="tx-amount">Amount</label>
-        <AmountInput value={amount} onChange={setAmount} autoFocus={!initial} />
+        <AmountInput label="Amount" value={amount} onChange={setAmount} autoFocus={!initial} />
         {hint && (
           <p className={hint.error ? 'field-hint error' : 'field-hint'}>{hint.text}</p>
         )}
       </div>
 
       <div className="field">
-        <label htmlFor="tx-category">Category</label>
-        <select
-          id="tx-category"
-          className="input"
-          value={categoryId}
-          onChange={(e) => setCategoryId(e.target.value)}
-        >
-          <option value="">— Pick a category —</option>
-          {cats.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.emoji} {c.name}
-            </option>
-          ))}
-        </select>
+        <FloatField id="tx-category" label="Category" floated={active === 'category' || categoryId !== ''}>
+          <select
+            id="tx-category"
+            className={categoryId === '' && active !== 'category' ? 'float-select text-hidden' : 'float-select'}
+            value={categoryId}
+            onChange={(e) => setCategoryId(e.target.value)}
+            onFocus={() => setActive('category')}
+            onBlur={() => setActive(null)}
+          >
+            <option value="">— Pick a category —</option>
+            {cats.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.emoji} {c.name}
+              </option>
+            ))}
+          </select>
+        </FloatField>
       </div>
 
       <div className="field">
-        <label htmlFor="tx-date">Date</label>
-        <input
-          id="tx-date"
-          type="date"
-          className="input"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-        />
+        <FloatField id="tx-date" label="Date" floated={active === 'date' || date !== ''}>
+          <input
+            id="tx-date"
+            type="date"
+            className={date === '' && active !== 'date' ? 'text-hidden' : undefined}
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            onFocus={() => setActive('date')}
+            onBlur={() => setActive(null)}
+          />
+        </FloatField>
       </div>
 
       <div className="field">
-        <label htmlFor="tx-note">Note (optional)</label>
-        <input
-          id="tx-note"
-          type="text"
-          className="input"
-          placeholder="e.g. Supermarket run"
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-        />
+        <FloatField id="tx-note" label="Note (optional)" floated={active === 'note' || note !== ''}>
+          <input
+            id="tx-note"
+            type="text"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            onFocus={() => setActive('note')}
+            onBlur={() => setActive(null)}
+          />
+        </FloatField>
       </div>
 
       {error && <p className="error-text">{error}</p>}
