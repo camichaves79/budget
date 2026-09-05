@@ -1098,6 +1098,12 @@ select.input {
   color: var(--muted);
 }
 
+.period-day-select {
+  width: auto;
+  padding: var(--pad-sm) var(--pad-md);
+  flex-shrink: 0;
+}
+
 .cat-row {
   display: flex;
   align-items: center;

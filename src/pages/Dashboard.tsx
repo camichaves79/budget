@@ -18,10 +18,12 @@ export function Dashboard({
   period,
   onShiftPeriod,
   onToday,
+  isToday,
 }: {
   period: Period;
   onShiftPeriod: (delta: number) => void;
   onToday: () => void;
+  isToday?: boolean;
 }) {
   const { data, dispatch } = useStore();
   const txs = periodTransactions(data, period);
@@ -59,7 +61,7 @@ export function Dashboard({
   return (
     <div className="pinned-page">
       <div className="pinned-head">
-        <PeriodNav period={period} onShift={onShiftPeriod} onToday={onToday} />
+        <PeriodNav period={period} onShift={onShiftPeriod} onToday={onToday} isToday={isToday} />
 
         <h2 className="section-title page-label">Cash flow:</h2>
         <section className="summary-grid" aria-label="Period summary">

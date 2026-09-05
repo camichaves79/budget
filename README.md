@@ -19,7 +19,10 @@ project context and conventions) and `skills/speech-entry.md` (next planned feat
 
 ## Budget periods
 
-A budget period runs from the **25th** of one month to the **24th** of the next (e.g., "November" = Oct 25 – Nov 24), labeled by the month it ends in.
+A budget period runs from a **configurable start day** (Settings → Budget period, 1–28,
+default 25) to the day before it in the next month (e.g., start day 25 = Oct 25 – Nov 24).
+Periods are labeled by the month containing the **majority** of their days (ties go to the
+starting month) — so with the default 25th, "November" = Oct 25 – Nov 24.
 
 ## Getting started
 

@@ -3,6 +3,7 @@ import { isValidISODate } from '../src/lib/dates';
 import { periodForDate, shiftPeriod } from '../src/lib/periods';
 import { isInPeriod } from '../src/lib/selectors';
 import { validateParsedTransaction } from '../src/lib/parseService';
+import { validateAppData } from '../src/lib/importExport';
 import { checkRateLimit, createRateLimiter, parseGeminiResponse, sanitizeRequest } from '../api/parse.js';
 import type { Category } from '../src/lib/types';
 
@@ -41,31 +42,66 @@ check('parse invalid', parseAmountToCents('abc'), null);
 check('parse empty', parseAmountToCents('  '), null);
 check('parse negative', parseAmountToCents('-50'), -5000);
 
-// ---- periods (labeled by the month they end in) ----
+// ---- periods (labeled by the month with the majority of days) ----
 const oct25 = new Date(2025, 9, 25); // Oct 25, 2025 → ends Nov 24
 const oct24 = new Date(2025, 9, 24); // → ends Oct 24
 const jan5 = new Date(2026, 0, 5); // Jan 5, 2026 → ends Jan 24
 const aug25 = new Date(2026, 7, 25); // Aug 25, 2026 → ends Sep 24
 const p1 = periodForDate(oct25);
-check('period oct25 key', p1.key, '2025-11');
+check('period oct25 key', p1.key, '2025-10-25');
 check('period oct25 label', p1.label, 'November 2025');
 check('period oct25 start', p1.startISO, '2025-10-25');
 check('period oct25 end', p1.endISO, '2025-11-24');
 const p2 = periodForDate(oct24);
-check('period oct24 key', p2.key, '2025-10');
+check('period oct24 key', p2.key, '2025-09-25');
 check('period oct24 start', p2.startISO, '2025-09-25');
 check('period oct24 end', p2.endISO, '2025-10-24');
 const p3 = periodForDate(jan5);
-check('period jan5 key', p3.key, '2026-01');
+check('period jan5 key', p3.key, '2025-12-25');
 check('period jan5 end', p3.endISO, '2026-01-24');
 check('user example aug25', periodForDate(aug25).label, 'September 2026');
-check('user example aug25 key', periodForDate(aug25).key, '2026-09');
-check('shift +1 from jan', shiftPeriod(p3, 1).key, '2026-02');
-check('shift -1 from jan', shiftPeriod(p3, -1).key, '2025-12');
+check('user example aug25 key', periodForDate(aug25).key, '2026-08-25');
+check('shift +1 from jan', shiftPeriod(p3, 1).key, '2026-01-25');
+check('shift -1 from jan', shiftPeriod(p3, -1).key, '2025-11-25');
 check('in period inclusive start', isInPeriod('2025-10-25', p1), true);
 check('in period inclusive end', isInPeriod('2025-11-24', p1), true);
 check('in period excludes next', isInPeriod('2025-11-25', p1), false);
 check('in period excludes prev', isInPeriod('2025-10-24', p1), false);
+
+// ---- periods: custom start day ----
+const p1st = periodForDate(new Date(2026, 8, 20), 1); // Sep 20, 2026, day 1
+check('day1 bounds', [p1st.startISO, p1st.endISO], ['2026-09-01', '2026-09-30']);
+check('day1 label', p1st.label, 'September 2026');
+const p15 = periodForDate(new Date(2026, 8, 20), 15);
+check('day15 bounds', [p15.startISO, p15.endISO], ['2026-09-15', '2026-10-14']);
+check('day15 majority label', p15.label, 'September 2026');
+const p16 = periodForDate(new Date(2026, 8, 20), 16);
+check('day16 bounds', [p16.startISO, p16.endISO], ['2026-09-16', '2026-10-15']);
+check('day16 tie goes to start month', p16.label, 'September 2026');
+const p28feb = periodForDate(new Date(2026, 1, 10), 28); // Feb 10, 2026, day 28
+check('day28 feb bounds', [p28feb.startISO, p28feb.endISO], ['2026-01-28', '2026-02-27']);
+check('day28 feb majority label', p28feb.label, 'February 2026');
+check('day above 28 clamps to 28', periodForDate(new Date(2026, 8, 20), 31).startISO, '2026-08-28');
+const p1dec = periodForDate(new Date(2025, 11, 5), 1); // Dec 5, 2025, day 1
+check('day1 dec label', p1dec.label, 'December 2025');
+check('day1 year rollover', shiftPeriod(p1dec, 1).key, '2026-01-01');
+check('day1 shift back across year', shiftPeriod(p1dec, -1).key, '2025-11-01');
+
+// ---- backup validation: period start day migration ----
+const baseBackup = { transactions: [], categories: [], budgets: [] };
+check(
+  'import defaults period start day to 25',
+  validateAppData(baseBackup),
+  { transactions: [], categories: [], budgets: [], periodStartDay: 25 },
+);
+check(
+  'import keeps custom start day',
+  validateAppData({ ...baseBackup, periodStartDay: 5 }),
+  { transactions: [], categories: [], budgets: [], periodStartDay: 5 },
+);
+check('import rejects start day 0', validateAppData({ ...baseBackup, periodStartDay: 0 }), null);
+check('import rejects start day 40', validateAppData({ ...baseBackup, periodStartDay: 40 }), null);
+check('import rejects fractional start day', validateAppData({ ...baseBackup, periodStartDay: 3.5 }), null);
 
 // ---- dates: strict ISO calendar validation ----
 check('isodate valid', isValidISODate('2026-09-03'), true);

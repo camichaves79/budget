@@ -1,5 +1,6 @@
 import type { AppData } from './types';
 import { todayISO } from './dates';
+import { MAX_START_DAY, MIN_START_DAY, PERIOD_START_DAY } from './periods';
 
 /** Light validation of a parsed backup file. Returns the data or null. */
 export function validateAppData(raw: unknown): AppData | null {
@@ -34,6 +35,16 @@ export function validateAppData(raw: unknown): AppData | null {
     if (!b || typeof b !== 'object' || typeof b.categoryId !== 'string' || typeof b.amountCents !== 'number') {
       return null;
     }
+  }
+  // Period start day: old backups lack it → default 25; invalid values reject.
+  if (d.periodStartDay === undefined) {
+    d.periodStartDay = PERIOD_START_DAY;
+  } else if (
+    !Number.isInteger(d.periodStartDay) ||
+    d.periodStartDay < MIN_START_DAY ||
+    d.periodStartDay > MAX_START_DAY
+  ) {
+    return null;
   }
   return d as AppData;
 }

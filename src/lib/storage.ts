@@ -1,4 +1,5 @@
 import type { AppData } from './types';
+import { clampStartDay, PERIOD_START_DAY } from './periods';
 
 /**
  * Storage adapter interface.
@@ -27,6 +28,12 @@ export const localStorageAdapter: StorageAdapter = {
       if (!raw) return null;
       const parsed = JSON.parse(raw) as Persisted;
       if (!parsed || parsed.version !== SCHEMA_VERSION || !parsed.data) return null;
+      // Old saves predate the configurable period start day — default it.
+      if (!Number.isInteger(parsed.data.periodStartDay)) {
+        parsed.data.periodStartDay = PERIOD_START_DAY;
+      } else {
+        parsed.data.periodStartDay = clampStartDay(parsed.data.periodStartDay);
+      }
       return parsed.data;
     } catch {
       return null;

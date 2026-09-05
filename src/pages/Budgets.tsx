@@ -15,10 +15,12 @@ export function Budgets({
   period,
   onShiftPeriod,
   onToday,
+  isToday,
 }: {
   period: Period;
   onShiftPeriod: (delta: number) => void;
   onToday: () => void;
+  isToday?: boolean;
 }) {
   const { data, dispatch } = useStore();
   const spent = spentByCategory(data, period);
@@ -41,7 +43,7 @@ export function Budgets({
   return (
     <div className="pinned-page">
       <div className="pinned-head">
-        <PeriodNav period={period} onShift={onShiftPeriod} onToday={onToday} />
+        <PeriodNav period={period} onShift={onShiftPeriod} onToday={onToday} isToday={isToday} />
 
         {withBudget.length > 0 && (
           <section className="card">

@@ -20,7 +20,7 @@ export interface Category {
   archived: boolean;
 }
 
-/** Monthly limit for a category. Applies to every budget period (25th–24th). */
+/** Monthly limit for a category. Applies to every budget period. */
 export interface Budget {
   categoryId: string;
   amountCents: number;
@@ -30,4 +30,6 @@ export interface AppData {
   transactions: Transaction[];
   categories: Category[];
   budgets: Budget[];
+  /** Day of month (1–28) the budget period starts on. Default 25. */
+  periodStartDay: number;
 }

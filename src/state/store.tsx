@@ -3,6 +3,7 @@ import type { Dispatch, ReactNode } from 'react';
 import type { AppData, Budget, Category, Transaction } from '../lib/types';
 import { localStorageAdapter } from '../lib/storage';
 import { defaultCategories, PALETTE } from '../lib/seed';
+import { clampStartDay, PERIOD_START_DAY } from '../lib/periods';
 import { newId } from '../lib/id';
 
 export type Action =
@@ -13,6 +14,7 @@ export type Action =
   | { type: 'updateCategory'; id: string; patch: Partial<Omit<Category, 'id'>> }
   | { type: 'deleteCategory'; id: string }
   | { type: 'setBudget'; categoryId: string; amountCents: number | null }
+  | { type: 'setPeriodStartDay'; day: number }
   | { type: 'importData'; data: AppData }
   | { type: 'resetAll' };
 
@@ -21,6 +23,7 @@ export function initialData(): AppData {
     transactions: [],
     categories: defaultCategories(),
     budgets: [] as Budget[],
+    periodStartDay: PERIOD_START_DAY,
   };
 }
 
@@ -87,6 +90,9 @@ function reducer(state: AppData, action: Action): AppData {
       }
       return { ...state, budgets: [...state.budgets, { categoryId: action.categoryId, amountCents: action.amountCents as number }] };
     }
+
+    case 'setPeriodStartDay':
+      return { ...state, periodStartDay: clampStartDay(action.day) };
 
     case 'importData':
       return action.data;

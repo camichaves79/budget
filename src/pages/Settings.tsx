@@ -107,6 +107,30 @@ export function Settings() {
         </div>
       </div>
 
+      <h2 className="settings-h">Budget period</h2>
+      <div className="card">
+        <div className="setting-row">
+          <div>
+            <div className="setting-name">Period starts on</div>
+            <div className="setting-desc">
+              The period runs from this day to the day before it next month, labeled by the month with more days in it.
+            </div>
+          </div>
+          <select
+            className="input period-day-select"
+            value={data.periodStartDay}
+            onChange={(e) => dispatch({ type: 'setPeriodStartDay', day: Number(e.target.value) })}
+            aria-label="Period start day"
+          >
+            {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
+              <option key={d} value={d}>
+                {ordinal(d)}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
       <h2 className="settings-h">About</h2>
       <div className="card">
         <p className="field-hint">
@@ -189,6 +213,13 @@ export function Settings() {
       />
     </div>
   );
+}
+
+/** "1st", "2nd", … "28th" for the period start-day picker. */
+function ordinal(n: number): string {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return `${n}${s[(v - 20) % 10] ?? s[v] ?? s[0]}`;
 }
 
 function CategoryGroup({

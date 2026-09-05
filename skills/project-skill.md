@@ -38,8 +38,11 @@ and (except for smart entry) never leaves the device.
 - COP currency, English UI, single user, offline-first (except smart entry)
 
 **Confirmed decisions:**
-- Budget period runs **25th → 24th** of the next month, **labeled by the month it ENDS
-  in** (Aug 25 – Sep 24 = "September").
+- Budget period start day is **user-configurable (1–28, default 25)** via Settings →
+  Budget period ("Period starts on"). The period runs from that day to the day before it
+  next month, labeled by the month containing the **majority** of its days (ties go to
+  the starting month). With the default 25th that reproduces Aug 25 – Sep 24 =
+  "September". Period keys are the start date `YYYY-MM-DD`.
 - COP display: **integer pesos only** — `$ 1.234` (non-breaking space between `$` and
   number, dots for thousands, cents rounded to nearest peso on display).
 - Storage: `localStorage` behind an adapter interface (SQLite-swappable later).
