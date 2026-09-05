@@ -10,8 +10,11 @@
  * Vercel with no build step or tsconfig involvement. It is checked locally by
  * `tsc -b` via tsconfig.node.json (checkJs) and covered by tests/smoke.ts.
  *
- * Deploy: create a Vercel project (Framework Preset: Other, no build command)
- * importing this repo, then set environment variables:
+ * The handler uses Vercel's Node.js runtime signature handler(req, res) with
+ * Node-style http objects (Vercel invokes functions this way).
+ *
+ * Deploy: Vercel project (Framework Preset: Other, no build command) with
+ * environment variables:
  *   GEMINI_API_KEY      — Google AI Studio API key (free tier)
  *   BUDGET_PARSE_SECRET — shared secret; must match VITE_PARSE_SECRET baked
  *                         into the app build
@@ -56,12 +59,42 @@ function corsHeaders(origin) {
   };
 }
 
-/** @param {unknown} body @param {number} status @param {Record<string, string>} headers @returns {Response} */
-function json(body, status, headers) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json', ...headers },
-  });
+/**
+ * @param {import('node:http').ServerResponse} res
+ * @param {number} status
+ * @param {unknown} body
+ * @param {Record<string, string>} headers
+ */
+function send(res, status, body, headers) {
+  for (const [key, value] of Object.entries(headers)) res.setHeader(key, value);
+  res.statusCode = status;
+  if (body === null || body === undefined) {
+    res.end();
+    return;
+  }
+  res.setHeader('Content-Type', 'application/json');
+  res.end(JSON.stringify(body));
+}
+
+/**
+ * Read the request body with a hard size cap. Returns null when too large.
+ * @param {import('node:http').IncomingMessage} req
+ * @param {number} maxBytes
+ * @returns {Promise<string | null>}
+ */
+async function readBody(req, maxBytes) {
+  let size = 0;
+  const chunks = [];
+  try {
+    for await (const chunk of req) {
+      size += chunk.length;
+      if (size > maxBytes) return null;
+      chunks.push(chunk);
+    }
+  } catch {
+    return null;
+  }
+  return Buffer.concat(chunks).toString('utf8');
 }
 
 /* ---------- Rate limiting (per warm instance) ---------- */
@@ -217,46 +250,66 @@ const rateLimiter = createRateLimiter();
 /**
  * POST { utterance, categories, today } with header `x-budget-secret` →
  * { ok: true, parsed: <LLM JSON> } or { ok: false, code }.
- * @param {Request} req
- * @returns {Promise<Response>}
+ * @param {import('node:http').IncomingMessage} req
+ * @param {import('node:http').ServerResponse} res
+ * @returns {Promise<void>}
  */
-export default async function handler(req) {
-  const origin = req.headers.get('origin');
+export default async function handler(req, res) {
+  const origin = typeof req.headers.origin === 'string' ? req.headers.origin : null;
   const cors = corsHeaders(origin);
 
-  if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
-  if (req.method !== 'POST') return json({ ok: false, code: 'bad-request' }, 405, cors);
-  if (!isAllowedOrigin(origin)) return json({ ok: false, code: 'origin-not-allowed' }, 403, cors);
+  if (req.method === 'OPTIONS') {
+    send(res, 204, null, cors);
+    return;
+  }
+  if (req.method !== 'POST') {
+    send(res, 405, { ok: false, code: 'bad-request' }, cors);
+    return;
+  }
+  if (!isAllowedOrigin(origin)) {
+    send(res, 403, { ok: false, code: 'origin-not-allowed' }, cors);
+    return;
+  }
 
-  const secret = req.headers.get('x-budget-secret') ?? '';
+  const rawSecret = req.headers['x-budget-secret'];
+  const secret = Array.isArray(rawSecret) ? (rawSecret[0] ?? '') : (rawSecret ?? '');
   const expected = process.env.BUDGET_PARSE_SECRET ?? '';
   if (expected === '' || secret === '' || secret !== expected) {
-    return json({ ok: false, code: 'unauthorized' }, 401, cors);
+    send(res, 401, { ok: false, code: 'unauthorized' }, cors);
+    return;
   }
 
-  const forwarded = req.headers.get('x-forwarded-for');
-  const ip = forwarded ? forwarded.split(',')[0].trim() : 'unknown';
+  const forwarded = req.headers['x-forwarded-for'];
+  const ip = (typeof forwarded === 'string' ? forwarded.split(',')[0].trim() : 'unknown') || 'unknown';
   if (!checkRateLimit(rateLimiter, ip)) {
-    return json({ ok: false, code: 'rate-limited' }, 429, cors);
+    send(res, 429, { ok: false, code: 'rate-limited' }, cors);
+    return;
   }
 
+  const bodyText = await readBody(req, MAX_BODY_BYTES);
   let raw;
   try {
-    const bodyText = await req.text();
-    if (bodyText.length > MAX_BODY_BYTES) throw new Error('body too large');
+    if (bodyText === null) throw new Error('body too large');
     raw = JSON.parse(bodyText);
   } catch {
-    return json({ ok: false, code: 'bad-request' }, 400, cors);
+    send(res, 400, { ok: false, code: 'bad-request' }, cors);
+    return;
   }
   const input = sanitizeRequest(raw);
-  if (!input) return json({ ok: false, code: 'bad-request' }, 400, cors);
+  if (!input) {
+    send(res, 400, { ok: false, code: 'bad-request' }, cors);
+    return;
+  }
 
   const apiKey = process.env.GEMINI_API_KEY ?? '';
-  if (apiKey === '') return json({ ok: false, code: 'provider' }, 502, cors);
+  if (apiKey === '') {
+    send(res, 502, { ok: false, code: 'provider' }, cors);
+    return;
+  }
 
-  let res;
+  let geminiRes;
   try {
-    res = await fetch(`${GEMINI_URL}${GEMINI_MODEL}:generateContent`, {
+    geminiRes = await fetch(`${GEMINI_URL}${GEMINI_MODEL}:generateContent`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -273,23 +326,32 @@ export default async function handler(req) {
       }),
     });
   } catch {
-    return json({ ok: false, code: 'provider' }, 502, cors);
+    send(res, 502, { ok: false, code: 'provider' }, cors);
+    return;
   }
 
-  if (!res.ok) {
+  if (!geminiRes.ok) {
     // 429 = Gemini quota; 401/403 = key problem; anything else is transient.
-    if (res.status === 429) return json({ ok: false, code: 'rate-limited' }, 429, cors);
-    return json({ ok: false, code: 'provider' }, 502, cors);
+    if (geminiRes.status === 429) {
+      send(res, 429, { ok: false, code: 'rate-limited' }, cors);
+      return;
+    }
+    send(res, 502, { ok: false, code: 'provider' }, cors);
+    return;
   }
 
   let payload;
   try {
-    payload = await res.json();
+    payload = await geminiRes.json();
   } catch {
-    return json({ ok: false, code: 'provider' }, 502, cors);
+    send(res, 502, { ok: false, code: 'provider' }, cors);
+    return;
   }
 
   const parsed = parseGeminiResponse(payload);
-  if (!parsed) return json({ ok: false, code: 'invalid-response' }, 200, cors);
-  return json({ ok: true, parsed }, 200, cors);
+  if (!parsed) {
+    send(res, 200, { ok: false, code: 'invalid-response' }, cors);
+    return;
+  }
+  send(res, 200, { ok: true, parsed }, cors);
 }
