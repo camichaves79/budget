@@ -45,6 +45,25 @@ export interface ParseError {
 export type ParseResult = { ok: true; draft: ParsedDraft } | { ok: false; error: ParseError };
 
 /**
+ * Service-side failures that are usually transient (shared free-tier quota
+ * or a busy provider): worth ONE automatic retry before the user sees an
+ * error. Network problems and unparseable replies are not retried — the
+ * user is probably offline or needs to reword.
+ */
+const RETRYABLE_KINDS: ReadonlySet<ParseErrorKind> = new Set(['rate-limit', 'provider']);
+const RETRY_DELAY_MS = 2000;
+
+/** @returns true when the error deserves the single automatic retry. */
+export function isRetryableParseError(error: ParseError): boolean {
+  return RETRYABLE_KINDS.has(error.kind);
+}
+
+export interface ParseOptions {
+  /** Called right before the automatic retry so the UI can update its label. */
+  onRetry?: () => void;
+}
+
+/**
  * Pure trust boundary for LLM output. The LLM never does arithmetic: the
  * frontend converts pesos → integer centavos here. `type` and `amount` are
  * required; category/date/notes may be absent or null and are filled in
@@ -95,8 +114,25 @@ const NOT_CONFIGURED: ParseResult = {
   },
 };
 
-/** Send the utterance to the parse microservice and validate the reply. */
-export async function parseUtterance(utterance: string, categories: Category[]): Promise<ParseResult> {
+/**
+ * Send the utterance to the parse microservice and validate the reply.
+ * Transient service-side failures (busy/quota) get one automatic retry after
+ * a short pause, so most free-tier 429s clear without any user action.
+ */
+export async function parseUtterance(
+  utterance: string,
+  categories: Category[],
+  options: ParseOptions = {},
+): Promise<ParseResult> {
+  const first = await parseUtteranceOnce(utterance, categories);
+  if (first.ok || !isRetryableParseError(first.error)) return first;
+  options.onRetry?.();
+  await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+  return parseUtteranceOnce(utterance, categories);
+}
+
+/** Single parse attempt; see parseUtterance for the retry wrapper. */
+async function parseUtteranceOnce(utterance: string, categories: Category[]): Promise<ParseResult> {
   const text = utterance.trim();
   if (!text) {
     return { ok: false, error: { kind: 'invalid-response', message: 'Nothing to parse yet.' } };
@@ -125,18 +161,6 @@ export async function parseUtterance(utterance: string, categories: Category[]):
   }
 
   if (res.status === 401 || res.status === 403) return NOT_CONFIGURED;
-  if (res.status === 429) {
-    return {
-      ok: false,
-      error: { kind: 'rate-limit', message: 'The parsing service is busy right now. Try again in a moment.' },
-    };
-  }
-  if (res.status >= 500) {
-    return {
-      ok: false,
-      error: { kind: 'provider', message: 'The parsing service is having trouble. Try again shortly.' },
-    };
-  }
 
   let payload: { ok?: boolean; parsed?: unknown; code?: string } | null = null;
   try {
@@ -152,20 +176,31 @@ export async function parseUtterance(utterance: string, categories: Category[]):
   }
 
   const code = payload?.code;
-  if (code === 'rate-limited') {
-    return {
-      ok: false,
-      error: { kind: 'rate-limit', message: 'The parsing service is busy right now. Try again in a moment.' },
-    };
-  }
+  // rate-limited = our per-IP limiter; provider-busy = Gemini quota/transient
+  // after the server's own retries and fallback. Same friendly message, same
+  // single automatic retry on the client.
+  if (code === 'rate-limited' || code === 'provider-busy' || res.status === 429) return busy();
   if (code === 'invalid-response') return invalidResponse();
-  if (code === 'provider') {
-    return {
-      ok: false,
-      error: { kind: 'provider', message: 'The parsing service is having trouble. Try again shortly.' },
-    };
-  }
+  if (code === 'provider' || res.status >= 500) return providerTrouble();
   if (code === 'unauthorized' || code === 'origin-not-allowed') return NOT_CONFIGURED;
+  return unexpected();
+}
+
+function busy(): ParseResult {
+  return {
+    ok: false,
+    error: { kind: 'rate-limit', message: 'The parsing service is busy right now. Try again in a moment.' },
+  };
+}
+
+function providerTrouble(): ParseResult {
+  return {
+    ok: false,
+    error: { kind: 'provider', message: 'The parsing service is having trouble. Try again shortly.' },
+  };
+}
+
+function unexpected(): ParseResult {
   return {
     ok: false,
     error: { kind: 'network', message: 'The parsing service answered unexpectedly. Try again shortly.' },

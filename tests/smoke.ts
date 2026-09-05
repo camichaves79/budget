@@ -2,9 +2,12 @@ import { formatCOP, parseAmountToCents } from '../src/lib/money';
 import { isValidISODate } from '../src/lib/dates';
 import { periodForDate, shiftPeriod } from '../src/lib/periods';
 import { isInPeriod } from '../src/lib/selectors';
-import { validateParsedTransaction } from '../src/lib/parseService';
+import { validateParsedTransaction, isRetryableParseError } from '../src/lib/parseService';
 import { validateAppData } from '../src/lib/importExport';
-import { checkRateLimit, createRateLimiter, parseGeminiResponse, sanitizeRequest } from '../api/parse.js';
+import {
+  cacheGet, cacheKeyFor, cacheSet, checkRateLimit, createRateLimiter, createResponseCache,
+  isTransientGeminiStatus, nextRetryDelayMs, parseGeminiResponse, parseRetryDelaySeconds, sanitizeRequest,
+} from '../api/parse.js';
 import type { Category } from '../src/lib/types';
 
 let failures = 0;
@@ -270,6 +273,73 @@ check('gemini response bad json rejected', parseGeminiResponse({ candidates: [{ 
 check('gemini response empty candidates rejected', parseGeminiResponse({ candidates: [] }), null);
 check('gemini response null rejected', parseGeminiResponse(null), null);
 check('gemini response array text part rejected', parseGeminiResponse({ candidates: [{ content: { parts: [{ text: '[1,2]' }] } }] }), null);
+
+// ---- retry policy (Gemini free-tier resilience) ----
+check(
+  'retryDelay parsed from RetryInfo',
+  parseRetryDelaySeconds({ error: { details: [{ '@type': 'type.googleapis.com/google.rpc.RetryInfo', retryDelay: '16s' }] } }),
+  16,
+);
+check(
+  'retryDelay fractional seconds parsed',
+  parseRetryDelaySeconds({ error: { details: [{ '@type': 'type.googleapis.com/google.rpc.RetryInfo', retryDelay: '2.5s' }] } }),
+  2.5,
+);
+check('retryDelay absent is null', parseRetryDelaySeconds({ error: { message: 'boom' } }), null);
+check(
+  'retryDelay non-seconds format is null',
+  parseRetryDelaySeconds({ error: { details: [{ '@type': 'type.googleapis.com/google.rpc.RetryInfo', retryDelay: '12h' }] } }),
+  null,
+);
+check('retryDelay non-object body is null', parseRetryDelaySeconds(null), null);
+check('transient statuses are retryable', [0, 429, 500, 502, 503, 529].every(isTransientGeminiStatus), true);
+check('non-transient statuses are not retryable', [400, 401, 403, 404].some(isTransientGeminiStatus), false);
+check('retry honors short provider delay', nextRetryDelayMs({ attempt: 0, status: 429, retryDelaySeconds: 3 }), 3000);
+check('retry caps provider delay at 3s', nextRetryDelayMs({ attempt: 0, status: 429, retryDelaySeconds: 4 }), 3000);
+check('retry skips long provider delay (daily quota)', nextRetryDelayMs({ attempt: 0, status: 429, retryDelaySeconds: 43200 }), 0);
+check('retry backoff without provider delay', nextRetryDelayMs({ attempt: 0, status: 503, retryDelaySeconds: null }), 800);
+check('retry backoff second attempt', nextRetryDelayMs({ attempt: 1, status: 503, retryDelaySeconds: null }), 1600);
+check('retry stops after attempts', nextRetryDelayMs({ attempt: 2, status: 429, retryDelaySeconds: 1 }), 0);
+check('no retry on non-transient status', nextRetryDelayMs({ attempt: 0, status: 400, retryDelaySeconds: null }), 0);
+
+// ---- response cache (warm-instance parse cache) ----
+const cacheCat = { id: 'c1', name: 'Mercado', kind: 'expense' as const };
+const cacheInput = { utterance: 'lunch 35', categories: [cacheCat], today: '2026-09-03' };
+const parsedCache = { type: 'expense', amount: 35 };
+const cacheA = createResponseCache({ ttlMs: 1000, maxEntries: 2 });
+const keyA = cacheKeyFor(cacheInput);
+check('cache miss when empty', cacheGet(cacheA, keyA, 0), null);
+cacheSet(cacheA, keyA, parsedCache, 0);
+check('cache hit after set', cacheGet(cacheA, keyA, 500), parsedCache);
+check('cache expired after ttl', cacheGet(cacheA, keyA, 1001), null);
+cacheSet(cacheA, keyA, parsedCache, 0);
+check(
+  'cache key changes with utterance',
+  cacheKeyFor({ ...cacheInput, utterance: 'lunch 40' }) === keyA,
+  false,
+);
+check(
+  'cache key changes with categories',
+  cacheKeyFor({ ...cacheInput, categories: [{ ...cacheCat, name: 'Comida' }] }) === keyA,
+  false,
+);
+check(
+  'cache key changes with today',
+  cacheKeyFor({ ...cacheInput, today: '2026-09-04' }) === keyA,
+  false,
+);
+const cacheB = createResponseCache({ ttlMs: 1000, maxEntries: 2 });
+cacheSet(cacheB, 'k1', parsedCache, 10);
+cacheSet(cacheB, 'k2', parsedCache, 20);
+cacheSet(cacheB, 'k3', parsedCache, 30);
+check('cache evicts oldest at cap', cacheGet(cacheB, 'k1', 40), null);
+check('cache keeps newest at cap', cacheGet(cacheB, 'k3', 40), parsedCache);
+
+// ---- client retry classification ----
+check('rate-limit error is retryable', isRetryableParseError({ kind: 'rate-limit', message: 'x' }), true);
+check('provider error is retryable', isRetryableParseError({ kind: 'provider', message: 'x' }), true);
+check('network error is not auto-retried', isRetryableParseError({ kind: 'network', message: 'x' }), false);
+check('invalid-response is not auto-retried', isRetryableParseError({ kind: 'invalid-response', message: 'x' }), false);
 
 if (failures > 0) {
   console.log(`\n${failures} failure(s)`);

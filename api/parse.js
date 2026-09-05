@@ -15,9 +15,13 @@
  *
  * Deploy: Vercel project (Framework Preset: Other, no build command) with
  * environment variables:
- *   GEMINI_API_KEY      — Google AI Studio API key (free tier)
- *   BUDGET_PARSE_SECRET — shared secret; must match VITE_PARSE_SECRET baked
- *                         into the app build
+ *   GEMINI_API_KEY        — Google AI Studio API key (free tier)
+ *   BUDGET_PARSE_SECRET   — shared secret; must match VITE_PARSE_SECRET baked
+ *                           into the app build
+ *   GEMINI_FALLBACK_MODEL — optional second model tried when the primary is
+ *                           quota-blocked (defaults to gemini-3.5-flash-lite,
+ *                           which has its own free-tier quota; empty string
+ *                           disables the fallback)
  *
  * See README.md → "Smart entry (AI parsing)" for the full setup.
  */
@@ -26,7 +30,30 @@
  *  models list; Google recommends gemini-3.6-flash for new users (2.5-flash
  *  is deprecated for them). Check https://ai.google.dev/models if it changes. */
 const GEMINI_MODEL = 'gemini-3.6-flash';
+/**
+ * Second model tried when the primary is blocked by quota (429) or transient
+ * 5xx. gemini-3.5-flash-lite has its OWN free-tier quota (limits are per
+ * model), so it doubles the daily headroom and gives a second lane when the
+ * primary's quota is exhausted. Set the env var to an empty string to
+ * disable the fallback.
+ */
+const FALLBACK_MODEL = (process.env.GEMINI_FALLBACK_MODEL ?? 'gemini-3.5-flash-lite').trim() || null;
 const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/';
+
+/**
+ * Gemini's free tier is shared, so transient 429/5xx responses are common.
+ * Retry a failed call up to RETRY_ATTEMPTS extra times, honoring the
+ * provider-requested RetryInfo.retryDelay when it's short (traffic) and
+ * giving up when it's long (daily quota exhausted — retrying is pointless;
+ * the fallback model gets its turn instead).
+ */
+const RETRY_ATTEMPTS = 2;
+const RETRY_SKIP_DELAY_SECONDS = 5;
+const RETRY_DELAY_CAP_MS = 3000;
+const RETRY_BACKOFF_MS = [800, 1600];
+
+/** HTTP statuses worth retrying (0 = the fetch itself failed). */
+const TRANSIENT_STATUSES = new Set([0, 429, 500, 502, 503, 529]);
 
 /** Origins allowed to call this service (plus localhost for dev). */
 const ALLOWED_ORIGINS = ['https://camichaves79.github.io'];
@@ -103,10 +130,13 @@ async function readBody(req, maxBytes) {
 
 /**
  * Fixed-window rate limiter. Serverless instances are ephemeral, so this is
- * best-effort protection against casual abuse, not a hard guarantee.
+ * best-effort protection against casual abuse, not a hard guarantee. The
+ * origin allow-list and shared secret run first, so this only counts calls
+ * that already authenticated; 40/10min leaves a single heavy user room to
+ * work (test bursts, re-submits after retries) while still damping abuse.
  * @param {{ limit?: number, windowMs?: number }} opts
  */
-export function createRateLimiter({ limit = 20, windowMs = 10 * 60 * 1000 } = {}) {
+export function createRateLimiter({ limit = 40, windowMs = 10 * 60 * 1000 } = {}) {
   return { limit, windowMs, /** @type {Map<string, { count: number, resetAt: number }>} */ hits: new Map() };
 }
 
@@ -185,6 +215,108 @@ export function sanitizeRequest(raw) {
   return { utterance, categories, today: r.today };
 }
 
+/* ---------- Retry policy (Gemini free-tier 429s are common) ---------- */
+
+/**
+ * Read the provider-requested retry delay (seconds) from a Gemini error body.
+ * Quota errors carry `error.details[].retryDelay` ("3s", "16s", "12h", …).
+ * Returns null when the body doesn't specify one.
+ * @param {unknown} errBody
+ * @returns {number | null}
+ */
+export function parseRetryDelaySeconds(errBody) {
+  if (!errBody || typeof errBody !== 'object' || Array.isArray(errBody)) return null;
+  const error = /** @type {Record<string, unknown>} */ (errBody).error;
+  if (!error || typeof error !== 'object' || Array.isArray(error)) return null;
+  const details = /** @type {Record<string, unknown>} */ (error).details;
+  if (!Array.isArray(details)) return null;
+  for (const d of details) {
+    if (!d || typeof d !== 'object' || Array.isArray(d)) continue;
+    const rec = /** @type {Record<string, unknown>} */ (d);
+    if (rec['@type'] !== 'type.googleapis.com/google.rpc.RetryInfo' || typeof rec.retryDelay !== 'string') continue;
+    const m = /^(\d+(?:\.\d+)?)s$/.exec(rec.retryDelay);
+    if (m) return Number(m[1]);
+  }
+  return null;
+}
+
+/** @param {number} status @returns {boolean} */
+export function isTransientGeminiStatus(status) {
+  return TRANSIENT_STATUSES.has(status);
+}
+
+/**
+ * How long (ms) to wait before retrying a failed Gemini call; 0 = don't
+ * retry. Short provider-requested delays are honored (capped), long ones
+ * (daily quota) are not retried at all.
+ * @param {{ attempt: number, status: number, retryDelaySeconds: number | null }} failure
+ * @returns {number}
+ */
+export function nextRetryDelayMs({ attempt, status, retryDelaySeconds }) {
+  if (attempt >= RETRY_ATTEMPTS) return 0;
+  if (!isTransientGeminiStatus(status)) return 0;
+  if (retryDelaySeconds !== null && retryDelaySeconds > RETRY_SKIP_DELAY_SECONDS) return 0;
+  if (retryDelaySeconds !== null) {
+    return Math.min(Math.max(Math.round(retryDelaySeconds * 1000), 0), RETRY_DELAY_CAP_MS);
+  }
+  return RETRY_BACKOFF_MS[Math.min(attempt, RETRY_BACKOFF_MS.length - 1)] ?? 0;
+}
+
+/* ---------- Response cache (per warm instance) ---------- */
+
+/**
+ * Successful parses are cached so that re-submitting the same text (exactly
+ * the flow the "try again in a moment" message suggests) answers instantly
+ * and costs no Gemini quota. Instance-local only: warm instances share
+ * nothing and a cold start loses it — acceptable for a single-user app, and
+ * free (no storage service).
+ * @param {{ ttlMs?: number, maxEntries?: number }} opts
+ */
+export function createResponseCache({ ttlMs = 60 * 60 * 1000, maxEntries = 200 } = {}) {
+  return {
+    ttlMs,
+    maxEntries,
+    /** @type {Map<string, { at: number, parsed: Record<string, unknown> }>} */
+    entries: new Map(),
+  };
+}
+
+/** Deterministic key for an identical parse request (text + date + categories). */
+/** @param {ParseInput} input */
+export function cacheKeyFor(input) {
+  return JSON.stringify([input.utterance, input.today, input.categories]);
+}
+
+/**
+ * @param {ReturnType<typeof createResponseCache>} cache
+ * @param {string} key
+ * @param {number} [now]
+ * @returns {Record<string, unknown> | null}
+ */
+export function cacheGet(cache, key, now = Date.now()) {
+  const entry = cache.entries.get(key);
+  if (!entry) return null;
+  if (now - entry.at > cache.ttlMs) {
+    cache.entries.delete(key);
+    return null;
+  }
+  return entry.parsed;
+}
+
+/**
+ * @param {ReturnType<typeof createResponseCache>} cache
+ * @param {string} key
+ * @param {Record<string, unknown>} parsed
+ * @param {number} [now]
+ */
+export function cacheSet(cache, key, parsed, now = Date.now()) {
+  if (cache.entries.size >= cache.maxEntries) {
+    const oldest = cache.entries.keys().next().value;
+    if (oldest !== undefined) cache.entries.delete(oldest);
+  }
+  cache.entries.set(key, { at: now, parsed });
+}
+
 /* ---------- Gemini integration ---------- */
 
 /**
@@ -248,10 +380,134 @@ export function parseGeminiResponse(payload) {
 /* ---------- Handler ---------- */
 
 const rateLimiter = createRateLimiter();
+const responseCache = createResponseCache();
+
+/** @typedef {{ status: number, code: string, retryDelaySeconds: number | null }} GeminiFailure */
+
+/**
+ * One generateContent call for one model. Never throws: failures come back
+ * as a structured `{ ok: false, status, ... }` so the caller decides whether
+ * to retry or fall back.
+ * @param {string} model
+ * @param {ParseInput} input
+ * @param {string} apiKey
+ * @returns {Promise<{ ok: true, parsed: Record<string, unknown> } | { ok: false } & GeminiFailure>}
+ */
+async function callGemini(model, input, apiKey) {
+  let geminiRes;
+  try {
+    geminiRes = await fetch(`${GEMINI_URL}${model}:generateContent`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
+      },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: buildSystemPrompt(input.categories, input.today) }] },
+        contents: [{ role: 'user', parts: [{ text: input.utterance }] }],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          temperature: 0,
+          maxOutputTokens: 500,
+          // Gemini 3.x thinks by default and hidden thoughts eat the output
+          // budget before the answer is produced; "low" keeps extraction fast
+          // and leaves the budget for the JSON answer.
+          thinkingConfig: { thinkingLevel: 'low' },
+        },
+      }),
+    });
+  } catch {
+    console.error('gemini fetch failed', model);
+    return { ok: false, status: 0, code: 'network', retryDelaySeconds: null };
+  }
+
+  if (!geminiRes.ok) {
+    // Log provider metadata only (model, status, error code, retry delay) —
+    // never user text.
+    let retryDelaySeconds = null;
+    try {
+      const errBody = await geminiRes.json();
+      retryDelaySeconds = parseRetryDelaySeconds(errBody);
+      const err = errBody && typeof errBody === 'object' ? /** @type {{ error?: unknown }} */ (errBody).error : null;
+      const code = err && typeof err === 'object' ? String(/** @type {{ code?: unknown }} */ (err).code ?? '') : '';
+      const status = err && typeof err === 'object' ? String(/** @type {{ status?: unknown }} */ (err).status ?? '') : '';
+      console.error(
+        'gemini error',
+        model,
+        geminiRes.status,
+        code || status || 'no body',
+        retryDelaySeconds === null ? 'retryDelay=n/a' : `retryDelay=${retryDelaySeconds}s`,
+      );
+    } catch {
+      console.error('gemini error', model, geminiRes.status, 'no body', 'retryDelay=n/a');
+    }
+    return { ok: false, status: geminiRes.status, code: 'http', retryDelaySeconds };
+  }
+
+  let payload;
+  try {
+    payload = await geminiRes.json();
+  } catch {
+    console.error('gemini bad json', model);
+    return { ok: false, status: 200, code: 'bad-json', retryDelaySeconds: null };
+  }
+
+  const parsed = parseGeminiResponse(payload);
+  if (!parsed) {
+    return { ok: false, status: 200, code: 'invalid-response', retryDelaySeconds: null };
+  }
+  return { ok: true, parsed };
+}
+
+/**
+ * Parse with the primary model, retrying transient failures with backoff,
+ * then try the fallback model when the primary stays quota-blocked (its
+ * quota is separate, so it usually has headroom left). Never throws.
+ * @param {ParseInput} input
+ * @param {string} apiKey
+ * @returns {Promise<{ ok: true, parsed: Record<string, unknown>, model: string } | { ok: false, failure: GeminiFailure }>}
+ */
+async function parseWithGemini(input, apiKey) {
+  const models = [GEMINI_MODEL];
+  if (FALLBACK_MODEL && FALLBACK_MODEL !== GEMINI_MODEL) models.push(FALLBACK_MODEL);
+
+  let lastFailure = /** @type {GeminiFailure} */ ({ status: 0, code: 'network', retryDelaySeconds: null });
+  let transientFailure = null;
+  for (const model of models) {
+    let attempt = 0;
+    for (;;) {
+      const result = await callGemini(model, input, apiKey);
+      if (result.ok) {
+        if (model !== GEMINI_MODEL) console.error('gemini fallback model used', model);
+        return { ok: true, parsed: result.parsed, model };
+      }
+      lastFailure = { status: result.status, code: result.code, retryDelaySeconds: result.retryDelaySeconds };
+      if (isTransientGeminiStatus(result.status)) transientFailure = lastFailure;
+      const delayMs = nextRetryDelayMs({ attempt, status: result.status, retryDelaySeconds: result.retryDelaySeconds });
+      if (delayMs === 0) break;
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      attempt += 1;
+    }
+    // The fallback only helps quota/transient failures; a config or key
+    // error (4xx) would fail identically on the second model.
+    if (!isTransientGeminiStatus(lastFailure.status)) break;
+  }
+  // Prefer reporting the quota-type failure even when the fallback model
+  // itself failed for another reason — the client shows the friendly
+  // "busy" message and the user retries in a moment.
+  return { ok: false, failure: transientFailure ?? lastFailure };
+}
 
 /**
  * POST { utterance, categories, today } with header `x-budget-secret` →
  * { ok: true, parsed: <LLM JSON> } or { ok: false, code }.
+ *
+ * Successful parses are cached per warm instance (TTL 1h), so re-submitting
+ * identical text — the natural retry after a "busy" response — answers
+ * instantly without a Gemini call. Codes: `bad-request`, `unauthorized`,
+ * `origin-not-allowed`, `rate-limited` (our per-IP limiter), `provider-busy`
+ * (Gemini quota/transient after retries + fallback), `provider`,
+ * `invalid-response`.
  * @param {import('node:http').IncomingMessage} req
  * @param {import('node:http').ServerResponse} res
  * @returns {Promise<void>}
@@ -309,64 +565,32 @@ export default async function handler(req, res) {
     return;
   }
 
-  let geminiRes;
-  try {
-    geminiRes = await fetch(`${GEMINI_URL}${GEMINI_MODEL}:generateContent`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': apiKey,
-      },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: buildSystemPrompt(input.categories, input.today) }] },
-        contents: [{ role: 'user', parts: [{ text: input.utterance }] }],
-        generationConfig: {
-          responseMimeType: 'application/json',
-          temperature: 0,
-          maxOutputTokens: 500,
-          // Gemini 3.x thinks by default and hidden thoughts eat the output
-          // budget before the answer is produced; "low" keeps extraction fast
-          // and leaves the budget for the JSON answer.
-          thinkingConfig: { thinkingLevel: 'low' },
-        },
-      }),
-    });
-  } catch {
-    send(res, 502, { ok: false, code: 'provider' }, cors);
+  // Re-submitting identical text answers from the warm-instance cache with
+  // no Gemini call and no quota cost.
+  const cacheKey = cacheKeyFor(input);
+  const cached = cacheGet(responseCache, cacheKey);
+  if (cached !== null) {
+    send(res, 200, { ok: true, parsed: cached }, cors);
     return;
   }
 
-  if (!geminiRes.ok) {
-    // Log provider metadata only (status + error code) — never user text.
-    try {
-      const errBody = await geminiRes.json();
-      const err = errBody && typeof errBody === 'object' ? /** @type {{ error?: unknown }} */ (errBody).error : null;
-      const code = err && typeof err === 'object' ? /** @type {{ code?: unknown, message?: unknown }} */ (err).code : null;
-      console.error('gemini error', geminiRes.status, String(code ?? ''), String((/** @type {{ message?: unknown }} */ (err ?? {})).message ?? ''));
-    } catch {
-      console.error('gemini error', geminiRes.status, 'no body');
-    }
-    // 429 = Gemini quota; 401/403 = key problem; anything else is transient.
-    if (geminiRes.status === 429) {
-      send(res, 429, { ok: false, code: 'rate-limited' }, cors);
-      return;
-    }
-    send(res, 502, { ok: false, code: 'provider' }, cors);
+  const outcome = await parseWithGemini(input, apiKey);
+  if (outcome.ok) {
+    cacheSet(responseCache, cacheKey, outcome.parsed);
+    send(res, 200, { ok: true, parsed: outcome.parsed }, cors);
     return;
   }
 
-  let payload;
-  try {
-    payload = await geminiRes.json();
-  } catch {
-    send(res, 502, { ok: false, code: 'provider' }, cors);
-    return;
-  }
-
-  const parsed = parseGeminiResponse(payload);
-  if (!parsed) {
+  const failure = outcome.failure;
+  if (failure.code === 'invalid-response') {
     send(res, 200, { ok: false, code: 'invalid-response' }, cors);
     return;
   }
-  send(res, 200, { ok: true, parsed }, cors);
+  if (failure.status === 429 || failure.status === 0) {
+    // Gemini quota exhausted (429) or Google unreachable — the client shows
+    // the friendly "busy" message and the user retries in a moment.
+    send(res, 503, { ok: false, code: 'provider-busy' }, cors);
+    return;
+  }
+  send(res, 502, { ok: false, code: 'provider' }, cors);
 }

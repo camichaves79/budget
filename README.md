@@ -52,8 +52,10 @@ never leaves the device, and nothing is saved until you confirm it in the review
 2. **Deploy the microservice** (`api/parse.js`) to Vercel:
    - Create a Vercel project importing this repo. In *Build and Output Settings* use the
      **Other** framework preset, no build command, no output directory (only `/api` is needed).
-   - Add environment variables on the project: `GEMINI_API_KEY` (your AI Studio key) and
-     `BUDGET_PARSE_SECRET` (any long random string — pick your own).
+   - Add environment variables on the project: `GEMINI_API_KEY` (your AI Studio key),
+     `BUDGET_PARSE_SECRET` (any long random string — pick your own), and optionally
+     `GEMINI_FALLBACK_MODEL` (the quota-fallback model; defaults to
+     `gemini-3.5-flash-lite`, set it to an empty string to disable the fallback).
    - Deploy. Note the function URL: `https://<project>.vercel.app/api/parse`.
 3. **Point the app at it** — the app reads two build-time vars (see `.env.example`):
    - `VITE_PARSE_ENDPOINT` = the function URL above
@@ -64,8 +66,10 @@ never leaves the device, and nothing is saved until you confirm it in the review
    - For local dev: copy `.env.example` to `.env` and fill it in; deploy the function once
      (or use `vercel dev`) and set the endpoint to the deployed or local URL.
 
-The Gemini model used is a single constant (`GEMINI_MODEL` in `api/parse.js`, currently
-`gemini-3.6-flash`, free tier) and is trivial to swap.
+The primary Gemini model is a single constant (`GEMINI_MODEL` in `api/parse.js`,
+currently `gemini-3.6-flash`, free tier) and is trivial to swap. When the primary is
+blocked by quota, the function falls back to `GEMINI_FALLBACK_MODEL` (default
+`gemini-3.5-flash-lite`), which has its own separate free-tier quota.
 
 ### Architecture notes
 
@@ -75,17 +79,31 @@ The Gemini model used is a single constant (`GEMINI_MODEL` in `api/parse.js`, cu
   per-IP rate limit, body whitelisting) and returns only the structured LLM JSON;
   the app re-validates it (`validateParsedTransaction`, covered by `npm test`) before
   showing the review form. The LLM output is untrusted external data at every step.
-- Rate limiting is per warm instance (best-effort; serverless instances are ephemeral).
+- Rate limiting is per warm instance (best-effort; serverless instances are ephemeral):
+  40 requests / 10 min per IP, applied after the origin and secret checks.
+- Free-tier resilience: transient Gemini failures (429/5xx) are retried with backoff
+  (honoring Google's retry delay when it's short), then the fallback model gets a turn.
+  Successful parses are cached on the warm instance for 1h, so re-submitting the same
+  text — the natural retry after a "busy" response — answers instantly with no Gemini
+  call. The app also retries once automatically before showing an error.
 
 ### Troubleshooting the microservice
 
 - **`FUNCTION_INVOCATION_FAILED` / 500 on every call** — Vercel invokes functions with
   Node-style `handler(req, res)`; the handler must use `req.headers`/`res.end()`, not the
   Web-standard `Request`/`Response` objects.
-- **`{ ok: false, code: 'provider' }` / 502** — the Gemini call failed. Check the function's
-  logs in Vercel ("gemini error …" lines): 404 usually means the model was retired — update
-  `GEMINI_MODEL` in `api/parse.js` and redeploy (Gemini's error message names the
-  recommended replacement). 429 means the free quota is exhausted.
+- **`{ ok: false, code: 'provider-busy' }` / 503** — Gemini answered 429 (free quota) or was
+  unreachable after the function's own retries and fallback. Check the function's logs in
+  Vercel ("gemini error …" lines): the logged `retryDelay` shows whether it was a short
+  traffic delay (seconds) or the daily quota (hours — resets at midnight Pacific). The
+  app retries once automatically, and re-submitting the same text is served from the
+  warm-instance cache without a Gemini call.
+- **`{ ok: false, code: 'provider' }` / 502** — the Gemini call failed for another reason.
+  Check the logs: 404 usually means the model was retired — update `GEMINI_MODEL` in
+  `api/parse.js` and redeploy (Gemini's error message names the recommended replacement).
+- **`{ ok: false, code: 'rate-limited' }` / 429** — the function's own per-IP limiter
+  (40 requests / 10 min per warm instance). Space out submissions; identical text within
+  the hour is served from the cache.
 - **`{ ok: false, code: 'invalid-response' }` with truncated JSON** — Gemini 3.x models
   "think" before answering and hidden thoughts consume the output budget. Keep
   `generationConfig.thinkingConfig.thinkingLevel: 'low'` in the function.

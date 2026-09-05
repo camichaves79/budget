@@ -28,6 +28,7 @@ export function SmartEntry({ onClose, onToast }: Props) {
   const [mode, setMode] = useState<'smart' | 'manual'>('smart');
   const [text, setText] = useState('');
   const [parsing, setParsing] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const [draft, setDraft] = useState<ParsedDraft | null>(null);
   const [draftCount, setDraftCount] = useState(0);
   const textRef = useRef<HTMLTextAreaElement>(null);
@@ -49,7 +50,12 @@ export function SmartEntry({ onClose, onToast }: Props) {
       return;
     }
     setParsing(true);
-    const result = await parseUtterance(utterance, data.categories);
+    setRetrying(false);
+    // Transient "busy" errors get one automatic retry inside parseUtterance;
+    // the callback flips the label to "Retrying…" while it waits.
+    const result = await parseUtterance(utterance, data.categories, {
+      onRetry: () => setRetrying(true),
+    });
     setParsing(false);
 
     if (!result.ok) {
@@ -148,7 +154,7 @@ export function SmartEntry({ onClose, onToast }: Props) {
       </div>
 
       <button type="submit" className="btn btn-primary btn-block" disabled={parsing || text.trim() === ''}>
-        {parsing ? 'Submitting…' : 'Submit'}
+        {parsing ? (retrying ? 'Retrying…' : 'Submitting…') : 'Submit'}
       </button>
 
       <button type="button" className="btn btn-block" onClick={() => setMode('manual')}>
