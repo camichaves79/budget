@@ -118,7 +118,7 @@ export function Settings() {
         </p>
       </div>
 
-      <Sheet open={adding} onClose={() => setAdding(false)} title="New category">
+      <Sheet className="sheet-tight" open={adding} onClose={() => setAdding(false)} title="New category">
         <CategoryForm
           onClose={() => setAdding(false)}
           onSave={(cat) => {
@@ -128,7 +128,7 @@ export function Settings() {
         />
       </Sheet>
 
-      <Sheet open={editing !== null} onClose={() => setEditing(null)} title="Edit category">
+      <Sheet className="sheet-tight" open={editing !== null} onClose={() => setEditing(null)} title="Edit category">
         {editing && (
           <CategoryForm
             initial={editing}

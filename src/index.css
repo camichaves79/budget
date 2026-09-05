@@ -441,24 +441,6 @@ select:focus-visible {
   z-index: 25;
 }
 
-.fab-plus {
-  line-height: 1;
-}
-
-/* Lightning-bolt badge: signals smart/AI-assisted entry, secondary to the "+". */
-.fab-bolt {
-  position: absolute;
-  top: -4px;
-  right: -4px;
-  width: 22px;
-  height: 22px;
-  padding: 4px;
-  border-radius: 50%;
-  background: var(--accent);
-  color: #fff;
-  border: 2px solid var(--bg);
-}
-
 /* ---------- Smart entry ---------- */
 
 .smart-textarea {
@@ -603,6 +585,80 @@ select:focus-visible {
     transform: translateY(0);
     opacity: 1;
   }
+}
+
+/* ---------- Tight transaction sheets ----------
+   Compact vertical rhythm for the "New/Edit transaction" sheets so the whole
+   form fits on small screens. Values stay even (multiples of 2). */
+
+.sheet-tight {
+  padding-bottom: calc(var(--pad-md) + env(safe-area-inset-bottom));
+}
+
+.sheet-tight .sheet-grabber {
+  margin: 4px auto 6px;
+}
+
+.sheet-tight .sheet-head {
+  margin-bottom: var(--pad-sm);
+}
+
+.sheet-tight .field {
+  margin-bottom: 10px;
+}
+
+.sheet-tight .field label {
+  margin-bottom: 2px;
+}
+
+.sheet-tight .input {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+.sheet-tight .amount-input input {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+.sheet-tight .segmented {
+  padding: 4px;
+  margin-bottom: 10px;
+}
+
+.sheet-tight .segmented button {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.sheet-tight .btn-block {
+  margin-top: var(--pad-sm);
+}
+
+.sheet-tight .btn-row {
+  gap: 8px;
+}
+
+.sheet-tight .field-hint {
+  margin-top: 2px;
+}
+
+.sheet-tight .error-text {
+  margin: 4px 0 0;
+}
+
+.sheet-tight .smart-quote {
+  margin-bottom: var(--pad-sm);
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+.sheet-tight .smart-textarea {
+  min-height: 64px;
+}
+
+.sheet-tight .smart-disclosure {
+  margin-top: 4px;
 }
 
 /* ---------- Forms ---------- */

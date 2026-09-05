@@ -119,7 +119,7 @@ export function Budgets({
         )}
       </div>
 
-      <Sheet open={editing !== null} onClose={() => setEditing(null)} title={editing ? `${editing.emoji} ${editing.name}` : ''}>
+      <Sheet className="sheet-tight" open={editing !== null} onClose={() => setEditing(null)} title={editing ? `${editing.emoji} ${editing.name}` : ''}>
         {editing && (
           <BudgetEditor
             key={editing.id}

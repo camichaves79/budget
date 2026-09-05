@@ -24,16 +24,13 @@ The application should turn this into structured transaction data such as:
 The LLM interprets the user's language. It must **not** be responsible for financial
 calculations.
 
-## 1. Transaction Button
+## 1. Transaction Button (revised)
 
-- Locate the existing "+" transaction button (the FAB on Cash Flow).
-- Modify its visual appearance to include a small **lightning-bolt icon** overlaid on
-  the "+" icon, communicating smart/AI-assisted entry.
-- Preserve the existing position, size, behavior, and visual language unless changes
-  are necessary. Lightning icon is visually secondary to the "+". Avoid clutter.
-- Reuse existing icon components if available; do not add a new icon dependency unless
-  necessary.
-- Provide an accessible label such as "Add transaction". Do not rely on the icon alone.
+- The existing "+" transaction button (the FAB on Cash Flow) opens smart entry.
+- Keep it a **plain "+"** — a lightning overlay was tried and removed (2026-09);
+  the button should not be visually cluttered.
+- Preserve the existing position, size, behavior, and visual language.
+- Provide an accessible label such as "Add transaction". Do not rely on the glyph alone.
 
 ## 2. Smart Transaction Input
 
@@ -164,7 +161,8 @@ currently opens a manual form (it does — `TransactionForm`), choose the least
 disruptive UX. A reasonable target flow:
 
 ```
-+ / ⚡ → natural-language input → parse with LLM → review transaction → save
++ → natural-language input → Submit → instant save + fading confirmation
+  (review form only for ambiguous input)
 ```
 
 Provide an obvious way to switch between natural-language/AI entry and manual entry.
@@ -187,7 +185,7 @@ error handling.
 
 Add appropriate tests for:
 
-- **UI:** button renders with lightning overlay, accessible, tap opens input, input
+- **UI:** button renders as a plain "+", accessible, tap opens input, input
   receives focus, manual flow still works.
 - **Parsing:** successful response, invalid response, missing fields, unsupported
   category, ambiguous input, API/network failure.
@@ -216,7 +214,7 @@ unnecessary cloud/database infrastructure.
 - [ ] Inspect existing transaction architecture
 - [ ] Inspect existing categories
 - [ ] Inspect existing "+" button
-- [ ] Add lightning icon overlay
+- [ ] Keep the + button plain (lightning overlay removed — see §1)
 - [ ] Add natural-language input
 - [ ] Auto-focus input on mobile
 - [ ] Verify native keyboard dictation works through the focused field
@@ -236,8 +234,8 @@ unnecessary cloud/database infrastructure.
 
 ## Definition of Done
 
-A user can: open the PWA on their phone → tap the transaction button (with lightning
-enhancement) → see a single natural-language input field with focus → dictate e.g.
+A user can: open the PWA on their phone → tap the + transaction button → see a
+single natural-language input field with focus → dictate e.g.
 *"I spent 35 dollars on lunch yesterday."* → tap Submit → the LLM converts it to
 structured data → the app saves it immediately with a brief fading confirmation
 (or shows the review form when the category is unclear) → saved through the

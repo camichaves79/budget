@@ -133,22 +133,10 @@ export function Dashboard({
       </div>
 
       <button type="button" className="fab" onClick={openAdd} aria-label="Add transaction">
-        <span className="fab-plus">+</span>
-        <svg
-          className="fab-bolt"
-          viewBox="0 0 24 24"
-          aria-hidden="true"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" />
-        </svg>
+        +
       </button>
 
-      <Sheet open={smartOpen} onClose={closeSmart} title="New transaction">
+      <Sheet className="sheet-tight" open={smartOpen} onClose={closeSmart} title="New transaction">
         <SmartEntry
           onClose={closeSmart}
           onToast={(kind, message) => setToast({ id: Date.now(), kind, message })}
@@ -157,7 +145,7 @@ export function Dashboard({
 
       {toast && <Toast key={toast.id} toast={toast} onDismiss={() => setToast(null)} />}
 
-      <Sheet open={formOpen} onClose={closeForm} title={editing ? 'Edit transaction' : 'New transaction'}>
+      <Sheet className="sheet-tight" open={formOpen} onClose={closeForm} title={editing ? 'Edit transaction' : 'New transaction'}>
         <TransactionForm
           key={editing?.id ?? 'new'}
           initial={editing}
