@@ -18,7 +18,10 @@ and (except for smart entry) never leaves the device.
 - **PWA install name: "$5 Budget"** (manifest + apple meta in `index.html`; icons mint
   `#60c784` + engraving-green banknote in `public/`).
 - **Parse microservice** (the app's first backend): Vercel Function
-  `https://budget-beta-two.vercel.app/api/parse` — see §4/§8.
+  `https://budget-beta-two.vercel.app/api/parse` — see §4/§8. Free-tier
+  resilience: transient Gemini 429/5xx are retried with backoff, quota-blocked
+  calls fall back to `gemini-3.5-flash-lite` (own free quota), and successful
+  parses are cached per warm instance (1h) so retries skip Gemini entirely.
 
 ## 2. Product scope & confirmed decisions
 
@@ -86,7 +89,8 @@ src/
     importExport.ts # validateAppData, exportData (JSON backup download)
     parseService.ts # THE client service boundary: calls the parse microservice
                     # (VITE_PARSE_ENDPOINT + VITE_PARSE_SECRET, baked at build time),
-                    # pure validateParsedTransaction (LLM-output trust boundary)
+                    # pure validateParsedTransaction (LLM-output trust boundary),
+                    # one automatic retry (~2s) on transient busy/provider errors
   state/store.tsx   # Context + useReducer, auto-saves to localStorage on every change
   components/       # TabBar, Sheet (className prop + keyboard inset), ConfirmDialog,
                     # ProgressBar, AmountInput (floating-label variant), PeriodNav,
@@ -98,7 +102,9 @@ src/
 api/parse.js        # Vercel Function (route /api/parse): Gemini proxy. Plain JS with
                     # JSDoc (no build step; checked via tsconfig.node checkJs).
                     # Node-style handler(req, res) — Vercel does NOT use Web Request.
-                    # Shared-secret header + origin allow-list + per-IP rate limit.
+                    # Shared-secret header + origin allow-list + per-IP rate limit
+                    # (40/10min) + Gemini retry/backoff + fallback model +
+                    # warm-instance response cache (1h TTL).
 tests/smoke.ts      # logic tests: money, periods, selectors, LLM validator,
                     # microservice helpers (rate limiter, sanitizer, Gemini parser)
 public/             # favicon.svg (mint + 💰), manifest.webmanifest ("$5 Budget"),
@@ -211,7 +217,9 @@ in those tight overrides.
   Repo secrets `VITE_PARSE_ENDPOINT` / `VITE_PARSE_SECRET` are baked at build time.
 - **Vercel**: Git integration auto-deploys `main` to the `budget-beta-two` project
   (Framework: Other, no build command). Env vars there: `GEMINI_API_KEY`,
-  `BUDGET_PARSE_SECRET`. Function URL: `https://budget-beta-two.vercel.app/api/parse`.
+  `BUDGET_PARSE_SECRET`, optional `GEMINI_FALLBACK_MODEL` (default
+  `gemini-3.5-flash-lite`; empty string disables the fallback). Function URL:
+  `https://budget-beta-two.vercel.app/api/parse`.
 - Local `.env` (gitignored) holds `VITE_PARSE_ENDPOINT` + `VITE_PARSE_SECRET` for dev;
   pattern in `.env.example`.
 - To trigger a Pages rebuild without code changes (e.g. after setting repo secrets),
@@ -234,6 +242,13 @@ in those tight overrides.
   them; now `gemini-3.6-flash`). Gemini 3.x thinks by default and hidden thoughts
   consume `maxOutputTokens` — keep `thinkingConfig: { thinkingLevel: 'low' }` or the
   JSON gets truncated mid-object. Google's error messages name the replacement model.
+- **Gemini free tier is shared and 429s are common**: the function retries
+  transient failures (honoring `RetryInfo.retryDelay` when ≤5s), then tries the
+  fallback model; the app auto-retries once (~2s, label "Retrying…") and
+  re-submitting the same text hits the warm-instance cache. Response codes:
+  `provider-busy` (503) = Gemini quota/transient; `rate-limited` (429) = the
+  function's own per-IP limiter (40/10min). Logs carry model/status/`retryDelay`
+  metadata only. RPD resets at midnight Pacific.
 - Dates are local-only ISO strings (`YYYY-MM-DD`); no timezone math.
 - Installing sharp or other temp tools: use the `npm_config_cache` workaround,
   `--no-save`, and check `package-lock.json` is untouched afterwards.
@@ -242,7 +257,7 @@ in those tight overrides.
 
 ## 10. Current state & next-session context
 
-Everything below is **shipped and live** (main ≈ `ef9f63e`, 2026-09-05):
+Everything below is **shipped and live** (main ≈ `5347205`, 2026-09-05):
 
 - Smart entry end-to-end: PWA → Vercel microservice → Gemini 3.6 Flash → instant save
   with fading toasts; review form only for ambiguous parses. Full spec (revised):
@@ -251,6 +266,10 @@ Everything below is **shipped and live** (main ≈ `ef9f63e`, 2026-09-05):
   chevron, "$5 Budget" PWA manifest + mint icons — all approved by the user.
 - Configurable budget period start day (Settings → Budget period, 1–28) with
   majority-month period labels — approved by the user.
+- Parse-service resilience: Gemini retry/backoff, `gemini-3.5-flash-lite` quota
+  fallback, warm-instance response cache, per-IP limiter 40/10min, `provider-busy`
+  diagnostics, one automatic client retry ("Retrying…") — awaiting the user's
+  iPhone testing against prod.
 
 Candidate next steps (ask the user, don't assume):
 - Category | Date side-by-side row in TransactionForm (was offered, not done).
