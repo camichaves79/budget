@@ -218,4 +218,6 @@ Firebase with the Service ID + Team ID + key. No client code change
   commit with an error. Restore keeps working in both cases because
   `/api/license/lookup` self-heals from the Lemon Squeezy orders API, which
   is exactly why this failure is invisible to the user and must be checked
-  in the console.
+  in the console. **Verified fixed end-to-end in prod (2026-09-06):** all
+  three collections populated for the test orders and the accountant CSV
+  export has the rows.

@@ -1,9 +1,10 @@
 # Architecture — $5 Budget App
 
 > **Living record** — updated whenever the app ships a meaningful change.
-> Last updated: **2026-09-06** (main ≈ `b5094b5`; smart-entry paywall
-> **user-approved** after end-to-end validation; paid-key→free-key fallback
-> shipped; four-section tab bar with the + add button in the bar).
+> Last updated: **2026-09-06** (main ≈ `9068739`; smart-entry paywall
+> **user-approved and verified end-to-end** — Firestore collections +
+> accountant ledger populated; paid-key→free-key fallback shipped;
+> four-section tab bar with the + add button in the bar).
 > Read alongside `skills/project-skill.md` (conventions + current state) and
 > `skills/speech-entry.md` (smart-entry spec). Keep this file honest: if a
 > trade-off changes, update the table, not just the date.
@@ -106,12 +107,14 @@ iPhone PWA ──HTTPS──▶ GitHub Pages (static, CDN)                    [f
     quota (planned at scale).
 12. **Manual renewal**: v1 licenses expire 365 days after purchase; revenue depends on
     users renewing (auto-renew subscriptions later).
-13. **Firestore write path unverified in prod (2026-09-06)**: at approval the Firestore
-    console showed no collections, yet redeem/restore succeeded — restore rides the
-    Lemon Squeezy self-heal path (orders-by-email → re-mint) so the user experience
-    never noticed. The sales ledger is empty until this is fixed. Diagnose via Vercel
-    `firebase: token endpoint …` (service-account OAuth rejected) vs `firebase: commit
-    failed …` (Firestore API) log lines; see `skills/paywall-ops.md` §9.
+13. **Firestore writes failed silently until 2026-09-06**: the merge-set commit
+    nested `updateMask` inside the update document, and Firestore rejected every
+    write with `INVALID_ARGUMENT` while redeem/restore kept working (licenses are
+    HMAC-stateless; lookup self-heals from LS). Fixed on `firestore-commit-shape`
+    with a body-capturing smoke regression; verified in prod — all three
+    collections populated, accountant CSV has rows. The design gap remains:
+    `ensureLicenseForOrder` does not upsert the ledger row itself (only the
+    redeem path and the webhook do).
 
 ## 5. Where we might go next (as the user base grows)
 

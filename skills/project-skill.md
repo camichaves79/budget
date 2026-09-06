@@ -381,7 +381,7 @@ in those tight overrides.
 
 ## 10. Current state & next-session context
 
-Everything below is **shipped and live** (main ≈ `b5094b5`, 2026-09-06):
+Everything below is **shipped and live** (main ≈ `9068739`, 2026-09-06):
 
 - Smart entry end-to-end: PWA → Vercel microservice → Gemini 3.6 Flash → instant save
   with fading toasts; review form only for ambiguous parses. Full spec (revised):
@@ -420,20 +420,26 @@ Everything below is **shipped and live** (main ≈ `b5094b5`, 2026-09-06):
   horizontal diameter aligned with the bar's upper side; tapping it switches
   to Cash Flow and opens smart entry. Old bottom-right FAB removed.
 
-**OPEN FOLLOW-UP (root cause found; fix shipped on `firestore-commit-shape`):**
-the Firebase console showed NO collections because every Firestore merge-set
-was rejected — `updateMask` was nested inside `update` in the commit REST
-body instead of sitting beside it as a field of the Write (`INVALID_ARGUMENT
-… Unknown name "updateMask"` in Vercel logs). Restore still worked because
-`/api/license/lookup` self-heals from the Lemon Squeezy orders API. After
-the fix deploys, re-run Restore (sign out → sign in) per account to re-write
-the ledger/license/entitlement docs, then confirm the three collections
-appear in the Firebase console and the accountant CSV has the rows.
+**RESOLVED (2026-09-06):** the Firebase console initially showed NO
+collections because every Firestore merge-set was rejected — `updateMask`
+was nested inside `update` in the commit REST body instead of sitting beside
+it as a field of the Write (`INVALID_ARGUMENT … Unknown name "updateMask"`
+in Vercel logs). Restore still worked because `/api/license/lookup`
+self-heals from the Lemon Squeezy orders API. Fixed on
+`firestore-commit-shape` (`9068739`, with a body-capturing smoke
+regression) and **verified in prod**: all three collections (`sales`,
+`licenses`, `entitlements`) are populated for both test orders and the
+accountant CSV has the rows.
 
 Candidate next steps (ask the user, don't assume):
-- Verify the Firestore collections after the commit-shape fix (see above).
 - Re-paste a fresh `GEMINI_PAID_API_KEY` (current one rejected 400; billing was
-  enabled but the key value itself appears wrong).
+  enabled but the key value itself appears wrong — until then the fallback
+  carries licensed parses on the free key).
+- Enable the Lemon Squeezy store (storefront still 403) before any real
+  (non-test-mode) purchase.
+- Optional hardening: `ensureLicenseForOrder` could upsert the ledger row by
+  construction (today the self-heal path writes only `license_id`/`redeemed_at`
+  — a restore alone won't backfill missing ledger columns).
 - Apple sign-in (config-only; needs a $99/yr Apple Developer account).
 - Anything else the user raises; always read `skills/speech-entry.md` for the
   feature spec and this file for conventions before coding.
