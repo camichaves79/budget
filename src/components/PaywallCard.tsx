@@ -3,18 +3,28 @@ import { useEntitlement } from '../state/entitlement';
 
 /**
  * The card smart entry shows when the free allowance (10 parses/day) is used
- * up and no active license is stored. Primary action: the Lemon Squeezy
- * checkout (overlay in-app, tab/redirect fallback). Manual entry stays one
- * tap away and always works.
+ * up and no active license is stored. Purchases are ALWAYS account-bound
+ * (product decision 2026-09), so the primary action first requires Google
+ * sign-in and then opens the Lemon Squeezy checkout (overlay in-app,
+ * tab/redirect fallback). Manual entry stays one tap away and always works.
  */
 export function PaywallCard({ onClose, onManual }: { onClose: () => void; onManual: () => void }) {
-  const { buy, busy, checkoutReady, completePendingPurchase, freeDaily, pendingOrder } = useEntitlement();
+  const { account, buy, busy, checkoutReady, completePendingPurchase, freeDaily, pendingOrder, signIn } = useEntitlement();
   const [opening, setOpening] = useState(false);
+  const [signingIn, setSigningIn] = useState(false);
   const [error, setError] = useState('');
 
   const unlock = async () => {
-    if (opening || busy) return;
+    if (opening || busy || signingIn) return;
     setError('');
+    // Step 1: identity. The watcher updates `account` after the popup/redirect,
+    // which flips this button into its checkout label.
+    if (!account) {
+      setSigningIn(true);
+      await signIn();
+      setSigningIn(false);
+      return;
+    }
     // A parked purchase reference means the user already paid: complete it
     // instead of charging again.
     if (pendingOrder) {
@@ -31,6 +41,18 @@ export function PaywallCard({ onClose, onManual }: { onClose: () => void; onManu
     }
   };
 
+  const label = !account
+    ? signingIn
+      ? 'Signing in…'
+      : 'Sign in with Google to unlock'
+    : busy === 'redeeming'
+      ? 'Completing purchase…'
+      : opening
+        ? 'Opening checkout…'
+        : pendingOrder
+          ? 'Complete your purchase'
+          : 'Unlock unlimited smart entry · $5/year';
+
   return (
     <div className="paywall-card">
       <p className="paywall-title">You've used today's free smart entries</p>
@@ -41,10 +63,15 @@ export function PaywallCard({ onClose, onManual }: { onClose: () => void; onManu
         type="button"
         className="btn btn-primary btn-block"
         onClick={unlock}
-        disabled={!checkoutReady || opening || busy === 'redeeming'}
+        disabled={!checkoutReady || opening || signingIn || busy === 'redeeming'}
       >
-        {busy === 'redeeming' ? 'Completing purchase…' : opening ? 'Opening checkout…' : 'Unlock unlimited smart entry · $5/year'}
+        {label}
       </button>
+      {!account && (
+        <p className="field-hint smart-disclosure">
+          Sign in with Google first — your license gets saved to your account and restored on any device or reinstall.
+        </p>
+      )}
       {error && <p className="error-text">{error}</p>}
       <button type="button" className="btn btn-block" onClick={onManual}>
         Enter manually instead

@@ -31,6 +31,11 @@ export function LicenseSection() {
 
   const unlock = async () => {
     setNote('');
+    // Purchases are always account-bound: identity first, then checkout.
+    if (!account) {
+      await signIn();
+      return;
+    }
     if (pendingOrder) {
       setBusy(true);
       const outcome = await completePendingPurchase();
@@ -60,6 +65,12 @@ export function LicenseSection() {
     e.preventDefault();
     if (!keyInput.trim()) return;
     setNote('');
+    // The pasted LS key can only be redeemed for the signed-in account.
+    if (!account) {
+      setNote('Sign in with Google first — licenses are tied to your account.');
+      await signIn();
+      return;
+    }
     setBusy(true);
     const outcome = await activatePastedKey(keyInput);
     setBusy(false);
@@ -85,7 +96,7 @@ export function LicenseSection() {
             <span className="license-pill">Active</span>
           ) : (
             <button type="button" className="btn" onClick={unlock} disabled={!checkoutReady || busy}>
-              {busy ? 'Working…' : 'Unlock · $5/year'}
+              {busy ? 'Working…' : account ? 'Unlock · $5/year' : 'Sign in to unlock'}
             </button>
           )}
         </div>
@@ -97,7 +108,7 @@ export function LicenseSection() {
               <div className="setting-desc">Your payment reference is parked on this device.</div>
             </div>
             <button type="button" className="btn" onClick={unlock} disabled={busy}>
-              Complete purchase
+              {account ? 'Complete purchase' : 'Sign in to complete'}
             </button>
           </div>
         )}

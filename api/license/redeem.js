@@ -3,10 +3,10 @@
  * order id / order number / license key from the post-purchase redirect) for
  * an HMAC-signed license. The LS API key never reaches the client.
  *
- * Body: { orderId?: string, key?: string, idToken?: string }
+ * Body: { orderId?: string, key?: string, idToken: string (required) }
  *   → 200 { ok: true, license }
  *   → 404 purchase-not-found · 409 purchase-not-paid · 401 unauthorized /
- *     bad-id-token · 400 bad-request · 503 not-configured
+ *     sign-in-required / bad-id-token · 400 bad-request · 503 not-configured
  *
  * Idempotent: re-redeeming the same order returns the SAME license.
  */
@@ -51,23 +51,25 @@ async function redeem(req, res, cors) {
   const body = await readJsonBody(req);
   const orderId = body && typeof body.orderId === 'string' ? body.orderId.trim() : '';
   const key = body && typeof body.key === 'string' ? body.key.trim() : '';
-  const idToken = body && typeof body.idToken === 'string' ? body.idToken : null;
+  const idToken = body && typeof body.idToken === 'string' ? body.idToken : '';
   if (!orderId && !key) {
     send(res, 400, { ok: false, code: 'bad-request' }, cors);
     return;
   }
 
-  // Identity (optional): bind the license to the signed-in account so it can
-  // be restored on any device (ARCHITECTURE.md A13).
-  let uid = null;
-  if (idToken) {
-    const verified = await verifyIdTokenSafe(idToken);
-    if (!verified.ok) {
-      send(res, 401, { ok: false, code: 'bad-id-token' }, cors);
-      return;
-    }
-    uid = verified.uid;
+  // Identity is MANDATORY for purchases (product decision 2026-09): every
+  // license is bound to a Google account at mint time, so it can always be
+  // restored on any device. Free use stays account-less (A13).
+  if (!idToken) {
+    send(res, 401, { ok: false, code: 'sign-in-required' }, cors);
+    return;
   }
+  const verified = await verifyIdTokenSafe(idToken);
+  if (!verified.ok) {
+    send(res, 401, { ok: false, code: 'bad-id-token' }, cors);
+    return;
+  }
+  const uid = verified.uid;
 
   // Resolve the reference to order attributes. The key path goes through the
   // License API's validate endpoint (no activation consumed), which yields

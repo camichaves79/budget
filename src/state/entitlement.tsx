@@ -179,8 +179,15 @@ export function EntitlementProvider({ children }: { children: ReactNode }) {
   const redeemAndApply = useCallback(
     async (reference: string): Promise<'ok' | 'none' | 'error'> => {
       setBusy('redeeming');
+      // Purchases are always account-bound: the server requires the idToken,
+      // so an unsigned redeem is a guaranteed 401. The UI gates on sign-in
+      // too — this is the defensive layer (keeps the reference parked).
       const idToken = await getUserIdToken();
-      const result = await redeemLicense(reference, idToken ?? undefined);
+      if (!idToken) {
+        setBusy(null);
+        return 'error';
+      }
+      const result = await redeemLicense(reference, idToken);
       setBusy(null);
       if (result.ok) {
         setPendingOrderStored(null);
@@ -263,7 +270,8 @@ export function EntitlementProvider({ children }: { children: ReactNode }) {
   const activatePastedKey = useCallback(
     async (key: string): Promise<'ok' | 'invalid' | 'error'> => {
       const trimmed = key.trim();
-      const result = await checkLicenseKey(trimmed);
+      const idToken = await getUserIdToken();
+      const result = await checkLicenseKey(trimmed, idToken ?? undefined);
       if (!result.ok) return 'error';
       if (!result.active) return 'invalid';
       applyToken(trimmed, 'licensed');

@@ -9,12 +9,15 @@
 
 - Free: **10 smart parses/day** (client-side counter; server per-IP limiter is
   the backstop).
-- Beyond that: paywall card → **Lemon Squeezy checkout overlay** → confirmation
-  button returns to the app with `?key=[license_key]&order_id=[order_id]` →
-  the app **auto-redeems** at `/api/license/redeem` (the license key resolves
-  through LS's License API; the order is verified `paid`) → an **HMAC-signed
-  license** is minted server-side, stored on-device, and bound to the signed-in
-  account. The paste field in Settings is recovery-only.
+- Beyond that: paywall card → **sign in with Google (mandatory for purchases —
+  every license is account-bound at mint time)** → **Lemon Squeezy checkout
+  overlay** → confirmation button returns to the app with
+  `?key=[license_key]&order_id=[order_id]` → the app **auto-redeems** at
+  `/api/license/redeem` (the license key resolves through LS's License API; the
+  order is verified `paid`; the redeem endpoint rejects requests without a
+  valid Firebase idToken) → an **HMAC-signed license** is minted server-side,
+  stored on-device, and bound to the signed-in account. The paste field in
+  Settings is recovery-only (also requires sign-in).
 - The paste fallback accepts **either** the app's own license token **or** a
   Lemon Squeezy license key from the purchase email (resolved via the License
   API at `/api/license/check`) — it rescues purchases whose redirect never

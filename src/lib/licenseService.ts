@@ -121,9 +121,14 @@ export async function lookupLicense(idToken: string): Promise<LookupResult> {
   return { ok: false, message: "Couldn't reach the licensing service. Check your connection and try again." };
 }
 
-/** Validate a pasted license key (Settings recovery fallback, never primary). */
-export async function checkLicenseKey(key: string): Promise<CheckResult> {
-  const { payload } = await postLicense('/api/license/check', { key });
+/**
+ * Validate a pasted key (Settings recovery fallback, never primary). A Lemon
+ * Squeezy license key can only be redeemed into a license for the SIGNED-IN
+ * account (purchases are always account-bound), so the idToken is required
+ * for that path; our own signed tokens verify without it.
+ */
+export async function checkLicenseKey(key: string, idToken?: string): Promise<CheckResult> {
+  const { payload } = await postLicense('/api/license/check', { key, idToken: idToken ?? null });
   if (payload && payload.ok === true) {
     const token = typeof payload.license === 'string' ? payload.license : '';
     const parsed = parseLicenseToken(token);
@@ -132,6 +137,9 @@ export async function checkLicenseKey(key: string): Promise<CheckResult> {
   const code = typeof payload?.code === 'string' ? payload.code : '';
   if (code === 'license-invalid') {
     return { ok: true, active: false, payload: null };
+  }
+  if (code === 'sign-in-required') {
+    return { ok: false, message: 'Sign in with Google first — licenses are tied to your account.' };
   }
   return { ok: false, message: "Couldn't reach the licensing service. Check your connection and try again." };
 }

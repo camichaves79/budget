@@ -128,10 +128,10 @@ record) with the checkout opening in-app:
 - After payment, the checkout's confirmation button returns to the app with the
   purchase reference; the app **redeems it automatically** at the microservice
   (`/api/license/redeem`) for an HMAC-signed license and stores it — no key pasting.
-- The license is verified server-side on every parse (100 parses/day meter) and, when
-  you **sign in with Google** (Firebase Auth), it is bound to your account and restored
-  on any device or reinstall. A paste field in Settings exists only as a recovery
-  fallback.
+  **Buying requires Google sign-in**: every license is bound to your account at the
+  moment of purchase and restored on any device or reinstall. The license is verified
+  server-side on every parse (100 parses/day meter). A paste field in Settings exists
+  only as a recovery fallback.
 - The cloud holds only identity, entitlement and purchase metadata — **budget data
   stays on this device**.
 - Every sale and refund lands in a server-side **sales ledger**; the owner downloads

@@ -282,8 +282,11 @@ Smart entry is free for **10 parses/day** (a submission counts once; the automat
 the smart sheet shows a **paywall card** instead of the input:
 
 - Copy: the user has used today's 10 free smart entries (they reset at midnight).
-- Primary action: **"Unlock unlimited smart entry — $5/year"** → Lemon Squeezy
-  checkout overlay (fallback: open in Safari/tab), redirect back with the order id.
+- Primary action: **sign in with Google, then "Unlock unlimited smart entry —
+  $5/year"** → Lemon Squeezy checkout overlay (fallback: open in Safari/tab),
+  redirect back with the order reference. **Purchases always require sign-in**
+  (2026-09): every license is bound to the account at mint time, so the
+  paywall card's button signs the user in first and only then opens checkout.
 - Secondary path stays visible: "Enter manually instead" — manual entry always works.
 
 Licensed users never see the card: the stored license (HMAC-signed server-side,
