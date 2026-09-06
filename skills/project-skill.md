@@ -393,9 +393,9 @@ Everything below is **shipped and live** (main ≈ `22227c4`, 2026-09-05):
   license (server-verified per parse, 100/day meter); Firebase Google sign-in with
   license binding/restore; sales ledger + accountant CSV/JSON export; licensed
   tier runs Lite→Flash on a paid Gemini key (falls back to the free key until
-  `GEMINI_PAID_API_KEY` is set). ADRs A11–A14 in `ARCHITECTURE.md`; ops in
-  `skills/paywall-ops.md`; tax evidence in `TAX.md`. **User approval pending —
-  tested against prod, awaiting the user's thumbs-up.**
+  `GEMINI_PAID_API_KEY` is set — now set). ADRs A11–A14 in `ARCHITECTURE.md`; ops
+  in `skills/paywall-ops.md`; tax evidence in `TAX.md`. **User approval pending —
+  the user is testing on iPhone against prod (repo secrets set 2026-09-05).**
 
 Candidate next steps (ask the user, don't assume):
 - Apple sign-in (config-only; needs a $99/yr Apple Developer account).
