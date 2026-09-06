@@ -1,0 +1,31 @@
+/**
+ * TEMPORARY diagnostic endpoint — probe the Vercel runtime for the license
+ * functions. DELETE after the firebase-admin import issue is resolved.
+ */
+export default async function handler(_req, res) {
+  const out = {
+    node: process.version,
+    envNames: Object.keys(process.env)
+      .filter((k) => ['FIREBASE', 'LEMON', 'BUDGET', 'GEMINI'].some((p) => k.startsWith(p)))
+      .map((k) => (k.startsWith('FIREBASE_SERVICE') ? `${k}=(len ${(process.env[k] ?? '').length})` : `${k}=(set)`))
+      .sort(),
+  };
+  const checks = {};
+  for (const spec of ['firebase-admin/app', 'firebase-admin/auth', 'firebase-admin/firestore']) {
+    try {
+      await import(spec);
+      checks[spec] = 'ok';
+    } catch (err) {
+      checks[spec] = `FAIL: ${/** @type {Error} */ (err).message}`;
+    }
+  }
+  try {
+    const pkg = JSON.parse(await (await import('node:fs/promises')).readFile('node_modules/firebase-admin/package.json', 'utf8'));
+    checks['firebase-admin version on disk'] = pkg.version;
+  } catch (err) {
+    checks['firebase-admin version on disk'] = `MISSING: ${/** @type {Error} */ (err).message}`;
+  }
+  res.setHeader('Content-Type', 'application/json');
+  res.statusCode = 200;
+  res.end(JSON.stringify({ out, checks }, null, 2));
+}
