@@ -24,7 +24,7 @@ and (except for smart entry) never leaves the device.
   resilience: transient Gemini 429/5xx are retried with backoff, quota-blocked
   calls fall back to `gemini-3.5-flash-lite` (own free quota), and successful
   parses are cached per warm instance (1h) so retries skip Gemini entirely.
-- **Paywall backend (2026-09, branch `smart-entry-paywall`):** the same Vercel
+- **Paywall backend (2026-09):** the same Vercel
   project gains `/api/license/*` (redeem / lookup / check), `/api/webhooks/ls`
   and `/api/ledger/export`; Firebase Auth (Google) + Firestore hold identity,
   entitlement and the sales ledger (admin-SDK writes only, client never touches
@@ -360,7 +360,7 @@ in those tight overrides.
 
 ## 10. Current state & next-session context
 
-Everything below is **shipped and live** (main ≈ `82316cd`, 2026-09-05):
+Everything below is **shipped and live** (main ≈ `22227c4`, 2026-09-05):
 
 - Smart entry end-to-end: PWA → Vercel microservice → Gemini 3.6 Flash → instant save
   with fading toasts; review form only for ambiguous parses. Full spec (revised):
@@ -377,16 +377,17 @@ Everything below is **shipped and live** (main ≈ `82316cd`, 2026-09-05):
   confident entries instant-save, doubtful (< 0.8) or ambiguous ones queue through
   pre-filled review, batches end in a "Recorded ✓" summary — **tested and approved
   by the user (2026-09-05)**.
-
-In progress (2026-09-05, uncommitted on branch `smart-entry-paywall`): **smart-entry
-paywall** — ADRs A12–A14 in `ARCHITECTURE.md`; $5/year price approved by the user;
-free 10 parses/day → Lemon Squeezy checkout overlay → redirect-back auto-redeem →
-HMAC license; Firebase Google sign-in + Firestore entitlement/ledger; accountant
-CSV export; paid Gemini key with Lite→Flash model order. Ops/setup checklist:
-`skills/paywall-ops.md`. **Commit/push/ship only when the user says so.**
+- **Smart-entry paywall (shipped 2026-09-05):** 10 free parses/day → paywall card →
+  $5/year Lemon Squeezy checkout overlay → redirect-back auto-redeem → HMAC
+  license (server-verified per parse, 100/day meter); Firebase Google sign-in with
+  license binding/restore; sales ledger + accountant CSV/JSON export; licensed
+  tier runs Lite→Flash on a paid Gemini key (falls back to the free key until
+  `GEMINI_PAID_API_KEY` is set). ADRs A11–A14 in `ARCHITECTURE.md`; ops in
+  `skills/paywall-ops.md`; tax evidence in `TAX.md`. **User approval pending —
+  tested against prod, awaiting the user's thumbs-up.**
 
 Candidate next steps (ask the user, don't assume):
-- Nothing queued beyond finishing the paywall branch; the Category | Date
-  side-by-side form row was declined (2026-09).
-- Anything else the user raises; always read `skills/speech-entry.md` for the feature
-  spec and this file for conventions before coding.
+- Apple sign-in (config-only; needs a $99/yr Apple Developer account).
+- Set `GEMINI_PAID_API_KEY` on Vercel once the user enables Cloud billing.
+- Anything else the user raises; always read `skills/speech-entry.md` for the
+  feature spec and this file for conventions before coding.

@@ -267,13 +267,13 @@ unnecessary cloud/database infrastructure.
 - [x] Confidence grading: doubtful entries (< 0.8) go to pre-filled review, never
       instant-save (2026-09)
 - [x] "Recorded" summary after a batch saves, with edit-anytime guidance (2026-09)
-- [ ] Free allowance counter (10 parses/day, counts submissions not retries)
-- [ ] Paywall card replaces the input at 0 remaining (copy + $5/year checkout +
-      manual-entry pointer)
-- [ ] Licensed requests attach the stored license token; server verifies HMAC +
-      meters (100/day) per parse
-- [ ] Purchase redirect → server-side redeem → license auto-stored; Settings
-      fallback (sign-in restore + paste-key) never the main path
+- [x] Free allowance counter (10 parses/day, counts submissions not retries) (2026-09)
+- [x] Paywall card replaces the input at 0 remaining (copy + $5/year checkout +
+      manual-entry pointer) (2026-09)
+- [x] Licensed requests attach the stored license token; server verifies HMAC +
+      meters (100/day) per parse (2026-09)
+- [x] Purchase redirect → server-side redeem → license auto-stored; Settings
+      fallback (sign-in restore + paste-key) never the main path (2026-09)
 
 ## 15. Paywall gating (2026-09)
 

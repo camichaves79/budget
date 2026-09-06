@@ -1,6 +1,6 @@
 # Skill — Smart-Entry Paywall & License Ops
 
-> Operating guide for the smart-entry paywall (branch `smart-entry-paywall`,
+> Operating guide for the smart-entry paywall (shipped on `main` ≈ `22227c4`,
 > ADRs A12–A14 in `ARCHITECTURE.md`). Read `skills/project-skill.md` for
 > conventions. **Everything below is verified against Lemon Squeezy and Firebase
 > docs as of 2026-09** — cite this file when the UI drifts.

@@ -1,8 +1,8 @@
 # Architecture — $5 Budget App
 
 > **Living record** — updated whenever the app ships a meaningful change.
-> Last updated: **2026-09-05** (main ≈ `82316cd`; smart-entry paywall in
-> progress on branch `smart-entry-paywall` — ADRs A12–A14 marked below).
+> Last updated: **2026-09-05** (main ≈ `22227c4`; smart-entry paywall shipped,
+> ADRs A11–A14 below).
 > Read alongside `skills/project-skill.md` (conventions + current state) and
 > `skills/speech-entry.md` (smart-entry spec). Keep this file honest: if a
 > trade-off changes, update the table, not just the date.
@@ -54,9 +54,9 @@ iPhone PWA ──HTTPS──▶ GitHub Pages (static, CDN)                    [f
 | A9 | Linear git history, feature branch per change, ff-merge to `main`, rollback = a revert commit; Pages Actions + Vercel Git integration auto-deploy | Deterministic, reviewable, instantly reversible | Accepted |
 | A10 | Shared-secret header + origin allow-list + input whitelisting on the function | Cheap defense layers; acknowledged as obfuscation, not auth (see §4) | Accepted |
 | A11 | Rejected: bring-your-own-key (BYOK) and the fixed 50-user capacity plans | BYOK was built then abandoned (stash parked); quota-cap option reverted; the paywall (A12) is the chosen monetization path | Rejected → superseded by A12 |
-| A12 | Smart-entry paywall: 10 free parses/day (client-side counter, UX not security), then a **$5/year** license sold through Lemon Squeezy (MoR, 5% + $0.50/txn) with an in-app checkout overlay; the post-purchase redirect carries the order id and the app auto-redeems it server-side into an **HMAC-signed license** (verified on every parse, 100/day meter); a Settings paste-key is a recovery fallback only | Price chosen for brand fit + positive expected earnings at 50+ users (~40–70% ROI, break-even ~10–12 payers); license minting stays server-side so keys can't be forged client-side; paste-key is never the main path | Accepted (in progress, branch `smart-entry-paywall`) |
-| A13 | Identity for license binding: **Firebase Auth** (Google sign-in now; Apple deferred — $99/yr developer account, config-only later) + **Firestore** for entitlements and the sales ledger, admin-SDK writes only (client never touches Firestore) | Firebase over Supabase: $0 Spark tier with no project-pause risk and the same Google account as Gemini; cloud holds identity/entitlement/purchase metadata only — budget data stays on-device | Accepted (in progress) |
-| A14 | Licensed tier runs on a **paid Gemini key** with `gemini-3.5-flash-lite` primary and `gemini-3.6-flash` fallback (inverted from the free tier), and a cache-friendly system prompt ready for context-caching savings | Free-tier quotas can't back a paid product; Lite ≈25% cheaper per parse and is already the proven fallback; paid tier also opts out of training use | Accepted (in progress) |
+| A12 | Smart-entry paywall: 10 free parses/day (client-side counter, UX not security), then a **$5/year** license sold through Lemon Squeezy (MoR, 5% + $0.50/txn) with an in-app checkout overlay; the post-purchase redirect carries the order id and the app auto-redeems it server-side into an **HMAC-signed license** (verified on every parse, 100/day meter); a Settings paste-key is a recovery fallback only | Price chosen for brand fit + positive expected earnings at 50+ users (~40–70% ROI, break-even ~10–12 payers); license minting stays server-side so keys can't be forged client-side; paste-key is never the main path | Accepted |
+| A13 | Identity for license binding: **Firebase Auth** (Google sign-in now; Apple deferred — $99/yr developer account, config-only later) + **Firestore** for entitlements and the sales ledger, admin-SDK writes only (client never touches Firestore) | Firebase over Supabase: $0 Spark tier with no project-pause risk and the same Google account as Gemini; cloud holds identity/entitlement/purchase metadata only — budget data stays on-device | Accepted |
+| A14 | Licensed tier runs on a **paid Gemini key** with `gemini-3.5-flash-lite` primary and `gemini-3.6-flash` fallback (inverted from the free tier), and a cache-friendly system prompt ready for context-caching savings | Free-tier quotas can't back a paid product; Lite ≈25% cheaper per parse and is already the proven fallback; paid tier also opts out of training use | Accepted |
 
 ## 3. The "-ilities" — where we stand
 
