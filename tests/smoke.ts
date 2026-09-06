@@ -16,9 +16,10 @@ import {
   estimateNetCents, ledgerToCsv, makeLicensePayload, orderToLedger, signLicense,
   verifyLicenseToken, verifyWebhookSignature, webhookToLedger,
 } from '../api/_license.js';
-import { createHmac } from 'node:crypto';
+import { createHmac, generateKeyPairSync } from 'node:crypto';
 import { FREE_DAILY_PARSES, nextQuota, remainingFreeToday } from '../src/lib/quota';
 import { licenseIsActive, parseLicenseToken } from '../src/lib/license';
+import { decodeJwtParts, fromFields, signJwt, toFields, verifyJwtSignature } from '../api/_firebase.js';
 import type { Category } from '../src/lib/types';
 
 let failures = 0;
@@ -549,6 +550,29 @@ const csv = ledgerToCsv([
 check('csv starts with BOM + header', csv.startsWith('\uFEFFdate,order_number'), true);
 check('csv escapes quotes', csv.includes('"a,""b"",c"'), true);
 check('csv has header + two rows', csv.split('\r\n').length, 3);
+
+// ---- firebase REST helpers (service-account JWT + field codecs) ----
+const fieldsRound = { s: 'hola', n: 42, b: true, z: null };
+const asFields = toFields(fieldsRound);
+check('toFields string', asFields.s, { stringValue: 'hola' });
+check('toFields integer', asFields.n, { integerValue: '42' });
+check('toFields boolean', asFields.b, { booleanValue: true });
+check('toFields null', asFields.z, { nullValue: null });
+check('fromFields round trip', fromFields(asFields), fieldsRound);
+check('fromFields guards garbage', fromFields(null), {});
+
+const rsa = generateKeyPairSync('rsa', { modulusLength: 2048 });
+const privPem = rsa.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
+const pubPem = rsa.publicKey.export({ type: 'spki', format: 'pem' }).toString();
+const jwt = signJwt({ iss: 'x@y', aud: 'https://oauth2.googleapis.com/token', iat: 1, exp: 2 }, privPem);
+const jwtParts = jwt.split('.');
+const jwtDecoded = decodeJwtParts(jwt);
+check('jwt has three parts', jwtParts.length, 3);
+check('jwt header alg', jwtDecoded?.header.alg, 'RS256');
+check('jwt payload iss', jwtDecoded?.payload.iss, 'x@y');
+check('jwt signature verifies', verifyJwtSignature(`${jwtParts[0]}.${jwtParts[1]}`, jwtParts[2], pubPem), true);
+check('jwt signature rejects tamper', verifyJwtSignature(`${jwtParts[0]}.${jwtParts[1]}x`, jwtParts[2], pubPem), false);
+check('jwt decode rejects garbage', decodeJwtParts('a.b'), null);
 
 if (failures > 0) {
   console.log(`\n${failures} failure(s)`);
