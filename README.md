@@ -119,6 +119,28 @@ blocked by quota, the function falls back to `GEMINI_FALLBACK_MODEL` (default
   "think" before answering and hidden thoughts consume the output budget. Keep
   `generationConfig.thinkingConfig.thinkingLevel: 'low'` in the function.
 
+## Smart entry license (paywall)
+
+Smart entry is free for **10 parses a day**. Beyond that, the app offers a **$5/year
+license** sold through [Lemon Squeezy](https://www.lemonsqueezy.com/) (merchant of
+record) with the checkout opening in-app:
+
+- After payment, the checkout's confirmation button returns to the app with the
+  purchase reference; the app **redeems it automatically** at the microservice
+  (`/api/license/redeem`) for an HMAC-signed license and stores it — no key pasting.
+- The license is verified server-side on every parse (100 parses/day meter) and, when
+  you **sign in with Google** (Firebase Auth), it is bound to your account and restored
+  on any device or reinstall. A paste field in Settings exists only as a recovery
+  fallback.
+- The cloud holds only identity, entitlement and purchase metadata — **budget data
+  stays on this device**.
+- Every sale and refund lands in a server-side **sales ledger**; the owner downloads
+  it as CSV/JSON from `/api/ledger/export` for the accountant.
+
+Setup (Firebase project, Lemon Squeezy product/webhook, Vercel env vars, secrets) is
+step-by-step in **`skills/paywall-ops.md`**; the pricing/cost model and tax notes live
+there and in `TAX.md`. Design decisions: `ARCHITECTURE.md` ADRs A12–A14.
+
 ## Data & persistence
 
 - Data auto-saves to `localStorage` on every change and survives reloads and browser restarts.

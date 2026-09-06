@@ -40,7 +40,8 @@ export type ParseErrorKind =
   | 'rate-limit'
   | 'provider'
   | 'network'
-  | 'invalid-response';
+  | 'invalid-response'
+  | 'license';
 
 export interface ParseError {
   kind: ParseErrorKind;
@@ -67,6 +68,12 @@ export function isRetryableParseError(error: ParseError): boolean {
 export interface ParseOptions {
   /** Called right before the automatic retry so the UI can update its label. */
   onRetry?: () => void;
+  /**
+   * Signed license token to attach to the request (unlimited tier). The
+   * microservice verifies the signature and meters the license; invalid
+   * tokens come back as a `license` error so the UI can clear them.
+   */
+  license?: string | null;
 }
 
 /**
@@ -170,15 +177,15 @@ export async function parseUtterance(
   categories: Category[],
   options: ParseOptions = {},
 ): Promise<ParseResult> {
-  const first = await parseUtteranceOnce(utterance, categories);
+  const first = await parseUtteranceOnce(utterance, categories, options.license ?? null);
   if (first.ok || !isRetryableParseError(first.error)) return first;
   options.onRetry?.();
   await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
-  return parseUtteranceOnce(utterance, categories);
+  return parseUtteranceOnce(utterance, categories, options.license ?? null);
 }
 
 /** Single parse attempt; see parseUtterance for the retry wrapper. */
-async function parseUtteranceOnce(utterance: string, categories: Category[]): Promise<ParseResult> {
+async function parseUtteranceOnce(utterance: string, categories: Category[], license: string | null): Promise<ParseResult> {
   const text = utterance.trim();
   if (!text) {
     return { ok: false, error: { kind: 'invalid-response', message: 'Nothing to parse yet.' } };
@@ -197,7 +204,7 @@ async function parseUtteranceOnce(utterance: string, categories: Category[]): Pr
         'Content-Type': 'application/json',
         'x-budget-secret': SECRET,
       },
-      body: JSON.stringify({ utterance: text, categories: refs, today: todayISO() }),
+      body: JSON.stringify({ utterance: text, categories: refs, today: todayISO(), license: license ?? null }),
     });
   } catch {
     return {
@@ -222,6 +229,10 @@ async function parseUtteranceOnce(utterance: string, categories: Category[]): Pr
   }
 
   const code = payload?.code;
+  // License rejections take priority: the server answers them with 403/429,
+  // which must not be confused with the free-tier "busy" paths.
+  if (code === 'license-invalid') return licenseGone();
+  if (code === 'license-limit') return licenseLimit();
   // rate-limited = our per-IP limiter; provider-busy = Gemini quota/transient
   // after the server's own retries and fallback. Same friendly message, same
   // single automatic retry on the client.
@@ -230,6 +241,26 @@ async function parseUtteranceOnce(utterance: string, categories: Category[]): Pr
   if (code === 'provider' || res.status >= 500) return providerTrouble();
   if (code === 'unauthorized' || code === 'origin-not-allowed') return NOT_CONFIGURED;
   return unexpected();
+}
+
+function licenseGone(): ParseResult {
+  return {
+    ok: false,
+    error: {
+      kind: 'license',
+      message: "Your license isn't valid anymore. Check it in Settings — manual entry still works.",
+    },
+  };
+}
+
+function licenseLimit(): ParseResult {
+  return {
+    ok: false,
+    error: {
+      kind: 'license',
+      message: "You've reached today's smart-entry limit — it resets at midnight.",
+    },
+  };
 }
 
 function busy(): ParseResult {

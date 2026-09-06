@@ -11,6 +11,14 @@ import {
   cacheGet, cacheKeyFor, cacheSet, checkRateLimit, createRateLimiter, createResponseCache,
   isTransientGeminiStatus, nextRetryDelayMs, parseGeminiResponse, parseRetryDelaySeconds, sanitizeRequest,
 } from '../api/parse.js';
+import {
+  DEFAULT_LICENSE_DAILY_CAP, LICENSE_TERM_SECONDS, createLicenseMeter, estimateLsFeeCents,
+  estimateNetCents, ledgerToCsv, makeLicensePayload, orderToLedger, signLicense,
+  verifyLicenseToken, verifyWebhookSignature, webhookToLedger,
+} from '../api/_license.js';
+import { createHmac } from 'node:crypto';
+import { FREE_DAILY_PARSES, nextQuota, remainingFreeToday } from '../src/lib/quota';
+import { licenseIsActive, parseLicenseToken } from '../src/lib/license';
 import type { Category } from '../src/lib/types';
 
 let failures = 0;
@@ -446,6 +454,101 @@ check('rate-limit error is retryable', isRetryableParseError({ kind: 'rate-limit
 check('provider error is retryable', isRetryableParseError({ kind: 'provider', message: 'x' }), true);
 check('network error is not auto-retried', isRetryableParseError({ kind: 'network', message: 'x' }), false);
 check('invalid-response is not auto-retried', isRetryableParseError({ kind: 'invalid-response', message: 'x' }), false);
+check('license error is not auto-retried', isRetryableParseError({ kind: 'license', message: 'x' }), false);
+
+// ---- paywall: free daily allowance ----
+check('quota fresh day is full', remainingFreeToday('2026-09-04', 3, '2026-09-05'), FREE_DAILY_PARSES);
+check('quota same day counts down', remainingFreeToday('2026-09-05', 3, '2026-09-05'), 7);
+check('quota floors at zero', remainingFreeToday('2026-09-05', 12, '2026-09-05'), 0);
+check('quota next increments', nextQuota('2026-09-05', 3, '2026-09-05'), { date: '2026-09-05', used: 4 });
+check('quota next rolls day', nextQuota('2026-09-04', 9, '2026-09-05'), { date: '2026-09-05', used: 1 });
+
+// ---- paywall: license tokens (client parse + server sign/verify) ----
+const licenseBase = makeLicensePayload({ lic: 'lic-123', uid: null, iatSeconds: 1780000000, expSeconds: 2000000000 });
+const signedToken = signLicense(licenseBase, 'test-secret');
+check('license token parses client-side', parseLicenseToken(signedToken)?.lic, 'lic-123');
+check('license client parse rejects garbage', parseLicenseToken('not-a-token'), null);
+check('license client parse rejects wrong kid', parseLicenseToken(signLicense({ ...licenseBase, kid: 'other' }, 'test-secret')), null);
+check('license client active inside window', licenseIsActive(parseLicenseToken(signedToken), Date.now()), true);
+check('license client inactive past exp', licenseIsActive({ ...licenseBase, exp: 1 }, Date.now()), false);
+check('license server verify ok', verifyLicenseToken(signedToken, 'test-secret').ok, true);
+check('license server verify wrong secret', verifyLicenseToken(signedToken, 'other-secret').ok, false);
+check('license server verify tampered payload', verifyLicenseToken(`x${signedToken}`, 'test-secret').ok, false);
+check(
+  'license server verify tampered signature',
+  verifyLicenseToken(`${signedToken.slice(0, -2)}AA`, 'test-secret').ok,
+  false,
+);
+check(
+  'license server verify expired',
+  verifyLicenseToken(signLicense({ ...licenseBase, exp: 1 }, 'test-secret'), 'test-secret').ok,
+  false,
+);
+check('license server verify malformed', verifyLicenseToken('a.b.c', 'test-secret').ok, false);
+check('license term is one year', LICENSE_TERM_SECONDS, 365 * 24 * 60 * 60);
+
+// ---- paywall: per-license daily meter ----
+const meter = createLicenseMeter({ limitPerDay: 2 });
+check('license meter allows 1st', meter.allow('lic-a', new Date('2026-09-05T10:00:00Z')), true);
+check('license meter allows 2nd', meter.allow('lic-a', new Date('2026-09-05T11:00:00Z')), true);
+check('license meter blocks 3rd', meter.allow('lic-a', new Date('2026-09-05T12:00:00Z')), false);
+check('license meter resets next UTC day', meter.allow('lic-a', new Date('2026-09-06T00:00:00Z')), true);
+check('license meter is per license', meter.allow('lic-b', new Date('2026-09-05T13:00:00Z')), true);
+check('license default daily cap', DEFAULT_LICENSE_DAILY_CAP, 100);
+
+// ---- paywall: Lemon Squeezy fee math (estimates) ----
+check('ls fee estimate on $5', estimateLsFeeCents(500), 75);
+check('ls net estimate on $5', estimateNetCents(500), 425);
+check('ls fee estimate on $36', estimateLsFeeCents(3600), 230);
+check('ls fee estimate guards bad input', estimateLsFeeCents(NaN), 0);
+
+// ---- paywall: order → sales-ledger mapping ----
+const orderAttrs = {
+  identifier: 'uuid-1',
+  order_number: 42,
+  created_at: '2026-09-05T10:00:00Z',
+  status: 'paid',
+  subtotal: 500,
+  tax: 0,
+  total: 500,
+  currency: 'USD',
+  user_email: 'buyer@example.com',
+  urls: { receipt: 'https://receipt' },
+  test_mode: false,
+  refunded: false,
+};
+const ledgerRow = orderToLedger(orderAttrs);
+check('ledger maps order id', ledgerRow.order_id, 'uuid-1');
+check('ledger maps gross', ledgerRow.gross, 500);
+check('ledger maps fee estimate', ledgerRow.fees, 75);
+check('ledger maps net estimate', ledgerRow.net, 425);
+check('ledger maps buyer email', ledgerRow.buyer_email, 'buyer@example.com');
+check('ledger maps receipt url', ledgerRow.receipt_url, 'https://receipt');
+check('webhook maps order_created', webhookToLedger('order_created', orderAttrs) !== null, true);
+check('webhook maps order_refunded', webhookToLedger('order_refunded', orderAttrs) !== null, true);
+check('webhook ignores subscription events', webhookToLedger('subscription_created', orderAttrs), null);
+
+// ---- paywall: LS webhook signature ----
+const whBody = '{"meta":{"event_name":"order_created"}}';
+const whSecret = 'wh-secret-123';
+const goodSig = createHmac('sha256', whSecret).update(whBody).digest('hex');
+check('webhook signature accepts valid', verifyWebhookSignature(whBody, goodSig, whSecret), true);
+check('webhook signature rejects tampered body', verifyWebhookSignature(`${whBody} `, goodSig, whSecret), false);
+check(
+  'webhook signature rejects wrong secret',
+  verifyWebhookSignature(whBody, createHmac('sha256', 'other').update(whBody).digest('hex'), whSecret),
+  false,
+);
+check('webhook signature rejects missing header', verifyWebhookSignature(whBody, '', whSecret), false);
+
+// ---- paywall: ledger CSV export ----
+const csv = ledgerToCsv([
+  ledgerRow,
+  { ...ledgerRow, buyer_email: 'a,"b",c', refunded: true, refunded_amount: 500, license_id: 'lic-1' },
+]);
+check('csv starts with BOM + header', csv.startsWith('\uFEFFdate,order_number'), true);
+check('csv escapes quotes', csv.includes('"a,""b"",c"'), true);
+check('csv has header + two rows', csv.split('\r\n').length, 3);
 
 if (failures > 0) {
   console.log(`\n${failures} failure(s)`);

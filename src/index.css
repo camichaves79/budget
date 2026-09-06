@@ -1180,3 +1180,63 @@ select.input {
   margin-top: 16px;
   display: inline-block;
 }
+
+/* ---------- Paywall & license ---------- */
+
+.paywall-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.paywall-title {
+  margin: 0 0 var(--pad-sm);
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.paywall-card .btn-block {
+  margin-top: var(--pad-sm);
+}
+
+.paywall-card .field-hint {
+  margin-top: 0;
+}
+
+.paywall-card .error-text {
+  margin: var(--pad-sm) 0 0;
+}
+
+.license-pill {
+  padding: 4px 10px;
+  border-radius: 12px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.key-form {
+  margin-top: var(--pad-sm);
+  padding-top: var(--pad-sm);
+  border-top: 1px solid var(--border);
+}
+
+.key-form .setting-name {
+  margin-bottom: 2px;
+}
+
+.key-form .setting-desc {
+  margin-bottom: var(--pad-sm);
+}
+
+.key-row {
+  display: flex;
+  gap: 8px;
+}
+
+.key-row .input {
+  flex: 1;
+  min-width: 0;
+}

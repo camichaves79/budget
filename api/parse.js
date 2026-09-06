@@ -16,8 +16,14 @@
  * Deploy: Vercel project (Framework Preset: Other, no build command) with
  * environment variables:
  *   GEMINI_API_KEY        — Google AI Studio API key (free tier)
+ *   GEMINI_PAID_API_KEY   — optional paid-tier key (Cloud billing + spend
+ *                           cap) used for licensed parses; falls back to
+ *                           GEMINI_API_KEY until set
  *   BUDGET_PARSE_SECRET   — shared secret; must match VITE_PARSE_SECRET baked
  *                           into the app build
+ *   BUDGET_LICENSE_SECRET — HMAC secret signing license tokens (licensed
+ *                           parses fail with `license-config` until set)
+ *   LICENSE_DAILY_CAP     — optional per-license parse cap/day (default 100)
  *   GEMINI_FALLBACK_MODEL — optional second model tried when the primary is
  *                           quota-blocked (defaults to gemini-3.5-flash-lite,
  *                           which has its own free-tier quota; empty string
@@ -25,6 +31,8 @@
  *
  * See README.md → "Smart entry (AI parsing)" for the full setup.
  */
+
+import { createLicenseMeter, verifyLicenseToken } from './_license.js';
 
 /** Current free-tier Gemini model. Verified 2026-09-05 against this account's
  *  models list; Google recommends gemini-3.6-flash for new users (2.5-flash
@@ -39,6 +47,28 @@ const GEMINI_MODEL = 'gemini-3.6-flash';
  */
 const FALLBACK_MODEL = (process.env.GEMINI_FALLBACK_MODEL ?? 'gemini-3.5-flash-lite').trim() || null;
 const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/';
+
+/**
+ * Optional paid-tier API key (Cloud billing + spend cap) used for licensed
+ * parses; falls back to GEMINI_API_KEY until it is configured. The free tier
+ * cannot back a paid product (ARCHITECTURE.md A14).
+ */
+const PAID_API_KEY = (process.env.GEMINI_PAID_API_KEY ?? '').trim() || null;
+
+/**
+ * Licensed parses run Lite-first with Flash as fallback — the inverse of the
+ * free path, since the Lite model is ~25% cheaper per parse (A14).
+ */
+const LICENSED_MODEL_ORDER = {
+  primary: FALLBACK_MODEL ?? GEMINI_MODEL,
+  fallback: FALLBACK_MODEL ? GEMINI_MODEL : null,
+};
+
+/** HMAC secret that signs license tokens; verified on every licensed parse. */
+const LICENSE_SECRET = (process.env.BUDGET_LICENSE_SECRET ?? '').trim();
+/** Daily parse cap per license (cost bound; instance-local like the limiter). */
+const LICENSE_DAILY_CAP = Number(process.env.LICENSE_DAILY_CAP) || 100;
+const licenseMeter = createLicenseMeter({ limitPerDay: LICENSE_DAILY_CAP });
 
 /**
  * Gemini's free tier is shared, so transient 429/5xx responses are common.
@@ -475,11 +505,14 @@ async function callGemini(model, input, apiKey) {
  * quota is separate, so it usually has headroom left). Never throws.
  * @param {ParseInput} input
  * @param {string} apiKey
+ * @param {{ primary: string, fallback: string | null }} [modelOrder]
  * @returns {Promise<{ ok: true, parsed: Record<string, unknown>[], model: string } | { ok: false, failure: GeminiFailure }>}
  */
-async function parseWithGemini(input, apiKey) {
-  const models = [GEMINI_MODEL];
-  if (FALLBACK_MODEL && FALLBACK_MODEL !== GEMINI_MODEL) models.push(FALLBACK_MODEL);
+async function parseWithGemini(input, apiKey, modelOrder) {
+  const primary = modelOrder?.primary ?? GEMINI_MODEL;
+  const fallback = modelOrder?.fallback ?? FALLBACK_MODEL;
+  const models = [primary];
+  if (fallback && fallback !== primary) models.push(fallback);
 
   let lastFailure = /** @type {GeminiFailure} */ ({ status: 0, code: 'network', retryDelaySeconds: null });
   let transientFailure = null;
@@ -488,7 +521,7 @@ async function parseWithGemini(input, apiKey) {
     for (;;) {
       const result = await callGemini(model, input, apiKey);
       if (result.ok) {
-        if (model !== GEMINI_MODEL) console.error('gemini fallback model used', model);
+        if (model !== primary) console.error('gemini fallback model used', model);
         return { ok: true, parsed: result.parsed, model };
       }
       lastFailure = { status: result.status, code: result.code, retryDelaySeconds: result.retryDelaySeconds };
@@ -517,7 +550,9 @@ async function parseWithGemini(input, apiKey) {
  * instantly without a Gemini call. Codes: `bad-request`, `unauthorized`,
  * `origin-not-allowed`, `rate-limited` (our per-IP limiter), `provider-busy`
  * (Gemini quota/transient after retries + fallback), `provider`,
- * `invalid-response`.
+ * `invalid-response`, `license-invalid` (bad/expired license token),
+ * `license-limit` (the license's daily meter is exhausted),
+ * `license-config` (license secret not configured server-side).
  * @param {import('node:http').IncomingMessage} req
  * @param {import('node:http').ServerResponse} res
  * @returns {Promise<void>}
@@ -569,6 +604,26 @@ export default async function handler(req, res) {
     return;
   }
 
+  // ---- License path: optional signed license → verified + metered ----
+  const licenseToken = typeof raw.license === 'string' && raw.license !== '' ? raw.license : null;
+  let licensed = false;
+  if (licenseToken !== null) {
+    if (LICENSE_SECRET === '') {
+      send(res, 502, { ok: false, code: 'license-config' }, cors);
+      return;
+    }
+    const verified = verifyLicenseToken(licenseToken, LICENSE_SECRET);
+    if (!verified.ok) {
+      send(res, 403, { ok: false, code: 'license-invalid' }, cors);
+      return;
+    }
+    if (!licenseMeter.allow(verified.payload.lic)) {
+      send(res, 429, { ok: false, code: 'license-limit' }, cors);
+      return;
+    }
+    licensed = true;
+  }
+
   const apiKey = process.env.GEMINI_API_KEY ?? '';
   if (apiKey === '') {
     send(res, 502, { ok: false, code: 'provider' }, cors);
@@ -584,7 +639,10 @@ export default async function handler(req, res) {
     return;
   }
 
-  const outcome = await parseWithGemini(input, apiKey);
+  // Licensed parses: paid key (when set) + Lite-first model order (A14).
+  const parseApiKey = licensed && PAID_API_KEY !== null ? PAID_API_KEY : apiKey;
+  const modelOrder = licensed ? LICENSED_MODEL_ORDER : undefined;
+  const outcome = await parseWithGemini(input, parseApiKey, modelOrder);
   if (outcome.ok) {
     cacheSet(responseCache, cacheKey, outcome.parsed);
     send(res, 200, { ok: true, parsed: outcome.parsed }, cors);

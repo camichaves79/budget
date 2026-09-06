@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Period } from '../lib/periods';
 import type { Transaction } from '../lib/types';
 import { useStore } from '../state/store';
+import { useEntitlement } from '../state/entitlement';
 import { categoryById, periodTransactions, totalsFor } from '../lib/selectors';
 import { formatCOP } from '../lib/money';
 import { formatDateFull } from '../lib/dates';
@@ -26,6 +27,7 @@ export function Dashboard({
   isToday?: boolean;
 }) {
   const { data, dispatch } = useStore();
+  const { lastEvent } = useEntitlement();
   const txs = periodTransactions(data, period);
   const totals = totalsFor(data, period);
 
@@ -33,6 +35,26 @@ export function Dashboard({
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [smartOpen, setSmartOpen] = useState(false);
   const [toast, setToast] = useState<ToastData | null>(null);
+
+  // One-shot entitlement events (purchase completed, license lost) surface as
+  // the dashboard's fading toast — e.g. right after the checkout redirect.
+  // Deferred a microtask so the state update lands after the render cycle.
+  const shownEventRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!lastEvent || shownEventRef.current === lastEvent.at) return;
+    shownEventRef.current = lastEvent.at;
+    const { kind, at } = lastEvent;
+    queueMicrotask(() => {
+      setToast({
+        id: at,
+        kind: kind === 'licensed' ? 'success' : 'error',
+        message:
+          kind === 'licensed'
+            ? 'License active ✓ — smart entry is now unlimited.'
+            : 'Your license is no longer valid — smart entry is back to the free plan.',
+      });
+    });
+  }, [lastEvent]);
 
   // Group transactions by date (newest first); track the net per day.
   const groups: Array<[string, Transaction[]]> = [];

@@ -267,6 +267,32 @@ unnecessary cloud/database infrastructure.
 - [x] Confidence grading: doubtful entries (< 0.8) go to pre-filled review, never
       instant-save (2026-09)
 - [x] "Recorded" summary after a batch saves, with edit-anytime guidance (2026-09)
+- [ ] Free allowance counter (10 parses/day, counts submissions not retries)
+- [ ] Paywall card replaces the input at 0 remaining (copy + $5/year checkout +
+      manual-entry pointer)
+- [ ] Licensed requests attach the stored license token; server verifies HMAC +
+      meters (100/day) per parse
+- [ ] Purchase redirect → server-side redeem → license auto-stored; Settings
+      fallback (sign-in restore + paste-key) never the main path
+
+## 15. Paywall gating (2026-09)
+
+Smart entry is free for **10 parses/day** (a submission counts once; the automatic
+~2s retry does not). When the daily allowance is exhausted and no license is stored,
+the smart sheet shows a **paywall card** instead of the input:
+
+- Copy: the user has used today's 10 free smart entries (they reset at midnight).
+- Primary action: **"Unlock unlimited smart entry — $5/year"** → Lemon Squeezy
+  checkout overlay (fallback: open in Safari/tab), redirect back with the order id.
+- Secondary path stays visible: "Enter manually instead" — manual entry always works.
+
+Licensed users never see the card: the stored license (HMAC-signed server-side,
+verified on every parse, 100/day meter) marks the sheet "Unlimited" and parse
+requests attach the token. The purchase path is automatic — redirect → redeem at
+`/api/license/redeem` → token stored → entitlement bound to the signed-in Google
+account (restored on any device/reinstall). License management lives in Settings →
+License (status, sign in/out, paste-key recovery fallback — never the main path).
+Details: `ARCHITECTURE.md` A12–A14; ops checklist: `skills/paywall-ops.md`.
 
 ## Definition of Done
 

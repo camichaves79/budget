@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { Transaction, TxType } from '../lib/types';
 import { useStore } from '../state/store';
+import { useEntitlement } from '../state/entitlement';
 import { parseUtterance, needsReview } from '../lib/parseService';
 import type { ParsedDraft } from '../lib/parseService';
 import { formatCOP } from '../lib/money';
 import { formatDateShort, todayISO } from '../lib/dates';
 import { TransactionForm } from './TransactionForm';
+import { PaywallCard } from './PaywallCard';
 
 interface Props {
   onClose: () => void;
@@ -43,6 +45,7 @@ interface RecordedItem {
  */
 export function SmartEntry({ onClose, onToast }: Props) {
   const { data, dispatch } = useStore();
+  const { dropLicense, freeDaily, licensedActive, licenseToken, recordParseUse, remaining } = useEntitlement();
   const [mode, setMode] = useState<'smart' | 'manual'>('smart');
   const [text, setText] = useState('');
   const [parsing, setParsing] = useState(false);
@@ -138,14 +141,21 @@ export function SmartEntry({ onClose, onToast }: Props) {
     }
     setParsing(true);
     setRetrying(false);
+    // One allowance unit per submission (the automatic retry doesn't count
+    // again); licensed users still tick the counter harmlessly.
+    recordParseUse();
     // Transient "busy" errors get one automatic retry inside parseUtterance;
     // the callback flips the label to "Retrying…" while it waits.
     const result = await parseUtterance(utterance, data.categories, {
       onRetry: () => setRetrying(true),
+      license: licenseToken,
     });
     setParsing(false);
 
     if (!result.ok) {
+      // The server rejected the stored license: drop it so the free
+      // allowance (and the paywall) takes over cleanly.
+      if (result.error.kind === 'license') dropLicense();
       onToast('error', result.error.message);
       return;
     }
@@ -377,6 +387,11 @@ export function SmartEntry({ onClose, onToast }: Props) {
     );
   }
 
+  // ---- Allowance exhausted, no license: the paywall card ----
+  if (!licensedActive && remaining <= 0) {
+    return <PaywallCard onClose={onClose} onManual={() => setMode('manual')} />;
+  }
+
   // ---- Natural-language input ----
   return (
     <form onSubmit={submit}>
@@ -408,6 +423,7 @@ export function SmartEntry({ onClose, onToast }: Props) {
 
       <p className="field-hint smart-disclosure">
         Your text is sent to the app's parsing service. Budget data stays on this device.
+        {licensedActive ? ' Smart entry is unlimited with your license.' : ` ${remaining} of ${freeDaily} free entries left today.`}
       </p>
     </form>
   );

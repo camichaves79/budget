@@ -24,6 +24,12 @@ and (except for smart entry) never leaves the device.
   resilience: transient Gemini 429/5xx are retried with backoff, quota-blocked
   calls fall back to `gemini-3.5-flash-lite` (own free quota), and successful
   parses are cached per warm instance (1h) so retries skip Gemini entirely.
+- **Paywall backend (2026-09, branch `smart-entry-paywall`):** the same Vercel
+  project gains `/api/license/*` (redeem / lookup / check), `/api/webhooks/ls`
+  and `/api/ledger/export`; Firebase Auth (Google) + Firestore hold identity,
+  entitlement and the sales ledger (admin-SDK writes only, client never touches
+  Firestore). Lemon Squeezy is the merchant of record. Ops checklist:
+  `skills/paywall-ops.md`.
 
 ## 2. Product scope & confirmed decisions
 
@@ -45,7 +51,15 @@ and (except for smart entry) never leaves the device.
 - **Budgets** tab: monthly limit per expense category, progress bars, over-budget
   highlighting, pinned period selector + summary, scrolling category lists
 - **Settings** tab: category management (add / edit / delete), JSON export / import,
-  two-step reset
+  two-step reset, **License** section (smart-entry status, sign in with Google,
+  paste-key recovery fallback)
+- **Smart-entry paywall (2026-09):** 10 free parses/day; beyond that, smart entry
+  invites the user to buy a **$5/year** license through a Lemon Squeezy checkout
+  overlay. After payment the app redeems the order id server-side for an
+  HMAC-signed license, stores it automatically, and binds it to the signed-in
+  account (restored on any device or reinstall). Server-side sales ledger +
+  accountant CSV/JSON export. See `ARCHITECTURE.md` A12–A14 and
+  `skills/paywall-ops.md`.
 - COP currency, English UI, single user, offline-first (except smart entry)
 
 **Confirmed decisions:**
@@ -66,10 +80,20 @@ and (except for smart entry) never leaves the device.
   self-assessed). `needsReview` = no category **or** confidence <
   `REVIEW_CONFIDENCE_THRESHOLD` (**0.8**, user-chosen). Missing confidence counts as
   1 (behaves like before); malformed counts as 0 (always review).
+- **Paywall (2026-09, approved):** price **$5/year**; free allowance 10 parses/day;
+  Lemon Squeezy as MoR (5% + $0.50/txn); license HMAC-signed server-side, verified
+  on every parse with a 100/day meter; Firebase Auth (Google now, Apple later —
+  needs a $99/yr Apple Developer account, config-only change); licensed tier runs
+  on a paid Gemini key with `gemini-3.5-flash-lite` primary + `gemini-3.6-flash`
+  fallback. The Settings paste-key is a recovery fallback only, never the main
+  path. Cost model + scale math live in `skills/paywall-ops.md`.
 
 ## 3. Tech stack & tooling
 
 - Vite 8 (Rolldown-based) + React 19 + TypeScript 6, plain CSS (no framework)
+- Backend deps: `firebase-admin` (Node, server-side only; Vercel installs root
+  deps). Client dep: `firebase` (auth module only, modular imports) — the one
+  deliberate dependency addition, justified by A13.
 - No router, no UI library, no icon library (inline stroke SVGs)
 - Lint: `oxlint` · Tests: hand-rolled smoke suite (`tests/smoke.ts`, ~157 checks)
 - npm scripts: `dev` · `build` (tsc -b && vite build) · `lint` · `preview` ·
@@ -105,13 +129,29 @@ src/
                     # (LLM-output trust boundary, array of 1–20 elements),
                     # needsReview (confidence < 0.8 or no category),
                     # one automatic retry (~2s) on transient busy/provider errors
+                    # (licensed requests attach the stored license token)
+    quota.ts       # free allowance: 10 parses/day counter (localStorage, resets
+                    # at local midnight) — UX counter, NOT server security
+    license.ts     # license token type + payload parse + expiry check (display/
+                    # gating only; the server verifies the HMAC on every parse)
+    licenseService.ts # /api/license/* calls: redeem(orderId), lookup(idToken),
+                    # check(key); stores the license in localStorage
+    auth.ts        # lazy Firebase Auth init (env-configured), Google redirect
+                    # sign-in, getRedirectResult, idToken provider
+    checkout.ts    # Lemon Squeezy overlay loader (lemonsqueezy.js) + fallback
+                    # to top-level redirect; builds embed URL from VITE_CHECKOUT_URL
   state/store.tsx   # Context + useReducer, auto-saves to localStorage on every change
+  state/entitlement.tsx # EntitlementProvider: license token, quota remaining,
+                    # auth user; actions: recordParseUse, applyLicense,
+                    # signIn/signOut/restore
   components/       # TabBar, Sheet (className prop + keyboard inset), ConfirmDialog,
                     # ProgressBar, AmountInput (floating-label variant), PeriodNav,
                     # EmptyState, TransactionForm (submitLabel prop),
                     # SmartEntry (smart input + instant save + review fallback +
                     # batch flow: instant-save confident items, queue the rest
                     # through review, then a "Recorded ✓" summary),
+                    # PaywallCard (allowance-exhausted card: copy + LS checkout
+                    # button + manual-entry pointer),
                     # FloatField (label-inside-box pattern), Toast (fading feedback)
   pages/            # Dashboard.tsx (Cash Flow + smart sheet + toast), Budgets.tsx,
                     # Settings.tsx
@@ -121,6 +161,23 @@ api/parse.js        # Vercel Function (route /api/parse): Gemini proxy. Plain JS
                     # Shared-secret header + origin allow-list + per-IP rate limit
                     # (40/10min) + Gemini retry/backoff + fallback model +
                     # warm-instance response cache (1h TTL).
+                    # License path: optional signed license in the body → HMAC
+                    # verify + 100/day per-license meter → paid-key model order
+                    # (Lite primary, Flash fallback).
+api/_license.js     # pure helpers shared by the functions: sign/verify license
+                    # tokens (HMAC-SHA256), per-license daily meter, LS-fee math,
+                    # order→ledger mapping, ledger→CSV builder, webhook signature
+                    # verification (all smoke-tested)
+api/license.js      # POST /api/license/redeem (order id + optional idToken →
+                    # LS order verified paid → mint + sign license → Firestore
+                    # entitlement/ledger → return token), /api/license/lookup
+                    # (idToken → entitlement → re-signed token),
+                    # /api/license/check (key → verify + payload)
+api/webhooks.js     # POST /api/webhooks/ls: verifies LS X-Signature (HMAC-SHA256
+                    # of raw body), order_created/order_refunded → sales ledger
+api/ledger.js       # GET /api/ledger/export?format=csv|json (x-budget-admin
+                    # header) — accountant export
+api/_firebase.js    # firebase-admin init from FIREBASE_SERVICE_ACCOUNT env (JSON)
 tests/smoke.ts      # logic tests: money, periods, selectors, LLM validators,
                     # microservice helpers (rate limiter, sanitizer, Gemini array
                     # parser, retry policy, response cache), ~157 checks
@@ -214,8 +271,9 @@ in those tight overrides.
 - `npm test` — smoke suite: money format/parse incl. rounding & NBSP, period math,
   ISO date validation, **LLM-output validators** (`validateParsedTransaction`,
   `validateParsedTransactions`, `needsReview`), **microservice helpers** (rate
-  limiter, request sanitizer, Gemini array parser, retry policy, response cache).
-  ~157 checks.
+  limiter, request sanitizer, Gemini array parser, retry policy, response cache),
+  **license/paywall logic** (token sign/verify/meter, free-allowance quota, LS fee
+  math, order→ledger mapping, webhook signature, CSV export). ~201 checks.
 - `npm run build` + `npm run lint` before shipping. Lint has 3 known harmless
   react-refresh warnings (store.tsx exports).
 - `api/parse.js` logic is tested via tests/smoke.ts imports; the handler itself can be
@@ -237,12 +295,21 @@ in those tight overrides.
   poll `/repos/camichaves79/budget/actions/runs` every ~10s until `completed success`.
   Repo secrets `VITE_PARSE_ENDPOINT` / `VITE_PARSE_SECRET` are baked at build time.
 - **Vercel**: Git integration auto-deploys `main` to the `budget-beta-two` project
-  (Framework: Other, no build command). Env vars there: `GEMINI_API_KEY`,
+  (Framework: Other, no build command; root `package.json` deps get installed, so
+  `firebase-admin` resolves for the functions). Env vars there: `GEMINI_API_KEY`,
   `BUDGET_PARSE_SECRET`, optional `GEMINI_FALLBACK_MODEL` (default
-  `gemini-3.5-flash-lite`; empty string disables the fallback). Function URL:
-  `https://budget-beta-two.vercel.app/api/parse`.
+  `gemini-3.5-flash-lite`; empty string disables the fallback) — plus the paywall
+  vars: `BUDGET_LICENSE_SECRET`, `LEMONSQUEEZY_API_KEY`,
+  `LEMONSQUEEZY_WEBHOOK_SECRET`, `LEMONSQUEEZY_STORE_ID`, `FIREBASE_SERVICE_ACCOUNT`
+  (service-account JSON string), `BUDGET_ADMIN_SECRET` (ledger export), optional
+  `LICENSE_DAILY_CAP` (default 100). Function URLs:
+  `https://budget-beta-two.vercel.app/api/parse` + `/api/license/*`,
+  `/api/webhooks/ls`, `/api/ledger/export`.
 - Local `.env` (gitignored) holds `VITE_PARSE_ENDPOINT` + `VITE_PARSE_SECRET` for dev;
-  pattern in `.env.example`.
+  pattern in `.env.example`. New client vars: `VITE_API_BASE` (license endpoints),
+  `VITE_FIREBASE_API_KEY` / `VITE_FIREBASE_AUTH_DOMAIN` /
+  `VITE_FIREBASE_PROJECT_ID` / `VITE_FIREBASE_APP_ID`, `VITE_CHECKOUT_URL`
+  (LS buy link). Same names in repo secrets for the Pages build.
 - To trigger a Pages rebuild without code changes (e.g. after setting repo secrets),
   push a trivial commit (docs touch) — workflow_dispatch re-runs need a token.
 
@@ -273,12 +340,27 @@ in those tight overrides.
 - Dates are local-only ISO strings (`YYYY-MM-DD`); no timezone math.
 - Installing sharp or other temp tools: use the `npm_config_cache` workaround,
   `--no-save`, and check `package-lock.json` is untouched afterwards.
+- **Lemon Squeezy**: link variables use square brackets (`[order_id]`,
+  `[license_key]` — not `{…}`); orders are fetched by NUMERIC id (`order_number`
+  is separate); the checkout overlay script is `app.lemonsqueezy.com/js/lemon.js`
+  with `LemonSqueezy.Url.Open(url)` (no `Checkout.Open`); the overlay has a known
+  Safari 404 issue → the app falls back to a tab/redirect. Sub-$10 products may
+  need LS "custom pricing" support; payouts have a $50 minimum and a 13-day hold.
+- **Firebase**: `signInWithRedirect` is broken on GitHub Pages domains by
+  third-party-storage blocking (Safari 16.1+/Chrome 115+) → the app is
+  popup-first with redirect fallback. `firebase-admin@14` dropped the legacy
+  `admin.*` namespace and needs **Node ≥ 22** on Vercel; Firestore admin API is
+  method-style (`db.collection().doc().set/get`), not `setDoc/getDoc`.
+- **License tokens are bearer tokens** verified server-side on every parse
+  (100/day meter); client-side checks are display-only. Firestore is admin-SDK
+  only (rules deny all client access). The free-allowance counter is cosmetic —
+  resetting localStorage resets it (A12).
 - The user approves UI/behavior changes **after** testing in prod — ship on request,
   expect "I'll approve" flow; keep deploys verified and report bundle/branch state.
 
 ## 10. Current state & next-session context
 
-Everything below is **shipped and live** (main ≈ `7f8ca31`, 2026-09-05):
+Everything below is **shipped and live** (main ≈ `82316cd`, 2026-09-05):
 
 - Smart entry end-to-end: PWA → Vercel microservice → Gemini 3.6 Flash → instant save
   with fading toasts; review form only for ambiguous parses. Full spec (revised):
@@ -296,7 +378,15 @@ Everything below is **shipped and live** (main ≈ `7f8ca31`, 2026-09-05):
   pre-filled review, batches end in a "Recorded ✓" summary — **tested and approved
   by the user (2026-09-05)**.
 
+In progress (2026-09-05, uncommitted on branch `smart-entry-paywall`): **smart-entry
+paywall** — ADRs A12–A14 in `ARCHITECTURE.md`; $5/year price approved by the user;
+free 10 parses/day → Lemon Squeezy checkout overlay → redirect-back auto-redeem →
+HMAC license; Firebase Google sign-in + Firestore entitlement/ledger; accountant
+CSV export; paid Gemini key with Lite→Flash model order. Ops/setup checklist:
+`skills/paywall-ops.md`. **Commit/push/ship only when the user says so.**
+
 Candidate next steps (ask the user, don't assume):
-- Nothing queued; the Category | Date side-by-side form row was declined (2026-09).
+- Nothing queued beyond finishing the paywall branch; the Category | Date
+  side-by-side form row was declined (2026-09).
 - Anything else the user raises; always read `skills/speech-entry.md` for the feature
   spec and this file for conventions before coding.

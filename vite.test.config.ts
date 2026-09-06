@@ -8,6 +8,11 @@ export default defineConfig({
     outDir: '.smoke',
     emptyOutDir: true,
     lib: { entry: 'tests/smoke.ts', formats: ['es'] },
-    rollupOptions: { output: { entryFileNames: 'smoke.mjs' } },
+    rollupOptions: {
+      // The smoke bundle runs in Node: keep node:* builtins (crypto etc.)
+      // external so they resolve natively instead of being shimmed.
+      external: (id: string) => id.startsWith('node:'),
+      output: { entryFileNames: 'smoke.mjs' },
+    },
   },
 });

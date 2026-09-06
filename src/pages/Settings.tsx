@@ -5,6 +5,7 @@ import { useStore } from '../state/store';
 import { exportData, validateAppData } from '../lib/importExport';
 import { Sheet } from '../components/Sheet';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { LicenseSection } from '../components/LicenseSection';
 
 export function Settings() {
   const { data, dispatch } = useStore();
@@ -130,6 +131,8 @@ export function Settings() {
           </select>
         </div>
       </div>
+
+      <LicenseSection />
 
       <h2 className="settings-h">About</h2>
       <div className="card">
