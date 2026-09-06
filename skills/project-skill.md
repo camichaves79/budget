@@ -50,8 +50,11 @@ and (except for smart entry) never leaves the device.
   summary (rows + total + edit-anytime hint). Single-entry flow unchanged.
 - **Budgets** tab: monthly limit per expense category, progress bars, over-budget
   highlighting, pinned period selector + summary, scrolling category lists
-- **Settings** tab: category management (add / edit / delete), JSON export / import,
-  two-step reset, **License** section (smart-entry status, sign in with Google,
+- **Categories** tab (2026-09 four-section redesign): category management
+  (add / edit / delete) split out of Settings; bullet-list tab icon;
+  pinned-header layout
+- **Settings** tab: JSON export / import, two-step reset, budget period,
+  **License** section (smart-entry status, sign in with Google,
   paste-key recovery fallback)
 - **Smart-entry paywall (2026-09):** 10 free parses/day; beyond that, smart entry
   invites the user to buy a **$5/year** license through a Lemon Squeezy checkout
@@ -157,7 +160,7 @@ src/
                     # button + manual-entry pointer),
                     # FloatField (label-inside-box pattern), Toast (fading feedback)
   pages/            # Dashboard.tsx (Cash Flow + smart sheet + toast), Budgets.tsx,
-                    # Settings.tsx
+                    # Categories.tsx (category management), Settings.tsx
 api/parse.js        # Vercel Function (route /api/parse): Gemini proxy. Plain JS with
                     # JSDoc (no build step; checked via tsconfig.node checkJs).
                     # Node-style handler(req, res) — Vercel does NOT use Web Request.

@@ -6,6 +6,7 @@ import { TabBar } from './components/TabBar';
 import type { TabKey } from './components/TabBar';
 import { Dashboard } from './pages/Dashboard';
 import { Budgets } from './pages/Budgets';
+import { Categories } from './pages/Categories';
 import { Settings } from './pages/Settings';
 
 export default function App() {
@@ -26,7 +27,7 @@ export default function App() {
   return (
     <div className="app">
       <main
-        className={tab === 'dashboard' || tab === 'budgets' ? 'app-main fixed-main' : 'app-main'}
+        className={tab === 'dashboard' || tab === 'budgets' || tab === 'categories' ? 'app-main fixed-main' : 'app-main'}
         key={tab}
       >
         {tab === 'dashboard' && (
@@ -40,6 +41,7 @@ export default function App() {
         {tab === 'budgets' && (
           <Budgets period={period} onShiftPeriod={shift} onToday={jumpToToday} isToday={isCurrentPeriod(period, startDay)} />
         )}
+        {tab === 'categories' && <Categories />}
         {tab === 'settings' && <Settings />}
       </main>
 

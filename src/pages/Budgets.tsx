@@ -61,7 +61,7 @@ export function Budgets({
 
       <div className="pinned-scroll">
         {cats.length === 0 ? (
-          <EmptyState emoji="🎯" title="No expense categories" hint="Add an expense category in Settings first." />
+          <EmptyState emoji="🎯" title="No expense categories" hint="Add an expense category in the Categories tab first." />
         ) : (
           <>
 
