@@ -37,10 +37,17 @@ jobs:
       - name: Build
         run: npm run build
         env:
-          # Smart-entry parse microservice (baked into the bundle at build time).
-          # Unset secrets build fine — smart entry then shows a "not set up" hint.
+          # Smart-entry parse microservice + paywall/license config (baked into
+          # the bundle at build time). Unset secrets build fine — smart entry
+          # shows a "not set up" hint and the paywall card degrades gracefully.
           VITE_PARSE_ENDPOINT: ${{ secrets.VITE_PARSE_ENDPOINT }}
           VITE_PARSE_SECRET: ${{ secrets.VITE_PARSE_SECRET }}
+          VITE_API_BASE: ${{ secrets.VITE_API_BASE }}
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
+          VITE_CHECKOUT_URL: ${{ secrets.VITE_CHECKOUT_URL }}
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
