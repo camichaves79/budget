@@ -1,9 +1,10 @@
 # Skill — Smart-Entry Paywall & License Ops
 
-> Operating guide for the smart-entry paywall (shipped on `main` ≈ `22227c4`,
-> ADRs A12–A14 in `ARCHITECTURE.md`). Read `skills/project-skill.md` for
-> conventions. **Everything below is verified against Lemon Squeezy and Firebase
-> docs as of 2026-09** — cite this file when the UI drifts.
+> Operating guide for the smart-entry paywall (shipped on `main` ≈ `b5094b5`,
+> **user-approved 2026-09-06**, ADRs A12–A14 in `ARCHITECTURE.md`). Read
+> `skills/project-skill.md` for conventions. **Everything below is verified
+> against Lemon Squeezy and Firebase docs as of 2026-09** — cite this file
+> when the UI drifts.
 
 ## 1. What the feature does
 
@@ -90,7 +91,7 @@ Collections created at runtime (never touch them by hand): `licenses/{lic}`,
 | Var | Purpose |
 |---|---|
 | `GEMINI_API_KEY` | free-tier key (existing) |
-| `GEMINI_PAID_API_KEY` | paid key (Cloud billing + spend cap) for licensed parses; falls back to the free key until set |
+| `GEMINI_PAID_API_KEY` | paid key (Cloud billing + spend cap) for licensed parses; falls back to the free key until set, and at runtime when the paid key is rejected with a config-type error (400/401/403/404) |
 | `GEMINI_FALLBACK_MODEL` | existing; licensed parses run this model as PRIMARY |
 | `BUDGET_PARSE_SECRET` | existing; also guards the license endpoints |
 | `BUDGET_LICENSE_SECRET` | HMAC secret signing license tokens — **generate fresh, keep private** |
@@ -137,6 +138,13 @@ curl -s -X POST https://budget-beta-two.vercel.app/api/webhooks/ls \
 Then: buy the $5 product in **test mode** from the phone → tap the confirmation
 button → app should toast "License active ✓"; check Settings → Smart entry and
 the CSV row.
+
+**Firestore check (non-negotiable):** after a successful redeem, the Firebase
+console → Firestore must show the `sales`, `licenses` and `entitlements`
+collections (each with at least one doc). If the console stays empty, the REST
+write path is failing silently — stop and diagnose per §9 before treating the
+feature as working (restore alone is NOT proof: it self-heals from the LS
+orders API without Firestore).
 
 ## 7. Operations
 
@@ -194,3 +202,15 @@ Firebase with the Service ID + Team ID + key. No client code change
   mints/entitles on `status: 'paid'`.
 - **License tokens are bearer tokens** (meter-bounded); keep them out of logs.
 - Never log buyer emails or license keys outside the ledger collection.
+- **Silent Firestore write failures (2026-09, the reason this guide now
+  insists on the §6 Firestore check):** `api/_firebase.js` swallows write/read
+  failures by design (never throws), so a redeem can mint and return a VALID
+  license while the ledger/license/entitlement docs never land. Vercel log
+  lines tell the two cases apart — `firebase: token endpoint <status>` = the
+  service-account JWT was rejected at the OAuth endpoint (revoked, wrong, or
+  mismatched key after rotation; re-paste + redeploy), `firebase: commit
+  failed <status>` = Firestore answered the commit with an error (database
+  missing/never created — setup step 4 — or project/permission mismatch).
+  Restore keeps working in both cases because `/api/license/lookup`
+  self-heals from the Lemon Squeezy orders API, which is exactly why this
+  failure is invisible to the user and must be checked in the console.

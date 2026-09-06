@@ -106,7 +106,7 @@ and (except for smart entry) never leaves the device.
   the bundler to lose. Client dep: `firebase` (auth module only, modular
   imports) — the one deliberate dependency addition, justified by A13.
 - No router, no UI library, no icon library (inline stroke SVGs)
-- Lint: `oxlint` · Tests: hand-rolled smoke suite (`tests/smoke.ts`, ~157 checks)
+- Lint: `oxlint` · Tests: hand-rolled smoke suite (`tests/smoke.ts`, 220 checks)
 - npm scripts: `dev` · `build` (tsc -b && vite build) · `lint` · `preview` ·
   `test` (bundles tests/smoke.ts via `vite.test.config.ts` into `.smoke/` and runs it)
 - **Local npm quirk:** the global npm cache in this environment has permission issues.
@@ -194,7 +194,7 @@ api/_firebase.js    # zero-dependency Firebase REST client: FIREBASE_SERVICE_ACC
                     # accounts:lookup (email → uid)
 tests/smoke.ts      # logic tests: money, periods, selectors, LLM validators,
                     # microservice helpers (rate limiter, sanitizer, Gemini array
-                    # parser, retry policy, response cache), ~157 checks
+                    # parser, retry policy, response cache), 220 checks
 public/             # favicon.svg (mint + 💰), manifest.webmanifest ("$5 Budget"),
                     # icon-192/512.png, apple-touch-icon.png (banknote vector icon)
 .github/workflows/deploy.yml  # GitHub Pages on push to main; bakes VITE_* repo secrets
@@ -288,7 +288,7 @@ in those tight overrides.
   `validateParsedTransactions`, `needsReview`), **microservice helpers** (rate
   limiter, request sanitizer, Gemini array parser, retry policy, response cache),
   **license/paywall logic** (token sign/verify/meter, free-allowance quota, LS fee
-  math, order→ledger mapping, webhook signature, CSV export). ~201 checks.
+  math, order→ledger mapping, webhook signature, CSV export). 220 checks.
 - `npm run build` + `npm run lint` before shipping. Lint has 3 known harmless
   react-refresh warnings (store.tsx exports).
 - `api/parse.js` logic is tested via tests/smoke.ts imports; the handler itself can be
@@ -301,7 +301,8 @@ in those tight overrides.
 - One feature branch per change, created from `main` (user picks the name; recent:
   `speech-entry`, `smart-entry-ux`, `ui-miscelaneous-0002…0007`, `ios-keyboard-fixes`,
   `floating-field-labels`, `select-chevron-fix`, `icon-color`, `parse-resilience`,
-  `multi-transaction-entry`).
+  `multi-transaction-entry`, `paid-key-fallback`, `four-sections`,
+  `plus-sing-relocation`).
 - **Only commit/push when the user explicitly says so.**
 - **"ship"** = commit → push branch → fast-forward merge into `main` → push → delete
   branch locally and remotely → verify deploys. History stays linear (no merge commits).
@@ -380,7 +381,7 @@ in those tight overrides.
 
 ## 10. Current state & next-session context
 
-Everything below is **shipped and live** (main ≈ `ffe229c`, 2026-09-05):
+Everything below is **shipped and live** (main ≈ `b5094b5`, 2026-09-06):
 
 - Smart entry end-to-end: PWA → Vercel microservice → Gemini 3.6 Flash → instant save
   with fading toasts; review form only for ambiguous parses. Full spec (revised):
@@ -395,34 +396,43 @@ Everything below is **shipped and live** (main ≈ `ffe229c`, 2026-09-05):
   automatic client retry ("Retrying…") — approved by the user.
 - Multi-transaction smart entry: one utterance → an array of transactions;
   confident entries instant-save, doubtful (< 0.8) or ambiguous ones queue through
-  pre-filled review, batches end in a "Recorded ✓" summary — **tested and approved
-  by the user (2026-09-05)**.
-- **Smart-entry paywall (shipped 2026-09-05, NOT yet user-approved):** 10 free
-  parses/day → paywall card → **Google sign-in required to buy** (`ffe229c`:
-  every license account-bound; server rejects unsigned redeems with
-  `sign-in-required`) → $5/year Lemon Squeezy checkout overlay → redirect-back
-  auto-redeem → HMAC license (server-verified per parse, 100/day meter);
-  Firebase sign-in with license binding/restore; sales ledger + accountant
-  CSV/JSON export; licensed tier runs Lite→Flash on a paid Gemini key
-  (`GEMINI_PAID_API_KEY` set). ADRs A11–A14 in `ARCHITECTURE.md`; ops in
-  `skills/paywall-ops.md`; tax evidence in `TAX.md`.
-  **OPEN BUG (the reason it's unapproved):** the user's test-mode purchase
-  redeems with a generic failure — the app parks the reference ("Purchase
-  waiting") but `/api/license/redeem` fails somewhere in the paid path. Error
-  surfacing is deployed (`85a5ae8`: redeem returns `{code:'internal', reason}`
-  on crash; client shows "Server error: …"). **Next session: have the user
-  sign in, tap "Complete purchase", capture that reason, and fix.** Prime
-  suspect: the hand-rolled Firestore REST client (`api/_firebase.js` — token
-  endpoint with the rotated service-account key, or the commit REST shape),
-  then the LS test-mode license-key/order path, then the JWKS id-token verify
-  (now exercised because sign-in is mandatory). Deployment history notes: the
-  firebase-admin package was replaced by that REST client after Vercel's
-  tracing silently dropped it (`f9c6e8c`); a service-account JSON was once
-  shipped in the public bundle and was rotated (`a4972e2`, guard in
-  `src/lib/auth.ts`).
+  pre-filled review, batches end in a "Recorded ✓" summary — approved by the user.
+- **Smart-entry paywall — APPROVED by the user (2026-09-06):** 10 free parses/day
+  → paywall card → **Google sign-in required to buy** (every license
+  account-bound; server rejects unsigned redeems with `sign-in-required`) →
+  $5/year Lemon Squeezy checkout overlay → redirect-back auto-redeem → HMAC
+  license (server-verified per parse, 100/day meter) → Firebase Auth +
+  Firestore binding/restore → sales ledger + accountant CSV/JSON export →
+  licensed tier runs Lite→Flash on a paid Gemini key. ADRs A11–A14 in
+  `ARCHITECTURE.md`; ops in `skills/paywall-ops.md`; tax evidence in `TAX.md`.
+  The two bugs found during validation, both fixed and shipped:
+  (1) `FIREBASE_SERVICE_ACCOUNT` had a mangled `private_key` (flattened
+  newlines) → RSA sign threw → redeem 500; fixed by re-pasting + redeploy.
+  (2) `GEMINI_PAID_API_KEY` was rejected 400 by Gemini (invalid key/project),
+  which bricked licensed parses → `98d0757` added the paid-key→free-key
+  fallback on config errors (A14 safety floor).
+- **Four-section redesign (`5700d69`, user-approved):** Categories split out of
+  Settings into its own tab — Cash Flow · Budgets · Categories · Settings;
+  Categories gets the bullet-list icon + pinned layout; Settings keeps Data,
+  Budget period, License, About.
+- **Global + in the tab bar (`b5094b5`, user-approved):** the add button is a
+  circular "+" centered on the tab bar (visible in all four sections), its
+  horizontal diameter aligned with the bar's upper side; tapping it switches
+  to Cash Flow and opens smart entry. Old bottom-right FAB removed.
+
+**OPEN FOLLOW-UP (user deferred, not blocking):** the Firebase console shows
+NO collections — the Firestore write path (ledger / licenses / entitlements)
+has not been verified in prod. Restore still works because
+`/api/license/lookup` self-heals from the Lemon Squeezy orders API, so the
+user experience never noticed; the accountant CSV will be empty until fixed.
+Diagnose via Vercel logs (`firebase: token endpoint …` = service-account
+OAuth rejected vs `firebase: commit failed …` = Firestore REST) and confirm
+the Firestore database exists — `skills/paywall-ops.md` §4/§9.
 
 Candidate next steps (ask the user, don't assume):
+- Fix the Firestore write path (see the open follow-up above).
+- Re-paste a fresh `GEMINI_PAID_API_KEY` (current one rejected 400; billing was
+  enabled but the key value itself appears wrong).
 - Apple sign-in (config-only; needs a $99/yr Apple Developer account).
-- Set `GEMINI_PAID_API_KEY` on Vercel once the user enables Cloud billing.
 - Anything else the user raises; always read `skills/speech-entry.md` for the
   feature spec and this file for conventions before coding.

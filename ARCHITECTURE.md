@@ -1,8 +1,9 @@
 # Architecture — $5 Budget App
 
 > **Living record** — updated whenever the app ships a meaningful change.
-> Last updated: **2026-09-05** (main ≈ `22227c4`; smart-entry paywall shipped,
-> ADRs A11–A14 below).
+> Last updated: **2026-09-06** (main ≈ `b5094b5`; smart-entry paywall
+> **user-approved** after end-to-end validation; paid-key→free-key fallback
+> shipped; four-section tab bar with the + add button in the bar).
 > Read alongside `skills/project-skill.md` (conventions + current state) and
 > `skills/speech-entry.md` (smart-entry spec). Keep this file honest: if a
 > trade-off changes, update the table, not just the date.
@@ -60,7 +61,7 @@ iPhone PWA ──HTTPS──▶ GitHub Pages (static, CDN)                    [f
 | A11 | Rejected: bring-your-own-key (BYOK) and the fixed 50-user capacity plans | BYOK was built then abandoned (stash parked); quota-cap option reverted; the paywall (A12) is the chosen monetization path | Rejected → superseded by A12 |
 | A12 | Smart-entry paywall: 10 free parses/day (client-side counter, UX not security), then a **$5/year** license sold through Lemon Squeezy (MoR, 5% + $0.50/txn) with an in-app checkout overlay; the post-purchase redirect carries the order id and the app auto-redeems it server-side into an **HMAC-signed license** (verified on every parse, 100/day meter); **buying always requires Google sign-in — every license is account-bound at mint time**; a Settings paste-key is a recovery fallback only | Price chosen for brand fit + positive expected earnings at 50+ users (~40–70% ROI, break-even ~10–12 payers); license minting stays server-side so keys can't be forged client-side; mandatory sign-in makes restore airtight and kills the unsigned-buyer edge cases | Accepted |
 | A13 | Identity for license binding: **Firebase Auth** (Google sign-in now; Apple deferred — $99/yr developer account, config-only later) + **Firestore** for entitlements and the sales ledger, written via a zero-dependency REST client (service-account JWT → Firestore REST; the client never touches Firestore) | Firebase over Supabase: $0 Spark tier with no project-pause risk and the same Google account as Gemini; cloud holds identity/entitlement/purchase metadata only — budget data stays on-device | Accepted |
-| A14 | Licensed tier runs on a **paid Gemini key** with `gemini-3.5-flash-lite` primary and `gemini-3.6-flash` fallback (inverted from the free tier), and a cache-friendly system prompt ready for context-caching savings | Free-tier quotas can't back a paid product; Lite ≈25% cheaper per parse and is already the proven fallback; paid tier also opts out of training use | Accepted |
+| A14 | Licensed tier runs on a **paid Gemini key** with `gemini-3.5-flash-lite` primary and `gemini-3.6-flash` fallback (inverted from the free tier), and a cache-friendly system prompt ready for context-caching savings. **Safety floor (2026-09-06):** when the paid key is rejected with a config-type error (400/401/403/404 — invalid key, permissions, billing, unknown model), the parse retries with the free key so a broken paid key never bricks licensed parses; quota/transient failures stay on the paid key | Free-tier quotas can't back a paid product; Lite ≈25% cheaper per parse and is already the proven fallback; paid tier also opts out of training use; the fallback keeps paying users working through key-rotation/billing mishaps (validated in prod) | Accepted |
 
 ## 3. The "-ilities" — where we stand
 
@@ -73,7 +74,7 @@ iPhone PWA ──HTTPS──▶ GitHub Pages (static, CDN)                    [f
 | **Privacy** | Strong | Transaction history never leaves the device; only utterance + category list are sent; logs carry metadata only (status/model/retryDelay). The cloud now stores identity, entitlement and purchase metadata (A13) — budget data still never leaves the device. Free-tier Gemini data-use caveat remains; the licensed tier uses a paid key (the opt-out). |
 | **Maintainability** | Good | ~2k LOC app + one 600-line function; pure logic modules; docs in `skills/`; conventions in `project-skill.md`. |
 | **Observability** | Weakest link | Vercel logs are metadata-only and ad-hoc; no metrics, no alerting, no error budget. The sales ledger + per-license usage meters improve visibility; diagnosis still = user report + log grep. |
-| **Testability** | Solid for logic, thin for UI | 157 smoke checks cover money/periods/validators/microservice helpers; no UI test framework; handler smoke-testable via fetch stubbing. |
+| **Testability** | Solid for logic, thin for UI | 220 smoke checks cover money/periods/validators/microservice helpers/license+paywall logic (incl. the paid-key fallback); no UI test framework; handler smoke-testable via fetch stubbing. |
 | **Cost efficiency** | $5/yr license, ~40–70% ROI | Infra stays free at current scale; operating cost is almost entirely Gemini usage. The free tier's cross-subsidy is the scale risk (A12, §5) — free users' Gemini ≈ $0.14/user/yr vs $4.25 net per payer. |
 | **Portability** | Medium | Provider swap is one function + one client module; storage adapter swappable; backend pinned to Vercel's Node handler signature (`handler(req, res)`). |
 
@@ -105,6 +106,12 @@ iPhone PWA ──HTTPS──▶ GitHub Pages (static, CDN)                    [f
     quota (planned at scale).
 12. **Manual renewal**: v1 licenses expire 365 days after purchase; revenue depends on
     users renewing (auto-renew subscriptions later).
+13. **Firestore write path unverified in prod (2026-09-06)**: at approval the Firestore
+    console showed no collections, yet redeem/restore succeeded — restore rides the
+    Lemon Squeezy self-heal path (orders-by-email → re-mint) so the user experience
+    never noticed. The sales ledger is empty until this is fixed. Diagnose via Vercel
+    `firebase: token endpoint …` (service-account OAuth rejected) vs `firebase: commit
+    failed …` (Firestore API) log lines; see `skills/paywall-ops.md` §9.
 
 ## 5. Where we might go next (as the user base grows)
 
