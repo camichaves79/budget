@@ -28,10 +28,12 @@ calculations.
 
 ## 1. Transaction Button (revised)
 
-- The existing "+" transaction button (the FAB on Cash Flow) opens smart entry.
+- The "+" transaction button opens smart entry. It lives in the **tab bar** and is
+  visible in all four sections (2026-09 relocation): a circular button centered on
+  the bar, its horizontal diameter aligned with the bar's upper side; tapping it
+  switches to Cash Flow and opens the input.
 - Keep it a **plain "+"** — a lightning overlay was tried and removed (2026-09);
   the button should not be visually cluttered.
-- Preserve the existing position, size, behavior, and visual language.
 - Provide an accessible label such as "Add transaction". Do not rely on the glyph alone.
 
 ## 2. Smart Transaction Input

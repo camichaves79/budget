@@ -36,7 +36,8 @@ and (except for smart entry) never leaves the device.
 **In scope (v1):**
 - **Cash Flow** tab: period summary (Income / Expenses / Balance), day-grouped
   transaction list (add / edit / delete), pinned header + internally scrolling list
-- **Smart entry** (AI-assisted): the "+" FAB opens a natural-language field; dictate
+- **Smart entry** (AI-assisted): the tab-bar "+" button (see below) opens a
+  natural-language field; dictate
   via the native keyboard mic (NO SpeechRecognition API). **Submit** → parse
   microservice → **instant save + fading toast** when the parse is complete;
   ambiguous parses (no mappable category) fall back to the review form
@@ -77,7 +78,11 @@ and (except for smart entry) never leaves the device.
 - Savings goals feature was **removed entirely** (page, tab, state, types, CSS, docs).
 - Demo transaction seeder was **removed**.
 - No app header bar (tab bar is the navigation identity).
-- FAB is a **plain "+"** — a lightning overlay was tried and removed (2026-09).
+- The add button is a **plain "+"** (2026-09): a circular button centered on the
+  tab bar (visible in all four sections), its horizontal diameter aligned with the
+  bar's upper side so the top half floats above it; tapping it switches to Cash
+  Flow and opens smart entry. A lightning overlay and the old bottom-right FAB
+  were tried/removed.
 - The parse button label is **"Submit"**, not "Parse" (user-friendly copy).
 - **Certainty grading:** each parsed element carries a `confidence` grade (0–1,
   self-assessed). `needsReview` = no category **or** confidence <
@@ -195,7 +200,8 @@ public/             # favicon.svg (mint + 💰), manifest.webmanifest ("$5 Budge
 .github/workflows/deploy.yml  # GitHub Pages on push to main; bakes VITE_* repo secrets
 ```
 
-**Smart-entry flow:** FAB → SmartEntry textarea → `parseUtterance(utterance,
+**Smart-entry flow:** tab-bar + (any section → Cash Flow) → SmartEntry textarea →
+`parseUtterance(utterance,
 categories)` → POST microservice → Gemini `gemini-3.6-flash` (free tier,
 `thinkingLevel: 'low'` so hidden thoughts don't eat the output budget) → structured
 JSON **array** (one element per transaction, each with a `confidence` grade) →

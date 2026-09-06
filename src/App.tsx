@@ -14,6 +14,10 @@ export default function App() {
   const startDay = data.periodStartDay;
   const [tab, setTab] = useState<TabKey>('dashboard');
   const [period, setPeriod] = useState<Period>(() => currentPeriod(startDay));
+  // Smart-entry sheet, now owned here: the global tab-bar + opens it from
+  // any section (the tab switches to Cash Flow first, where the sheet +
+  // toast live).
+  const [smartOpen, setSmartOpen] = useState(false);
 
   // When the period start day changes in Settings, snap back to the current
   // period under the new rule.
@@ -23,6 +27,10 @@ export default function App() {
 
   const shift = (delta: number) => setPeriod((p) => shiftPeriod(p, delta));
   const jumpToToday = () => setPeriod(currentPeriod(startDay));
+  const openAdd = () => {
+    setTab('dashboard');
+    setSmartOpen(true);
+  };
 
   return (
     <div className="app">
@@ -36,6 +44,8 @@ export default function App() {
             onShiftPeriod={shift}
             onToday={jumpToToday}
             isToday={isCurrentPeriod(period, startDay)}
+            smartOpen={smartOpen}
+            onCloseSmart={() => setSmartOpen(false)}
           />
         )}
         {tab === 'budgets' && (
@@ -45,7 +55,7 @@ export default function App() {
         {tab === 'settings' && <Settings />}
       </main>
 
-      <TabBar active={tab} onChange={setTab} />
+      <TabBar active={tab} onChange={setTab} onAdd={openAdd} />
     </div>
   );
 }

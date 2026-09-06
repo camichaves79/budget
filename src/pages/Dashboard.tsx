@@ -20,11 +20,15 @@ export function Dashboard({
   onShiftPeriod,
   onToday,
   isToday,
+  smartOpen,
+  onCloseSmart,
 }: {
   period: Period;
   onShiftPeriod: (delta: number) => void;
   onToday: () => void;
   isToday?: boolean;
+  smartOpen: boolean;
+  onCloseSmart: () => void;
 }) {
   const { data, dispatch } = useStore();
   const { lastEvent } = useEntitlement();
@@ -33,7 +37,6 @@ export function Dashboard({
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Transaction | null>(null);
-  const [smartOpen, setSmartOpen] = useState(false);
   const [toast, setToast] = useState<ToastData | null>(null);
 
   // One-shot entitlement events (purchase completed, license lost) surface as
@@ -67,10 +70,6 @@ export function Dashboard({
     else groups.push([t.date, [t]]);
   }
 
-  const openAdd = () => {
-    setSmartOpen(true);
-  };
-  const closeSmart = () => setSmartOpen(false);
   const openEdit = (t: Transaction) => {
     setEditing(t);
     setFormOpen(true);
@@ -156,13 +155,9 @@ export function Dashboard({
         )}
       </div>
 
-      <button type="button" className="fab" onClick={openAdd} aria-label="Add transaction">
-        +
-      </button>
-
-      <Sheet className="sheet-tight" open={smartOpen} onClose={closeSmart} title="New transaction">
+      <Sheet className="sheet-tight" open={smartOpen} onClose={onCloseSmart} title="New transaction">
         <SmartEntry
-          onClose={closeSmart}
+          onClose={onCloseSmart}
           onToast={(kind, message) => setToast({ id: Date.now(), kind, message })}
         />
       </Sheet>
