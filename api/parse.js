@@ -18,7 +18,10 @@
  *   GEMINI_API_KEY        — Google AI Studio API key (free tier)
  *   GEMINI_PAID_API_KEY   — optional paid-tier key (Cloud billing + spend
  *                           cap) used for licensed parses; falls back to
- *                           GEMINI_API_KEY until set
+ *                           GEMINI_API_KEY until set, and again at runtime
+ *                           when it is rejected with a config-type error
+ *                           (400/401/403/404 — invalid key, permissions,
+ *                           billing, unknown model)
  *   BUDGET_PARSE_SECRET   — shared secret; must match VITE_PARSE_SECRET baked
  *                           into the app build
  *   BUDGET_LICENSE_SECRET — HMAC secret signing license tokens (licensed
@@ -50,8 +53,11 @@ const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/';
 
 /**
  * Optional paid-tier API key (Cloud billing + spend cap) used for licensed
- * parses; falls back to GEMINI_API_KEY until it is configured. The free tier
- * cannot back a paid product (ARCHITECTURE.md A14).
+ * parses; falls back to GEMINI_API_KEY until it is configured, and again at
+ * runtime when the paid key is rejected with a config-type error (400/401/
+ * 403/404 — invalid key, permissions, billing, unknown model): the free key
+ * then carries the parse so a broken paid key never bricks licensed parses.
+ * The free tier cannot back a paid product (ARCHITECTURE.md A14).
  */
 const PAID_API_KEY = (process.env.GEMINI_PAID_API_KEY ?? '').trim() || null;
 
@@ -542,6 +548,40 @@ async function parseWithGemini(input, apiKey, modelOrder) {
 }
 
 /**
+ * Config-type Gemini rejections: the KEY or its project is misconfigured
+ * (invalid key, permissions, billing, unknown model). Retrying or switching
+ * models cannot help — but the free key can carry the parse, which is the
+ * whole point of the fallback below. Exported for smoke tests.
+ * @param {number} status
+ * @returns {boolean}
+ */
+export function isGeminiConfigError(status) {
+  return status === 400 || status === 401 || status === 403 || status === 404;
+}
+
+/**
+ * Licensed-parse orchestration: the paid key first (quota-free ceiling +
+ * training opt-out, A14), the free key as the SAFETY FLOOR when the paid key
+ * is rejected with a config-type error — a broken/rotated/un-billed paid key
+ * must never brick licensed parses. Quota and transient failures stay on the
+ * paid key (the retry + model-fallback logic above applies), so paying users
+ * touch the free tier only while the paid key itself is broken.
+ * @param {ParseInput} input
+ * @param {string} paidKey
+ * @param {string} freeKey
+ * @param {{ primary: string, fallback: string | null }} modelOrder
+ * @returns {Promise<{ ok: true, parsed: Record<string, unknown>[], model: string } | { ok: false, failure: GeminiFailure }>}
+ */
+export async function parseLicensedWithFallback(input, paidKey, freeKey, modelOrder) {
+  const paid = await parseWithGemini(input, paidKey, modelOrder);
+  if (paid.ok) return paid;
+  // Same key on both tiers: retrying with it is a pointless duplicate call.
+  if (paidKey === freeKey || !isGeminiConfigError(paid.failure.status)) return paid;
+  console.error('gemini paid key rejected', paid.failure.status, '- retrying with the free key');
+  return parseWithGemini(input, freeKey, modelOrder);
+}
+
+/**
  * POST { utterance, categories, today } with header `x-budget-secret` →
  * { ok: true, parsed: <LLM JSON> } or { ok: false, code }.
  *
@@ -639,10 +679,16 @@ export default async function handler(req, res) {
     return;
   }
 
-  // Licensed parses: paid key (when set) + Lite-first model order (A14).
-  const parseApiKey = licensed && PAID_API_KEY !== null ? PAID_API_KEY : apiKey;
-  const modelOrder = licensed ? LICENSED_MODEL_ORDER : undefined;
-  const outcome = await parseWithGemini(input, parseApiKey, modelOrder);
+  // Licensed parses: paid key (when set) with the free key as the safety
+  // floor on config-type rejections (A14 + the fallback above). Everything
+  // else — free parses and licensed parses without a paid key — uses the
+  // free key with the licensed model order when a license is attached.
+  let outcome;
+  if (licensed && PAID_API_KEY !== null) {
+    outcome = await parseLicensedWithFallback(input, PAID_API_KEY, apiKey, LICENSED_MODEL_ORDER);
+  } else {
+    outcome = await parseWithGemini(input, apiKey, licensed ? LICENSED_MODEL_ORDER : undefined);
+  }
   if (outcome.ok) {
     cacheSet(responseCache, cacheKey, outcome.parsed);
     send(res, 200, { ok: true, parsed: outcome.parsed }, cors);

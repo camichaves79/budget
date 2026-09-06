@@ -9,7 +9,8 @@ import {
 import { validateAppData } from '../src/lib/importExport';
 import {
   cacheGet, cacheKeyFor, cacheSet, checkRateLimit, createRateLimiter, createResponseCache,
-  isTransientGeminiStatus, nextRetryDelayMs, parseGeminiResponse, parseRetryDelaySeconds, sanitizeRequest,
+  isGeminiConfigError, isTransientGeminiStatus, nextRetryDelayMs, parseGeminiResponse,
+  parseLicensedWithFallback, parseRetryDelaySeconds, sanitizeRequest,
 } from '../api/parse.js';
 import {
   DEFAULT_LICENSE_DAILY_CAP, LICENSE_TERM_SECONDS, createLicenseMeter, estimateLsFeeCents,
@@ -573,6 +574,77 @@ check('jwt payload iss', jwtDecoded?.payload.iss, 'x@y');
 check('jwt signature verifies', verifyJwtSignature(`${jwtParts[0]}.${jwtParts[1]}`, jwtParts[2], pubPem), true);
 check('jwt signature rejects tamper', verifyJwtSignature(`${jwtParts[0]}.${jwtParts[1]}x`, jwtParts[2], pubPem), false);
 check('jwt decode rejects garbage', decodeJwtParts('a.b'), null);
+
+// ---- paid-key fallback (licensed parses: broken paid key → free key) ----
+check('config statuses trigger the free-key fallback', [400, 401, 403, 404].every(isGeminiConfigError), true);
+check('non-config statuses do not trigger the fallback', [0, 429, 500, 502, 503, 529].some(isGeminiConfigError), false);
+
+await (async () => {
+  const fallbackInput = { utterance: 'lunch 35', categories: [cacheCat], today: '2026-09-03' };
+  const fallbackOrder = { primary: 'lite', fallback: null };
+  const okBody = { candidates: [{ content: { parts: [{ text: '[{"type":"expense","amount":35}]' }] } }] };
+  const quotaBody = {
+    error: { code: 429, message: 'quota', details: [{ '@type': 'type.googleapis.com/google.rpc.RetryInfo', retryDelay: '43200s' }] },
+  };
+
+  function stubGemini(failuresByKey: Record<string, number>) {
+    const keys: string[] = [];
+    const fn = async (url: string, opts: { headers?: Record<string, string> } = {}) => {
+      const key = typeof opts.headers?.['x-goog-api-key'] === 'string' ? opts.headers['x-goog-api-key'] : '';
+      keys.push(key);
+      const failStatus = failuresByKey[key];
+      if (failStatus !== undefined) {
+        const body = failStatus === 429 ? quotaBody : { error: { code: failStatus, message: 'stub' } };
+        return new Response(JSON.stringify(body), { status: failStatus, headers: { 'Content-Type': 'application/json' } });
+      }
+      return new Response(JSON.stringify(okBody), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    };
+    return { fn, keys };
+  }
+
+  const originalFetch = globalThis.fetch;
+
+  {
+    const { fn, keys } = stubGemini({});
+    globalThis.fetch = fn as typeof fetch;
+    const r = await parseLicensedWithFallback(fallbackInput, 'paid-1', 'free-1', fallbackOrder);
+    check('paid key ok uses only the paid key', [r.ok, keys], [true, ['paid-1']]);
+  }
+  {
+    const { fn, keys } = stubGemini({ 'paid-1': 403 });
+    globalThis.fetch = fn as typeof fetch;
+    const r = await parseLicensedWithFallback(fallbackInput, 'paid-1', 'free-1', fallbackOrder);
+    check('paid key 403 falls back to the free key', [r.ok, keys], [true, ['paid-1', 'free-1']]);
+  }
+  {
+    const { fn, keys } = stubGemini({ 'paid-1': 429 });
+    globalThis.fetch = fn as typeof fetch;
+    const r = await parseLicensedWithFallback(fallbackInput, 'paid-1', 'free-1', fallbackOrder);
+    check(
+      'paid key quota does NOT spill to the free key (training opt-out)',
+      [r.ok, keys.includes('free-1') ? 'spilled' : 'kept', r.ok === false ? r.failure.status : 0],
+      [false, 'kept', 429],
+    );
+  }
+  {
+    const { fn, keys } = stubGemini({ same: 400 });
+    globalThis.fetch = fn as typeof fetch;
+    const r = await parseLicensedWithFallback(fallbackInput, 'same', 'same', fallbackOrder);
+    check('identical paid/free key skips the duplicate retry', [r.ok, keys], [false, ['same']]);
+  }
+  {
+    const { fn, keys } = stubGemini({ 'paid-1': 400, 'free-1': 400 });
+    globalThis.fetch = fn as typeof fetch;
+    const r = await parseLicensedWithFallback(fallbackInput, 'paid-1', 'free-1', fallbackOrder);
+    check(
+      'both keys rejected reports the free-key failure',
+      [r.ok, keys, r.ok === false ? r.failure.status : 0],
+      [false, ['paid-1', 'free-1'], 400],
+    );
+  }
+
+  globalThis.fetch = originalFetch;
+})();
 
 if (failures > 0) {
   console.log(`\n${failures} failure(s)`);

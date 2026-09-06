@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useEntitlement } from '../state/entitlement';
 
@@ -16,6 +16,7 @@ export function LicenseSection() {
     checkoutReady,
     completePendingPurchase,
     freeDaily,
+    lastEvent,
     licenseExpiryLabel,
     licensedActive,
     pendingOrder,
@@ -26,11 +27,25 @@ export function LicenseSection() {
   } = useEntitlement();
 
   const [keyInput, setKeyInput] = useState('');
-  const [note, setNote] = useState('');
+  const [note, setNote] = useState<{ text: string; kind: 'error' | 'success' } | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // The one-shot license events ("License active ✓") normally surface as the
+  // dashboard toast, but a purchase completed HERE fires while the dashboard
+  // is unmounted — so the Settings section shows the event once too.
+  const shownEventRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!lastEvent || shownEventRef.current === lastEvent.at) return;
+    shownEventRef.current = lastEvent.at;
+    setNote(
+      lastEvent.kind === 'licensed'
+        ? { text: 'License active ✓ — smart entry is now unlimited.', kind: 'success' }
+        : { text: 'Your license is no longer valid — smart entry is back to the free plan.', kind: 'error' },
+    );
+  }, [lastEvent]);
+
   const unlock = async () => {
-    setNote('');
+    setNote(null);
     // Purchases are always account-bound: identity first, then checkout.
     if (!account) {
       await signIn();
@@ -40,34 +55,38 @@ export function LicenseSection() {
       setBusy(true);
       const outcome = await completePendingPurchase();
       setBusy(false);
-      if (outcome === 'none') setNote("That purchase couldn't be completed. Contact the app owner if the payment went through.");
-      else if (outcome === 'error') setNote("Couldn't reach the licensing service. Check your connection and try again.");
+      if (outcome === 'none')
+        setNote({ text: "That purchase couldn't be completed. Contact the app owner if the payment went through.", kind: 'error' });
+      else if (outcome === 'error')
+        setNote({ text: "Couldn't reach the licensing service. Check your connection and try again.", kind: 'error' });
       return;
     }
     await buy();
   };
 
   const doSignIn = async () => {
-    setNote('');
+    setNote(null);
     await signIn();
   };
 
   const doRestore = async () => {
-    setNote('');
+    setNote(null);
     setBusy(true);
     const outcome = await restoreLicense();
     setBusy(false);
-    if (outcome === 'none') setNote('No license found for this account. Buy one from the smart-entry screen.');
-    else if (outcome === 'error') setNote('Sign-in could not be verified. Try signing out and back in.');
+    if (outcome === 'none')
+      setNote({ text: 'No license found for this account. Buy one from the smart-entry screen.', kind: 'error' });
+    else if (outcome === 'error')
+      setNote({ text: 'Sign-in could not be verified. Try signing out and back in.', kind: 'error' });
   };
 
   const activateKey = async (e: FormEvent) => {
     e.preventDefault();
     if (!keyInput.trim()) return;
-    setNote('');
+    setNote(null);
     // The pasted LS key can only be redeemed for the signed-in account.
     if (!account) {
-      setNote('Sign in with Google first — licenses are tied to your account.');
+      setNote({ text: 'Sign in with Google first — licenses are tied to your account.', kind: 'error' });
       await signIn();
       return;
     }
@@ -75,8 +94,8 @@ export function LicenseSection() {
     const outcome = await activatePastedKey(keyInput);
     setBusy(false);
     if (outcome === 'ok') setKeyInput('');
-    else if (outcome === 'invalid') setNote('That key is not valid. Check it and try again.');
-    else setNote("Couldn't reach the licensing service. Check your connection and try again.");
+    else if (outcome === 'invalid') setNote({ text: 'That key is not valid. Check it and try again.', kind: 'error' });
+    else setNote({ text: "Couldn't reach the licensing service. Check your connection and try again.", kind: 'error' });
   };
 
   return (
@@ -167,7 +186,7 @@ export function LicenseSection() {
           </form>
         )}
 
-        {note && <p className="error-text">{note}</p>}
+        {note && <p className={note.kind === 'success' ? 'note-success' : 'error-text'}>{note.text}</p>}
       </div>
     </>
   );

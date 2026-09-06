@@ -876,6 +876,12 @@ select.input {
   margin: 8px 0 0;
 }
 
+.note-success {
+  color: var(--accent);
+  font-size: var(--fs-sm);
+  margin: 8px 0 0;
+}
+
 .segmented {
   display: flex;
   background: var(--bg);
