@@ -161,6 +161,16 @@ Firebase with the Service ID + Team ID + key. No client code change
 
 ## 9. Known gotchas
 
+- **Secret placement (2026-09 incident):** the Firebase **service-account JSON**
+  (with its `private_key`) was once pasted into the client secret
+  `VITE_FIREBASE_API_KEY` and shipped inside the public bundle. It belongs ONLY
+  in Vercel's `FIREBASE_SERVICE_ACCOUNT`; the client secret takes the web-app
+  `apiKey` (an `AIza…` token from Project settings → General → Your apps →
+  Config). After rotation, the build now REJECTS any `VITE_FIREBASE_API_KEY`
+  that doesn't match `AIza…` (`src/lib/auth.ts`), so a wrong paste degrades to
+  "sign-in unavailable" instead of leaking. If a server key ever leaks again:
+  generate a new key, delete the old one, update Vercel, rebuild.
+
 - **Google sign-in is popup-first** with a redirect fallback: since June 2024,
   third-party-storage blocking breaks `signInWithRedirect` on GitHub Pages
   domains (Firebase's
