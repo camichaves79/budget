@@ -92,6 +92,13 @@ export async function redeemLicense(reference: string, idToken?: string): Promis
   if (status === 401 || status === 403) {
     return { ok: false, code: 'unauthorized', message: 'The licensing service rejected the request. Check the app setup.' };
   }
+  if (code === 'not-configured' || status === 503) {
+    return {
+      ok: false,
+      code: 'not-configured',
+      message: "The licensing service isn't fully set up yet — the app owner is on it. Try again shortly.",
+    };
+  }
   return { ok: false, code: 'network', message: "Couldn't reach the licensing service. Check your connection and try again." };
 }
 

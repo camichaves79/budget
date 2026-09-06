@@ -104,6 +104,12 @@ Collections created at runtime (never touch them by hand): `licenses/{lic}`,
 
 ## 6. Verify after setup
 
+**Client error-code map (for debugging "Complete purchase" failures):**
+- "Couldn't reach the licensing service…" → function 500/network (check Vercel logs for `firebase:` lines)
+- "The licensing service isn't fully set up yet…" → `not-configured` (FIREBASE_SERVICE_ACCOUNT missing/unparseable in Vercel env, or not redeployed)
+- "That purchase couldn't be completed…" → order not paid/found/refunded (test-mode or link-variable issue)
+- "Your payment hasn't been confirmed yet…" → order still pending
+
 ```bash
 # 1. Redeem a TEST-mode order (license key from the test purchase email):
 curl -s -X POST https://budget-beta-two.vercel.app/api/license/redeem \
