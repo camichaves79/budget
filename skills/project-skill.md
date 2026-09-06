@@ -420,17 +420,18 @@ Everything below is **shipped and live** (main ≈ `b5094b5`, 2026-09-06):
   horizontal diameter aligned with the bar's upper side; tapping it switches
   to Cash Flow and opens smart entry. Old bottom-right FAB removed.
 
-**OPEN FOLLOW-UP (user deferred, not blocking):** the Firebase console shows
-NO collections — the Firestore write path (ledger / licenses / entitlements)
-has not been verified in prod. Restore still works because
-`/api/license/lookup` self-heals from the Lemon Squeezy orders API, so the
-user experience never noticed; the accountant CSV will be empty until fixed.
-Diagnose via Vercel logs (`firebase: token endpoint …` = service-account
-OAuth rejected vs `firebase: commit failed …` = Firestore REST) and confirm
-the Firestore database exists — `skills/paywall-ops.md` §4/§9.
+**OPEN FOLLOW-UP (root cause found; fix shipped on `firestore-commit-shape`):**
+the Firebase console showed NO collections because every Firestore merge-set
+was rejected — `updateMask` was nested inside `update` in the commit REST
+body instead of sitting beside it as a field of the Write (`INVALID_ARGUMENT
+… Unknown name "updateMask"` in Vercel logs). Restore still worked because
+`/api/license/lookup` self-heals from the Lemon Squeezy orders API. After
+the fix deploys, re-run Restore (sign out → sign in) per account to re-write
+the ledger/license/entitlement docs, then confirm the three collections
+appear in the Firebase console and the accountant CSV has the rows.
 
 Candidate next steps (ask the user, don't assume):
-- Fix the Firestore write path (see the open follow-up above).
+- Verify the Firestore collections after the commit-shape fix (see above).
 - Re-paste a fresh `GEMINI_PAID_API_KEY` (current one rejected 400; billing was
   enabled but the key value itself appears wrong).
 - Apple sign-in (config-only; needs a $99/yr Apple Developer account).

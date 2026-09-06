@@ -205,12 +205,17 @@ Firebase with the Service ID + Team ID + key. No client code change
 - **Silent Firestore write failures (2026-09, the reason this guide now
   insists on the §6 Firestore check):** `api/_firebase.js` swallows write/read
   failures by design (never throws), so a redeem can mint and return a VALID
-  license while the ledger/license/entitlement docs never land. Vercel log
-  lines tell the two cases apart — `firebase: token endpoint <status>` = the
-  service-account JWT was rejected at the OAuth endpoint (revoked, wrong, or
-  mismatched key after rotation; re-paste + redeploy), `firebase: commit
-  failed <status>` = Firestore answered the commit with an error (database
-  missing/never created — setup step 4 — or project/permission mismatch).
-  Restore keeps working in both cases because `/api/license/lookup`
-  self-heals from the Lemon Squeezy orders API, which is exactly why this
-  failure is invisible to the user and must be checked in the console.
+  license while the ledger/license/entitlement docs never land. The confirmed
+  root cause in prod was the **commit REST shape**: `updateMask` was nested
+  inside `update` instead of sitting beside it as a field of the Write —
+  Firestore answered `INVALID_ARGUMENT … Unknown name "updateMask"` on every
+  merge-set. Fixed (updateMask as a Write-level sibling + a body-capturing
+  smoke regression test); the smoke suite can no longer be fooled by a stub
+  that accepts any body. Future triage via Vercel logs: `firebase: token
+  endpoint <status>` = the service-account JWT was rejected at the OAuth
+  endpoint (revoked/wrong/mismatched key after rotation; re-paste +
+  redeploy), `firebase: commit failed <status>` = Firestore answered the
+  commit with an error. Restore keeps working in both cases because
+  `/api/license/lookup` self-heals from the Lemon Squeezy orders API, which
+  is exactly why this failure is invisible to the user and must be checked
+  in the console.

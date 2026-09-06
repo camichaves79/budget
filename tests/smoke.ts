@@ -20,7 +20,7 @@ import {
 import { createHmac, generateKeyPairSync } from 'node:crypto';
 import { FREE_DAILY_PARSES, nextQuota, remainingFreeToday } from '../src/lib/quota';
 import { licenseIsActive, parseLicenseToken } from '../src/lib/license';
-import { decodeJwtParts, fromFields, signJwt, toFields, verifyJwtSignature } from '../api/_firebase.js';
+import { decodeJwtParts, fromFields, setDocMerge, signJwt, toFields, verifyJwtSignature } from '../api/_firebase.js';
 import type { Category } from '../src/lib/types';
 
 let failures = 0;
@@ -644,6 +644,54 @@ await (async () => {
   }
 
   globalThis.fetch = originalFetch;
+})();
+
+// ---- firebase commit REST shape (regression: updateMask must be a SIBLING
+//      of update, not nested inside it — the prod 2026-09 write bug) ----
+await (async () => {
+  const saJson = JSON.stringify({ client_email: 'svc@test-project.iam.gserviceaccount.com', project_id: 'test-project', private_key: privPem });
+  const prevSa = process.env.FIREBASE_SERVICE_ACCOUNT;
+  process.env.FIREBASE_SERVICE_ACCOUNT = saJson;
+
+  const bodies: Array<Record<string, unknown>> = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: string | URL, opts: { body?: string } = {}) => {
+    const u = String(url);
+    if (u.includes('oauth2.googleapis.com/token')) {
+      return new Response(JSON.stringify({ access_token: 'fake', expires_in: 3600 }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (u.includes('documents:commit')) {
+      bodies.push(JSON.parse(opts.body ?? '{}'));
+      return new Response(JSON.stringify({ writeResults: [{}] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    return new Response(JSON.stringify({ error: { code: 404, status: 'NOT_FOUND' } }), {
+      status: 404,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }) as typeof fetch;
+
+  await setDocMerge('sales/order-x', { order_id: 'order-x', gross: 500 });
+
+  globalThis.fetch = originalFetch;
+  if (prevSa === undefined) delete process.env.FIREBASE_SERVICE_ACCOUNT;
+  else process.env.FIREBASE_SERVICE_ACCOUNT = prevSa;
+
+  const write = bodies[0]?.writes;
+  const w0 = Array.isArray(write) ? (write[0] as Record<string, unknown>) : {};
+  const update = (w0.update ?? {}) as Record<string, unknown>;
+  const updateMask = (w0.updateMask ?? {}) as Record<string, unknown>;
+  check('commit write uses document name', update.name, 'projects/test-project/databases/(default)/documents/sales/order-x');
+  check('commit update carries string field', (update.fields as Record<string, unknown> | undefined)?.order_id, { stringValue: 'order-x' });
+  check('commit update carries integer field', (update.fields as Record<string, unknown> | undefined)?.gross, { integerValue: '500' });
+  check('updateMask is a sibling of update', updateMask.fieldPaths, ['order_id', 'gross']);
+  check('updateMask is NOT nested inside update', 'updateMask' in update, false);
+  check('exactly one write per merge-set', bodies.length, 1);
 })();
 
 if (failures > 0) {

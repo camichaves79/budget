@@ -168,11 +168,13 @@ export function fromFields(fields) {
 
 /**
  * Set a document with MERGE semantics (create if missing, patch fields if
- * present) via the commit REST API.
+ * present) via the commit REST API. Exported so the smoke suite can drive it
+ * with a body-capturing fetch stub (the write shape is the trust boundary
+ * against the Firestore API).
  * @param {string} path e.g. "sales/order-id"
  * @param {Record<string, unknown>} data
  */
-async function setDocMerge(path, data) {
+export async function setDocMerge(path, data) {
   const token = await getAccessToken();
   if (!token) return;
   const name = docName(path);
@@ -191,8 +193,13 @@ async function setDocMerge(path, data) {
   // Update-with-mask (merge). When the document doesn't exist yet, Firestore
   // answers NOT_FOUND → retry as create. A rare concurrent create answers
   // ALREADY_EXISTS → retry as update once more.
+  //
+  // Firestore REST shape: `updateMask` is a field of the WRITE, a SIBLING of
+  // `update` — NOT a field of the update document. Nesting it inside `update`
+  // was rejected with INVALID_ARGUMENT ("Unknown name 'updateMask'"), which is
+  // why the ledger/entitlement writes silently failed in prod (2026-09).
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const write = attempt === 1 ? { create: { name, fields } } : { update: { name, fields, updateMask: { fieldPaths } } };
+    const write = attempt === 1 ? { create: { name, fields } } : { update: { name, fields }, updateMask: { fieldPaths } };
     /** @type {{ error?: { status?: string, message?: string }, writeResults?: unknown }} */
     let payload;
     try {
