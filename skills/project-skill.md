@@ -371,7 +371,7 @@ in those tight overrides.
 
 ## 10. Current state & next-session context
 
-Everything below is **shipped and live** (main ≈ `22227c4`, 2026-09-05):
+Everything below is **shipped and live** (main ≈ `ffe229c`, 2026-09-05):
 
 - Smart entry end-to-end: PWA → Vercel microservice → Gemini 3.6 Flash → instant save
   with fading toasts; review form only for ambiguous parses. Full spec (revised):
@@ -388,14 +388,29 @@ Everything below is **shipped and live** (main ≈ `22227c4`, 2026-09-05):
   confident entries instant-save, doubtful (< 0.8) or ambiguous ones queue through
   pre-filled review, batches end in a "Recorded ✓" summary — **tested and approved
   by the user (2026-09-05)**.
-- **Smart-entry paywall (shipped 2026-09-05):** 10 free parses/day → paywall card →
-  $5/year Lemon Squeezy checkout overlay → redirect-back auto-redeem → HMAC
-  license (server-verified per parse, 100/day meter); Firebase Google sign-in with
-  license binding/restore; sales ledger + accountant CSV/JSON export; licensed
-  tier runs Lite→Flash on a paid Gemini key (falls back to the free key until
-  `GEMINI_PAID_API_KEY` is set — now set). ADRs A11–A14 in `ARCHITECTURE.md`; ops
-  in `skills/paywall-ops.md`; tax evidence in `TAX.md`. **User approval pending —
-  the user is testing on iPhone against prod (repo secrets set 2026-09-05).**
+- **Smart-entry paywall (shipped 2026-09-05, NOT yet user-approved):** 10 free
+  parses/day → paywall card → **Google sign-in required to buy** (`ffe229c`:
+  every license account-bound; server rejects unsigned redeems with
+  `sign-in-required`) → $5/year Lemon Squeezy checkout overlay → redirect-back
+  auto-redeem → HMAC license (server-verified per parse, 100/day meter);
+  Firebase sign-in with license binding/restore; sales ledger + accountant
+  CSV/JSON export; licensed tier runs Lite→Flash on a paid Gemini key
+  (`GEMINI_PAID_API_KEY` set). ADRs A11–A14 in `ARCHITECTURE.md`; ops in
+  `skills/paywall-ops.md`; tax evidence in `TAX.md`.
+  **OPEN BUG (the reason it's unapproved):** the user's test-mode purchase
+  redeems with a generic failure — the app parks the reference ("Purchase
+  waiting") but `/api/license/redeem` fails somewhere in the paid path. Error
+  surfacing is deployed (`85a5ae8`: redeem returns `{code:'internal', reason}`
+  on crash; client shows "Server error: …"). **Next session: have the user
+  sign in, tap "Complete purchase", capture that reason, and fix.** Prime
+  suspect: the hand-rolled Firestore REST client (`api/_firebase.js` — token
+  endpoint with the rotated service-account key, or the commit REST shape),
+  then the LS test-mode license-key/order path, then the JWKS id-token verify
+  (now exercised because sign-in is mandatory). Deployment history notes: the
+  firebase-admin package was replaced by that REST client after Vercel's
+  tracing silently dropped it (`f9c6e8c`); a service-account JSON was once
+  shipped in the public bundle and was rotated (`a4972e2`, guard in
+  `src/lib/auth.ts`).
 
 Candidate next steps (ask the user, don't assume):
 - Apple sign-in (config-only; needs a $99/yr Apple Developer account).
