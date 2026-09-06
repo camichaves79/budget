@@ -72,8 +72,10 @@
    (single line, ~2.3 KB — fine for Node functions' 64 KB env budget).
 6. **Project settings → General → Your apps → Web app → Config**: copy
    `apiKey`, `authDomain`, `projectId`, `appId` into the client env vars.
-7. **Vercel Node version:** `firebase-admin@14` requires **Node ≥ 22** — set the
-   Vercel project runtime to 22/24 (repo `engines.node` is already `>=22`).
+7. **Vercel Node version:** the functions are dependency-free (hand-rolled
+   Firebase REST client — Vercel's tracing silently dropped `firebase-admin`
+   from the bundles, see `ARCHITECTURE.md` §1), so the default Node 24 runtime
+   is fine.
 
 Collections created at runtime (never touch them by hand): `licenses/{lic}`,
 `entitlements/{uid}`, `sales/{orderId}`.

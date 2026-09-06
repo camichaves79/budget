@@ -19,8 +19,8 @@ iPhone PWA ──HTTPS──▶ GitHub Pages (static, CDN)                    [f
    │                    /api/webhooks/ls    Lemon Squeezy webhooks → sales ledger
    │                    /api/ledger/export  accountant CSV/JSON
    ├───────────────▶ Firebase Auth (Google now, Apple later)         [Spark, free]
-   │                    + Firestore (entitlements + sales ledger; admin-SDK writes
-   │                    only, client never touches Firestore)
+   │                    + Firestore (entitlements + sales ledger; REST writes
+   │                    via service-account OAuth, client never touches Firestore)
    └───────────────▶ Lemon Squeezy checkout overlay (Merchant of Record)
                         orders API verifies purchases; webhooks feed the ledger
 ```
@@ -30,7 +30,11 @@ iPhone PWA ──HTTPS──▶ GitHub Pages (static, CDN)                    [f
 - **Backend:** a small set of Vercel Functions (`api/parse.js` + the license/ledger
   endpoints above, Node-style handlers). No database of our own: Firestore holds
   entitlement + sales-ledger documents only (identity/entitlement/purchase
-  metadata — budget data still never reaches the cloud, see A1/A13).
+  metadata — budget data still never reaches the cloud, see A1/A13). Firebase
+  access is a zero-dependency REST client (service-account JWT → OAuth →
+  Firestore REST + JWKS token verification): Vercel's zero-config tracing
+  silently dropped the firebase-admin package from function bundles, and the
+  hand-rolled client has nothing for the bundler to lose.
 - **AI:** free tier — Gemini `gemini-3.6-flash` primary + `gemini-3.5-flash-lite`
   fallback (A6); licensed tier — paid key, Lite primary + Flash fallback (A14).
   Structured JSON **array** out (1 element per transaction, cap 20, each with a
@@ -55,7 +59,7 @@ iPhone PWA ──HTTPS──▶ GitHub Pages (static, CDN)                    [f
 | A10 | Shared-secret header + origin allow-list + input whitelisting on the function | Cheap defense layers; acknowledged as obfuscation, not auth (see §4) | Accepted |
 | A11 | Rejected: bring-your-own-key (BYOK) and the fixed 50-user capacity plans | BYOK was built then abandoned (stash parked); quota-cap option reverted; the paywall (A12) is the chosen monetization path | Rejected → superseded by A12 |
 | A12 | Smart-entry paywall: 10 free parses/day (client-side counter, UX not security), then a **$5/year** license sold through Lemon Squeezy (MoR, 5% + $0.50/txn) with an in-app checkout overlay; the post-purchase redirect carries the order id and the app auto-redeems it server-side into an **HMAC-signed license** (verified on every parse, 100/day meter); a Settings paste-key is a recovery fallback only | Price chosen for brand fit + positive expected earnings at 50+ users (~40–70% ROI, break-even ~10–12 payers); license minting stays server-side so keys can't be forged client-side; paste-key is never the main path | Accepted |
-| A13 | Identity for license binding: **Firebase Auth** (Google sign-in now; Apple deferred — $99/yr developer account, config-only later) + **Firestore** for entitlements and the sales ledger, admin-SDK writes only (client never touches Firestore) | Firebase over Supabase: $0 Spark tier with no project-pause risk and the same Google account as Gemini; cloud holds identity/entitlement/purchase metadata only — budget data stays on-device | Accepted |
+| A13 | Identity for license binding: **Firebase Auth** (Google sign-in now; Apple deferred — $99/yr developer account, config-only later) + **Firestore** for entitlements and the sales ledger, written via a zero-dependency REST client (service-account JWT → Firestore REST; the client never touches Firestore) | Firebase over Supabase: $0 Spark tier with no project-pause risk and the same Google account as Gemini; cloud holds identity/entitlement/purchase metadata only — budget data stays on-device | Accepted |
 | A14 | Licensed tier runs on a **paid Gemini key** with `gemini-3.5-flash-lite` primary and `gemini-3.6-flash` fallback (inverted from the free tier), and a cache-friendly system prompt ready for context-caching savings | Free-tier quotas can't back a paid product; Lite ≈25% cheaper per parse and is already the proven fallback; paid tier also opts out of training use | Accepted |
 
 ## 3. The "-ilities" — where we stand

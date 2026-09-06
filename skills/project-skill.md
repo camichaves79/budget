@@ -27,7 +27,7 @@ and (except for smart entry) never leaves the device.
 - **Paywall backend (2026-09):** the same Vercel
   project gains `/api/license/*` (redeem / lookup / check), `/api/webhooks/ls`
   and `/api/ledger/export`; Firebase Auth (Google) + Firestore hold identity,
-  entitlement and the sales ledger (admin-SDK writes only, client never touches
+  entitlement and the sales ledger (server-side REST writes, client never touches
   Firestore). Lemon Squeezy is the merchant of record. Ops checklist:
   `skills/paywall-ops.md`.
 
@@ -91,9 +91,12 @@ and (except for smart entry) never leaves the device.
 ## 3. Tech stack & tooling
 
 - Vite 8 (Rolldown-based) + React 19 + TypeScript 6, plain CSS (no framework)
-- Backend deps: `firebase-admin` (Node, server-side only; Vercel installs root
-  deps). Client dep: `firebase` (auth module only, modular imports) — the one
-  deliberate dependency addition, justified by A13.
+- **Zero server-side npm dependencies** — Firebase access is a hand-rolled
+  REST client (`api/_firebase.js`: service-account JWT → OAuth → Firestore REST
+  + JWKS token verification). Vercel's zero-config tracing silently dropped
+  `firebase-admin` from function bundles, and the REST client has nothing for
+  the bundler to lose. Client dep: `firebase` (auth module only, modular
+  imports) — the one deliberate dependency addition, justified by A13.
 - No router, no UI library, no icon library (inline stroke SVGs)
 - Lint: `oxlint` · Tests: hand-rolled smoke suite (`tests/smoke.ts`, ~157 checks)
 - npm scripts: `dev` · `build` (tsc -b && vite build) · `lint` · `preview` ·
@@ -173,11 +176,14 @@ api/license.js      # POST /api/license/redeem (order id + optional idToken →
                     # entitlement/ledger → return token), /api/license/lookup
                     # (idToken → entitlement → re-signed token),
                     # /api/license/check (key → verify + payload)
-api/webhooks.js     # POST /api/webhooks/ls: verifies LS X-Signature (HMAC-SHA256
+api/webhooks/ls.js  # POST /api/webhooks/ls: verifies LS X-Signature (HMAC-SHA256
                     # of raw body), order_created/order_refunded → sales ledger
-api/ledger.js       # GET /api/ledger/export?format=csv|json (x-budget-admin
+api/ledger/export.js # GET /api/ledger/export?format=csv|json (x-budget-admin
                     # header) — accountant export
-api/_firebase.js    # firebase-admin init from FIREBASE_SERVICE_ACCOUNT env (JSON)
+api/_firebase.js    # zero-dependency Firebase REST client: FIREBASE_SERVICE_ACCOUNT
+                    # (JSON) → RS256 JWT → OAuth token (cached) → Firestore REST
+                    # (get/merge-set/list) + securetoken JWKS id-token verify +
+                    # accounts:lookup (email → uid)
 tests/smoke.ts      # logic tests: money, periods, selectors, LLM validators,
                     # microservice helpers (rate limiter, sanitizer, Gemini array
                     # parser, retry policy, response cache), ~157 checks
@@ -295,8 +301,11 @@ in those tight overrides.
   poll `/repos/camichaves79/budget/actions/runs` every ~10s until `completed success`.
   Repo secrets `VITE_PARSE_ENDPOINT` / `VITE_PARSE_SECRET` are baked at build time.
 - **Vercel**: Git integration auto-deploys `main` to the `budget-beta-two` project
-  (Framework: Other, no build command; root `package.json` deps get installed, so
-  `firebase-admin` resolves for the functions). Env vars there: `GEMINI_API_KEY`,
+  (Framework: Other, no build command). **The `/api` functions are
+  dependency-free** (the only npm packages are the client's) — Vercel's
+  zero-config tracing silently dropped `firebase-admin` from function bundles,
+  which is why `api/_firebase.js` is a hand-rolled REST client. Env vars there:
+  `GEMINI_API_KEY`,
   `BUDGET_PARSE_SECRET`, optional `GEMINI_FALLBACK_MODEL` (default
   `gemini-3.5-flash-lite`; empty string disables the fallback) — plus the paywall
   vars: `BUDGET_LICENSE_SECRET`, `LEMONSQUEEZY_API_KEY`,
@@ -348,9 +357,11 @@ in those tight overrides.
   need LS "custom pricing" support; payouts have a $50 minimum and a 13-day hold.
 - **Firebase**: `signInWithRedirect` is broken on GitHub Pages domains by
   third-party-storage blocking (Safari 16.1+/Chrome 115+) → the app is
-  popup-first with redirect fallback. `firebase-admin@14` dropped the legacy
-  `admin.*` namespace and needs **Node ≥ 22** on Vercel; Firestore admin API is
-  method-style (`db.collection().doc().set/get`), not `setDoc/getDoc`.
+  popup-first with redirect fallback. Server-side, never rely on Vercel
+  zero-config tracing for npm packages in `/api` functions: it silently
+  dropped `firebase-admin` from the bundles (diagnosed via a temp endpoint
+  showing "Cannot find package … imported from /var/task/api/"). The repo's
+  rule: **server functions stay dependency-free**.
 - **License tokens are bearer tokens** verified server-side on every parse
   (100/day meter); client-side checks are display-only. Firestore is admin-SDK
   only (rules deny all client access). The free-allowance counter is cosmetic —
