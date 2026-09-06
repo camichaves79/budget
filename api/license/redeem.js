@@ -33,6 +33,21 @@ export default async function handler(req, res) {
     return;
   }
 
+  try {
+    await redeem(req, res, cors);
+  } catch (err) {
+    const e = /** @type {Error} */ (err);
+    console.error('redeem internal error', e.message, (e.stack ?? '').split('\n')[1] ?? '');
+    send(res, 500, { ok: false, code: 'internal', reason: `${e.message}` }, cors);
+  }
+}
+
+/**
+ * @param {import('node:http').IncomingMessage} req
+ * @param {import('node:http').ServerResponse} res
+ * @param {Record<string, string>} cors
+ */
+async function redeem(req, res, cors) {
   const body = await readJsonBody(req);
   const orderId = body && typeof body.orderId === 'string' ? body.orderId.trim() : '';
   const key = body && typeof body.key === 'string' ? body.key.trim() : '';

@@ -99,6 +99,9 @@ export async function redeemLicense(reference: string, idToken?: string): Promis
       message: "The licensing service isn't fully set up yet — the app owner is on it. Try again shortly.",
     };
   }
+  if (code === 'internal' && typeof payload?.reason === 'string' && payload.reason !== '') {
+    return { ok: false, code: 'internal', message: `Server error: ${payload.reason.slice(0, 160)}` };
+  }
   return { ok: false, code: 'network', message: "Couldn't reach the licensing service. Check your connection and try again." };
 }
 
