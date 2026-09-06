@@ -39,6 +39,13 @@ function getAppLazy(): FirebaseApp | null {
     app = null;
     return null;
   }
+  // Guard: the web apiKey is a short AIza… token. A pasted service-account
+  // JSON (a REAL secret — private key included) must never reach this bundle,
+  // so anything that looks like JSON is treated as unconfigured.
+  if (!/^AIza[A-Za-z0-9_-]{20,}$/.test(apiKey)) {
+    app = null;
+    return null;
+  }
   try {
     app = initializeApp({ apiKey, authDomain, projectId, ...(appId ? { appId } : {}) });
   } catch {
