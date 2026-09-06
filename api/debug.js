@@ -1,8 +1,12 @@
 /**
  * TEMPORARY diagnostic endpoint — probe the Vercel runtime for the license
  * functions. DELETE after the firebase-admin import issue is resolved.
+ *
+ * @param {import('node:http').IncomingMessage} _req
+ * @param {import('node:http').ServerResponse} res
  */
 export default async function handler(_req, res) {
+  /** @type {Record<string, unknown>} */
   const out = {
     node: process.version,
     envNames: Object.keys(process.env)
@@ -10,6 +14,7 @@ export default async function handler(_req, res) {
       .map((k) => (k.startsWith('FIREBASE_SERVICE') ? `${k}=(len ${(process.env[k] ?? '').length})` : `${k}=(set)`))
       .sort(),
   };
+  /** @type {Record<string, string>} */
   const checks = {};
   for (const spec of ['firebase-admin/app', 'firebase-admin/auth', 'firebase-admin/firestore']) {
     try {
@@ -20,8 +25,9 @@ export default async function handler(_req, res) {
     }
   }
   try {
-    const pkg = JSON.parse(await (await import('node:fs/promises')).readFile('node_modules/firebase-admin/package.json', 'utf8'));
-    checks['firebase-admin version on disk'] = pkg.version;
+    const fs = await import('node:fs/promises');
+    const pkg = JSON.parse(await fs.readFile('node_modules/firebase-admin/package.json', 'utf8'));
+    checks['firebase-admin version on disk'] = String(pkg.version);
   } catch (err) {
     checks['firebase-admin version on disk'] = `MISSING: ${/** @type {Error} */ (err).message}`;
   }
