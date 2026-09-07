@@ -18,6 +18,7 @@ import {
   verifyLicenseToken, verifyWebhookSignature, webhookToLedger,
 } from '../api/_license.js';
 import { checkIpRateLimit, createIpRateLimiter } from '../api/_http.js';
+import { ensureLicenseForOrder, saleRowForMerge } from '../api/_licenseops.js';
 import redeemHandler from '../api/license/redeem.js';
 import { createHmac, createSign, generateKeyPairSync } from 'node:crypto';
 import { FREE_DAILY_PARSES, nextQuota, remainingFreeToday } from '../src/lib/quota';
@@ -694,6 +695,149 @@ await (async () => {
   check('updateMask is a sibling of update', updateMask.fieldPaths, ['order_id', 'gross']);
   check('updateMask is NOT nested inside update', 'updateMask' in update, false);
   check('exactly one write per merge-set', bodies.length, 1);
+})();
+
+// ---- ledger row by construction: ensureLicenseForOrder leaves a COMPLETE
+//      sales row on every path (mint + self-heal backfill), refund-guarded ----
+check('saleRowForMerge keeps a recorded refund', (() => {
+  const row = saleRowForMerge(ledgerRow, { refunded: true, refunded_amount: 500, refunded_at: '2026-09-07T00:00:00Z', status: 'refunded' });
+  return [row.refunded, row.refunded_amount, row.refunded_at, row.status];
+})(), [true, 500, '2026-09-07T00:00:00Z', 'refunded']);
+check('saleRowForMerge passes a clean row through unchanged', saleRowForMerge(ledgerRow, {}), ledgerRow);
+check('saleRowForMerge without a recorded refund uses the fresh fields', saleRowForMerge(ledgerRow, { refunded: false }).refunded, false);
+check('saleRowForMerge refund guard falls back to fresh amount/at when absent', (() => {
+  const row = saleRowForMerge(ledgerRow, { refunded: true, status: 'refunded' });
+  return [row.refunded, row.refunded_amount, row.refunded_at];
+})(), [true, 0, null]);
+check('saleRowForMerge preserves the generated invoice url', saleRowForMerge(ledgerRow, { invoice_url: 'https://invoice.test' }).invoice_url, 'https://invoice.test');
+check('saleRowForMerge preserves an existing receipt url', saleRowForMerge(ledgerRow, { receipt_url: 'https://receipt.test' }).receipt_url, 'https://receipt.test');
+
+await (async () => {
+  const saJson = JSON.stringify({ client_email: 'svc@test-project.iam.gserviceaccount.com', project_id: 'test-project', private_key: privPem });
+  const prevSa = process.env.FIREBASE_SERVICE_ACCOUNT;
+  process.env.FIREBASE_SERVICE_ACCOUNT = saJson;
+  const prevLicenseSecret = process.env.BUDGET_LICENSE_SECRET;
+  process.env.BUDGET_LICENSE_SECRET = 'testlicense';
+
+  const sv = (v: string) => ({ stringValue: v });
+  const nv = (v: number) => ({ integerValue: String(v) });
+  const bv = (v: boolean) => ({ booleanValue: v });
+  const iat = Math.floor(Date.now() / 1000) - 100;
+  const exp = iat + LICENSE_TERM_SECONDS;
+  const store: Record<string, { fields: Record<string, unknown> }> = {
+    'sales/order-partial': {
+      fields: { license_id: sv('lic-existing'), redeemed_at: sv('2026-09-06T00:00:00.000Z'), invoice_url: sv('https://invoice.test') },
+    },
+    'licenses/lic-existing': {
+      fields: { lic: sv('lic-existing'), uid: sv('uid-1'), plan: sv('yearly'), iat: nv(iat), exp: nv(exp), status: sv('active') },
+    },
+    'sales/order-refunded': {
+      fields: {
+        license_id: sv('lic-refunded'),
+        status: sv('refunded'),
+        refunded: bv(true),
+        refunded_amount: nv(500),
+        refunded_at: sv('2026-09-07T00:00:00.000Z'),
+      },
+    },
+    'licenses/lic-refunded': {
+      fields: { lic: sv('lic-refunded'), uid: { nullValue: null }, plan: sv('yearly'), iat: nv(iat), exp: nv(exp), status: sv('refunded') },
+    },
+  };
+  const commits: Array<{ name: string; fields: Record<string, unknown>; fieldPaths: string[] }> = [];
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: string | URL, opts: { method?: string; body?: string } = {}) => {
+    const u = String(url);
+    if (u.includes('oauth2.googleapis.com/token')) {
+      return new Response(JSON.stringify({ access_token: 'fake', expires_in: 3600 }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (u.includes('documents:commit')) {
+      const body = JSON.parse(opts.body ?? '{}') as { writes?: Array<Record<string, unknown>> };
+      const write = (body.writes ?? [])[0] ?? {};
+      const update = (write.update ?? {}) as { name?: string; fields?: Record<string, unknown> };
+      const mask = (write.updateMask ?? {}) as { fieldPaths?: string[] };
+      commits.push({ name: String(update.name ?? ''), fields: update.fields ?? {}, fieldPaths: mask.fieldPaths ?? [] });
+      return new Response(JSON.stringify({ writeResults: [{}] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    const get = /\/documents\/(sales|licenses)\/([^/?]+)$/.exec(u);
+    if (get) {
+      const found = store[`${get[1]}/${get[2]}`];
+      if (!found) {
+        return new Response(JSON.stringify({ error: { code: 404, status: 'NOT_FOUND' } }), { status: 404, headers: { 'Content-Type': 'application/json' } });
+      }
+      return new Response(JSON.stringify(found), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    return new Response(JSON.stringify({ error: { code: 404, status: 'NOT_FOUND' } }), { status: 404, headers: { 'Content-Type': 'application/json' } });
+  }) as typeof fetch;
+
+  const attrs = (identifier: string): Record<string, unknown> => ({
+    identifier,
+    order_number: 42,
+    created_at: '2026-09-05T10:00:00Z',
+    status: 'paid',
+    subtotal: 500,
+    tax: 0,
+    total: 500,
+    currency: 'USD',
+    user_email: 'buyer@example.com',
+    urls: { receipt: 'https://receipt.test' },
+    test_mode: true,
+    refunded: false,
+    refunded_amount: 0,
+    refunded_at: null,
+  });
+
+  // Mint path: a fresh order lands a COMPLETE sales row + license + entitlement.
+  {
+    commits.length = 0;
+    const r = await ensureLicenseForOrder(attrs('order-fresh'), 'uid-1');
+    if (!r.ok) throw new Error('mint failed');
+    const sales = commits.find((c) => c.name.endsWith('/sales/order-fresh'));
+    check('mint writes three docs (sales + license + entitlement)', commits.length, 3);
+    check('mint returns a fresh license bound to the uid', [r.payload.lic.length > 10, r.payload.uid], [true, 'uid-1']);
+    check('mint sales row carries gross', sales?.fields.gross, nv(500));
+    check('mint sales row carries the buyer email', sales?.fields.buyer_email, sv('buyer@example.com'));
+    check('mint sales mask covers the money columns', sales?.fieldPaths.includes('gross') && sales?.fieldPaths.includes('buyer_email'), true);
+    check('mint sales mask covers the license binding', sales?.fieldPaths.includes('license_id') && sales?.fieldPaths.includes('redeemed_at'), true);
+    check('mint writes the entitlement', commits.some((c) => c.name.endsWith('/entitlements/uid-1')), true);
+    check('mint writes the license doc', commits.some((c) => c.name.includes('/licenses/')), true);
+  }
+
+  // Self-heal backfill: an existing 2-column row gets its money columns back
+  // and the SAME license is re-signed (no new mint).
+  {
+    commits.length = 0;
+    const r = await ensureLicenseForOrder(attrs('order-partial'), 'uid-1');
+    if (!r.ok) throw new Error('backfill failed');
+    const sales = commits.find((c) => c.name.endsWith('/sales/order-partial'));
+    check('backfill re-signs the existing license (idempotent)', r.payload.lic, 'lic-existing');
+    check('backfill writes only the sales doc', commits.length, 1);
+    check('backfill restores the money columns', [sales?.fields.gross, sales?.fields.currency], [nv(500), sv('USD')]);
+    check('backfill does not touch the license binding', 'license_id' in (sales?.fields ?? {}), false);
+    check('backfill mask covers gross', sales?.fieldPaths.includes('gross'), true);
+    check('backfill keeps the generated invoice url', sales?.fields.invoice_url, sv('https://invoice.test'));
+  }
+
+  // Refund guard: a recorded refund survives a merge carrying staler attributes.
+  {
+    commits.length = 0;
+    const r = await ensureLicenseForOrder(attrs('order-refunded'), 'uid-1');
+    if (!r.ok) throw new Error('refund guard failed');
+    const sales = commits.find((c) => c.name.endsWith('/sales/order-refunded'));
+    check('refund guard re-signs the refunded license', r.payload.lic, 'lic-refunded');
+    check(
+      'refund guard keeps the recorded refund',
+      [sales?.fields.refunded, sales?.fields.refunded_amount, sales?.fields.refunded_at, sales?.fields.status],
+      [bv(true), nv(500), sv('2026-09-07T00:00:00.000Z'), sv('refunded')],
+    );
+  }
+
+  globalThis.fetch = originalFetch;
+  if (prevSa === undefined) delete process.env.FIREBASE_SERVICE_ACCOUNT;
+  else process.env.FIREBASE_SERVICE_ACCOUNT = prevSa;
+  if (prevLicenseSecret === undefined) delete process.env.BUDGET_LICENSE_SECRET;
+  else process.env.BUDGET_LICENSE_SECRET = prevLicenseSecret;
 })();
 
 // ---- redemption ownership (2026-09): email match + license-endpoint limiter ----

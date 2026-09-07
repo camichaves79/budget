@@ -242,7 +242,7 @@ export function orderToLedger(attributes) {
     currency: typeof a.currency === 'string' ? a.currency : 'USD',
     buyer_email: typeof a.user_email === 'string' ? a.user_email : '',
     receipt_url: typeof urls.receipt === 'string' ? urls.receipt : null,
-    invoice_url: null,
+    invoice_url: /** @type {string | null} */ (null), // filled by our generate-invoice endpoint
     test_mode: Boolean(a.test_mode),
     refunded: Boolean(a.refunded),
     refunded_amount: Number.isFinite(a.refunded_amount) ? /** @type {number} */ (a.refunded_amount) : 0,
