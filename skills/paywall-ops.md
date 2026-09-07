@@ -174,13 +174,12 @@ orders API without Firestore).
 - **Watch:** license meters (parse `license-limit` responses), ledger rows,
   Vercel logs for `license-invalid`/`bad-signature`.
 
-## 8. Apple sign-in (later — config-only)
+## 8. Apple sign-in — DISCARDED (2026-09-06)
 
-Requires an **Apple Developer Program account ($99/yr)**: associate the website,
-register return URL `https://<project>.firebaseapp.com/__/auth/handler`, create a
-**Service ID** + private key; then enable **Security → Authentication → Apple** in
-Firebase with the Service ID + Team ID + key. No client code change
-(`OAuthProvider('apple.com')` swap behind the existing auth boundary).
+Removed from the roadmap: the $99/yr Apple Developer Program requirement was
+never justified for this product, and Google sign-in covers the identity
+need. (If ever revisited, the swap is still config-only behind the existing
+auth boundary: `OAuthProvider('apple.com')` + a Service ID + private key.)
 
 ## 9. Known gotchas
 

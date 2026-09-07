@@ -91,8 +91,8 @@ and (except for smart entry) never leaves the device.
   1 (behaves like before); malformed counts as 0 (always review).
 - **Paywall (2026-09, approved):** price **$5/year**; free allowance 10 parses/day;
   Lemon Squeezy as MoR (5% + $0.50/txn); license HMAC-signed server-side, verified
-  on every parse with a 100/day meter; Firebase Auth (Google now, Apple later —
-  needs a $99/yr Apple Developer account, config-only change); licensed tier runs
+  on every parse with a 100/day meter; Firebase Auth (Google sign-in only —
+  Apple sign-in discarded 2026-09-06); licensed tier runs
   on a paid Gemini key with `gemini-3.5-flash-lite` primary + `gemini-3.6-flash`
   fallback. The Settings paste-key is a recovery fallback only, never the main
   path. Cost model + scale math live in `skills/paywall-ops.md`.
@@ -455,6 +455,5 @@ Candidate next steps (ask the user, don't assume):
 - Optional hardening: `ensureLicenseForOrder` could upsert the ledger row by
   construction (today the self-heal path writes only `license_id`/`redeemed_at`
   — a restore alone won't backfill missing ledger columns).
-- Apple sign-in (config-only; needs a $99/yr Apple Developer account).
 - Anything else the user raises; always read `skills/speech-entry.md` for the
   feature spec and this file for conventions before coding.
