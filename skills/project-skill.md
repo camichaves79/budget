@@ -381,7 +381,7 @@ in those tight overrides.
 
 ## 10. Current state & next-session context
 
-Everything below is **shipped and live** (main ≈ `9068739`, 2026-09-06):
+Everything below is **shipped and live** (main ≈ `f4d866f`, 2026-09-06):
 
 - Smart entry end-to-end: PWA → Vercel microservice → Gemini 3.6 Flash → instant save
   with fading toasts; review form only for ambiguous parses. Full spec (revised):

@@ -1,10 +1,11 @@
 # Architecture — $5 Budget App
 
 > **Living record** — updated whenever the app ships a meaningful change.
-> Last updated: **2026-09-06** (main ≈ `9068739`; smart-entry paywall
+> Last updated: **2026-09-06** (main ≈ `f4d866f`; smart-entry paywall
 > **user-approved and verified end-to-end** — Firestore collections +
-> accountant ledger populated; paid-key→free-key fallback shipped;
-> four-section tab bar with the + add button in the bar).
+> accountant ledger populated; redemptions are email-authorized;
+> paid-key→free-key fallback shipped; four-section tab bar with the + add
+> button in the bar).
 > Read alongside `skills/project-skill.md` (conventions + current state) and
 > `skills/speech-entry.md` (smart-entry spec). Keep this file honest: if a
 > trade-off changes, update the table, not just the date.
