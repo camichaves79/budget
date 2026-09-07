@@ -21,7 +21,7 @@
  * Plain JS with JSDoc (tsconfig.node checkJs), smoke-tested pure helpers.
  */
 
-import { createSign, createVerify, createPublicKey } from 'node:crypto';
+import { createVerify, createPublicKey } from 'node:crypto';
 
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
 const FIRESTORE_BASE = 'https://firestore.googleapis.com/v1';
@@ -67,18 +67,43 @@ function projectId() {
 let tokenCache = { token: '', expiresAt: 0 };
 
 /**
- * Build + sign an RS256 JWT (exported for smoke tests).
- * @param {Record<string, unknown>} claims
- * @param {string} privateKeyPem
+ * Strip PEM armor to the raw DER bytes of a key.
+ * @param {string} pem
+ * @returns {Uint8Array}
  */
-export function signJwt(claims, privateKeyPem) {
+function pemToDer(pem) {
+  const b64 = pem
+    .replace(/-----BEGIN [^-]+-----/, '')
+    .replace(/-----END [^-]+-----/, '')
+    .replace(/\s+/g, '');
+  return Buffer.from(b64, 'base64');
+}
+
+/**
+ * Build + sign an RS256 JWT (exported for smoke tests).
+ *
+ * Signed with WebCrypto crypto.subtle, NOT node:crypto createSign: workerd's
+ * nodejs_compat does not implement createSign ([unenv] createSign is not
+ * implemented yet — diagnosed 2026-09-08 in prod logs), while crypto.subtle
+ * is fully supported in Workers (the id-token verifier already uses it) and
+ * in Node ≥ 18 (so the smoke suite keeps working unchanged).
+ * @param {Record<string, unknown>} claims
+ * @param {string} privateKeyPem PKCS8 ("-----BEGIN PRIVATE KEY-----")
+ * @returns {Promise<string>}
+ */
+export async function signJwt(claims, privateKeyPem) {
   /** @param {unknown} o */
   const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
   const signingInput = `${b64({ alg: 'RS256', typ: 'JWT' })}.${b64(claims)}`;
-  const signer = createSign('RSA-SHA256');
-  signer.update(signingInput);
-  const signature = signer.sign(privateKeyPem).toString('base64url');
-  return `${signingInput}.${signature}`;
+  const key = await crypto.subtle.importKey(
+    'pkcs8',
+    pemToDer(privateKeyPem),
+    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const signature = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, new TextEncoder().encode(signingInput));
+  return `${signingInput}.${Buffer.from(signature).toString('base64url')}`;
 }
 
 /** @returns {Promise<string | null>} */
@@ -87,7 +112,7 @@ async function getAccessToken() {
   const sa = getServiceAccount();
   if (!sa) return null;
   const now = Math.floor(Date.now() / 1000);
-  const assertion = signJwt(
+  const assertion = await signJwt(
     { iss: sa.client_email, scope: SCOPES, aud: TOKEN_ENDPOINT, iat: now, exp: now + 3600 },
     sa.private_key,
   );

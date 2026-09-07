@@ -569,7 +569,7 @@ check('fromFields guards garbage', fromFields(null), {});
 const rsa = generateKeyPairSync('rsa', { modulusLength: 2048 });
 const privPem = rsa.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
 const pubPem = rsa.publicKey.export({ type: 'spki', format: 'pem' }).toString();
-const jwt = signJwt({ iss: 'x@y', aud: 'https://oauth2.googleapis.com/token', iat: 1, exp: 2 }, privPem);
+const jwt = await signJwt({ iss: 'x@y', aud: 'https://oauth2.googleapis.com/token', iat: 1, exp: 2 }, privPem);
 const jwtParts = jwt.split('.');
 const jwtDecoded = decodeJwtParts(jwt);
 check('jwt has three parts', jwtParts.length, 3);
