@@ -17,7 +17,7 @@ import {
   estimateNetCents, ledgerToCsv, makeLicensePayload, orderToLedger, signLicense,
   verifyLicenseToken, verifyWebhookSignature, webhookToLedger,
 } from '../api/_license.js';
-import { checkIpRateLimit, createIpRateLimiter } from '../api/_http.js';
+import { checkIpRateLimit, createIpRateLimiter, isAllowedOrigin } from '../api/_http.js';
 import { ensureLicenseForOrder, saleRowForMerge } from '../api/_licenseops.js';
 import redeemHandler from '../api/license/redeem.js';
 import { createHmac, createSign, generateKeyPairSync } from 'node:crypto';
@@ -853,6 +853,14 @@ check('ip limiter allows first three', [checkIpRateLimit(ipLimiter, fakeIpReq('9
 check('ip limiter blocks fourth', checkIpRateLimit(ipLimiter, fakeIpReq('9.9.9.9'), 300), false);
 check('ip limiter resets after window', checkIpRateLimit(ipLimiter, fakeIpReq('9.9.9.9'), 1001), true);
 check('ip limiter independent ips', checkIpRateLimit(ipLimiter, fakeIpReq('8.8.8.8'), 1500), true);
+
+// ---- origin allow-list (hosting migration A15: Cloudflare Pages) ----
+check('origin allow-list keeps the github pages origin', isAllowedOrigin('https://camichaves79.github.io'), true);
+check('origin allow-list accepts a pages.dev production origin', isAllowedOrigin('https://budget.pages.dev'), true);
+check('origin allow-list accepts pages.dev preview hashes', isAllowedOrigin('https://a1b2c3d4.budget.pages.dev'), true);
+check('origin allow-list accepts localhost dev', isAllowedOrigin('http://localhost:5173'), true);
+check('origin allow-list rejects a lookalike suffix', isAllowedOrigin('https://budget.pages.dev.evil.com'), false);
+check('origin allow-list rejects unknown origins', isAllowedOrigin('https://example.com'), false);
 
 await (async () => {
   // Self-signed idToken + JWKS stub (same technique as the fallback tests).

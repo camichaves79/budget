@@ -14,6 +14,11 @@ const ALLOWED_ORIGINS = ['https://camichaves79.github.io'];
 export function isAllowedOrigin(origin) {
   if (origin === null || origin === '') return false;
   if (ALLOWED_ORIGINS.includes(origin)) return true;
+  // Cloudflare Pages (hosting migration A15): production + preview
+  // deployments live under *.pages.dev; exact-match can't know the hash
+  // subdomain previews get. Same posture as the rest of A10 (obfuscation,
+  // not auth — the shared secret in the bundle is the real gate).
+  if (/^https:\/\/([\w-]+\.)+pages\.dev$/.test(origin)) return true;
   // Dev server and local previews on any port.
   return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
 }
