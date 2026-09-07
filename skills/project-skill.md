@@ -17,8 +17,9 @@ and (except for smart entry) never leaves the device.
 - Repo: https://github.com/camichaves79/budget
 - Live site: https://camichaves79.github.io/budget/ (auto-deployed from `main`)
 - Local dev: `npm run dev` → http://localhost:5173/
-- **PWA install name: "$5 Budget"** (manifest + apple meta in `index.html`; icons mint
-  `#60c784` + engraving-green banknote in `public/`).
+- **PWA install name: "$5 Budget"** (manifest + apple meta in `index.html`; icons
+  mint `#60c784` + engraving-green banknote with a bold "$5" center in `public/`;
+  source in `tools/icon.svg`).
 - **Parse microservice** (the app's first backend): Vercel Function
   `https://budget-beta-two.vercel.app/api/parse` — see §4/§8. Free-tier
   resilience: transient Gemini 429/5xx are retried with backoff, quota-blocked
@@ -106,7 +107,7 @@ and (except for smart entry) never leaves the device.
   the bundler to lose. Client dep: `firebase` (auth module only, modular
   imports) — the one deliberate dependency addition, justified by A13.
 - No router, no UI library, no icon library (inline stroke SVGs)
-- Lint: `oxlint` · Tests: hand-rolled smoke suite (`tests/smoke.ts`, 220 checks)
+- Lint: `oxlint` · Tests: hand-rolled smoke suite (`tests/smoke.ts`, 237 checks)
 - npm scripts: `dev` · `build` (tsc -b && vite build) · `lint` · `preview` ·
   `test` (bundles tests/smoke.ts via `vite.test.config.ts` into `.smoke/` and runs it)
 - **Local npm quirk:** the global npm cache in this environment has permission issues.
@@ -116,9 +117,12 @@ and (except for smart entry) never leaves the device.
 - `vite.config.ts` uses `base: './'` so the build works from the `/budget/` subpath on
   GitHub Pages. Vite rebases `/…` asset refs in `index.html` automatically.
 - **No SVG→PNG rasterizer with emoji fonts is available here** (qlmanage fails,
-  sharp/librsvg renders the 💰 emoji as a black box). For icon PNGs, draw vector
-  shapes (the current banknote icon was authored as SVG paths + rendered via
-  `sharp --no-save`).
+  sharp/librsvg renders the 💰 emoji as a black box) — regular TEXT glyphs do
+  render (fontconfig → DejaVu fallback). Icon source of truth:
+  `tools/icon.svg` (mint rounded square + engraving-green banknote, two side
+  dots + a centered "$5" sized half the bill's height — 2026-09 redesign) →
+  `tools/render-icons.mjs` (sharp, install `--no-save` with the npm cache
+  workaround).
 
 ## 4. Architecture & file map
 
@@ -194,9 +198,10 @@ api/_firebase.js    # zero-dependency Firebase REST client: FIREBASE_SERVICE_ACC
                     # accounts:lookup (email → uid)
 tests/smoke.ts      # logic tests: money, periods, selectors, LLM validators,
                     # microservice helpers (rate limiter, sanitizer, Gemini array
-                    # parser, retry policy, response cache), 220 checks
-public/             # favicon.svg (mint + 💰), manifest.webmanifest ("$5 Budget"),
-                    # icon-192/512.png, apple-touch-icon.png (banknote vector icon)
+                    # parser, retry policy, response cache), 237 checks
+public/             # favicon.svg (mint + banknote + "$5"), manifest.webmanifest
+                    # ("$5 Budget"), icon-192/512.png, apple-touch-icon.png
+tools/              # icon.svg (icon source of truth) + render-icons.mjs (sharp)
 .github/workflows/deploy.yml  # GitHub Pages on push to main; bakes VITE_* repo secrets
 ```
 

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- PWA/app icon source. Mint rounded square + engraving-green banknote
+       with two side dots and a centered dollar-five mark (2026-09). Render
+       PNGs with tools/render-icons.mjs. -->
+  <rect width="512" height="512" rx="102" fill="#60c784"/>
+  <rect x="67" y="157" width="378" height="198" rx="14" fill="none" stroke="#1b3022" stroke-width="11"/>
+  <circle cx="161" cy="256" r="10" fill="#1b3022"/>
+  <circle cx="350" cy="256" r="10" fill="#1b3022"/>
+  <text x="256" y="294" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="118" font-weight="bold" text-anchor="middle" fill="#1b3022">$5</text>
+</svg>
