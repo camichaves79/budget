@@ -1,7 +1,7 @@
 # Architecture — $5 Budget App
 
 > **Living record** — updated whenever the app ships a meaningful change.
-> Last updated: **2026-09-06** (main ≈ `f8b842e`; smart-entry paywall
+> Last updated: **2026-09-06** (main ≈ `2792ba9`; smart-entry paywall
 > **user-approved and verified end-to-end** — Firestore collections +
 > accountant ledger populated; redemptions are email-authorized;
 > paid-key→free-key fallback shipped; four-section tab bar with the + add
