@@ -8,7 +8,7 @@
  * Request API for these functions.
  */
 
-const ALLOWED_ORIGINS = ['https://camichaves79.github.io'];
+const ALLOWED_ORIGINS = ['https://camichaves79.github.io', 'https://5budget.app'];
 
 /** @param {string | null} origin */
 export function isAllowedOrigin(origin) {

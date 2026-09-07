@@ -861,6 +861,8 @@ check('origin allow-list accepts a pages.dev production origin', isAllowedOrigin
 check('origin allow-list accepts pages.dev preview hashes', isAllowedOrigin('https://a1b2c3d4.budget.pages.dev'), true);
 check('origin allow-list accepts localhost dev', isAllowedOrigin('http://localhost:5173'), true);
 check('origin allow-list rejects a lookalike suffix', isAllowedOrigin('https://budget.pages.dev.evil.com'), false);
+check('origin allow-list accepts the production domain', isAllowedOrigin('https://5budget.app'), true);
+check('origin allow-list rejects a lookalike of the domain', isAllowedOrigin('https://5budget.app.evil.com'), false);
 check('origin allow-list rejects unknown origins', isAllowedOrigin('https://example.com'), false);
 
 // ---- Cloudflare Worker entry (A15 Phase 2): Node-style handlers behind a
