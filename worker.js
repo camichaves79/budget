@@ -114,6 +114,41 @@ export function createNodeRes() {
   return res;
 }
 
+/**
+ * Bindings the Worker may carry. Access is by EXPLICIT KEY: deployed Workers
+ * expose bindings as non-enumerable getters, so `Object.assign(process.env,
+ * env)` silently copies nothing in production (local `wrangler dev` passes a
+ * plain object, which is why it worked there while the deployed worker
+ * answered `unauthorized` for a valid secret — diagnosed 2026-09-07).
+ * @type {string[]}
+ */
+const ENV_KEYS = [
+  'BUDGET_PARSE_SECRET',
+  'BUDGET_LICENSE_SECRET',
+  'LICENSE_DAILY_CAP',
+  'BUDGET_ADMIN_SECRET',
+  'GEMINI_API_KEY',
+  'GEMINI_PAID_API_KEY',
+  'GEMINI_FALLBACK_MODEL',
+  'LEMONSQUEEZY_API_KEY',
+  'LEMONSQUEEZY_WEBHOOK_SECRET',
+  'LEMONSQUEEZY_STORE_ID',
+  'FIREBASE_SERVICE_ACCOUNT',
+];
+
+/**
+ * Copy the Worker's env bindings into process.env for the Node-style
+ * handlers (call-time reads only — see the module header). Exported for the
+ * smoke suite.
+ * @param {Record<string, string>} env
+ */
+export function hydrateEnv(env) {
+  for (const key of ENV_KEYS) {
+    const value = env[key];
+    if (typeof value === 'string' && value !== '') process.env[key] = value;
+  }
+}
+
 export default {
   /**
    * @param {Request} request
@@ -121,10 +156,9 @@ export default {
    * @returns {Promise<Response>}
    */
   async fetch(request, env) {
-    // nodejs_compat also populates process.env from the Worker's bindings;
-    // this per-request hydration is belt-and-braces so every call-time env
-    // read sees the Worker's variables (local `wrangler dev` included).
-    Object.assign(process.env, env);
+    // nodejs_compat may also populate process.env from bindings; this
+    // explicit-key hydration is the reliable path (see ENV_KEYS above).
+    hydrateEnv(env);
 
     const url = new URL(request.url);
     const route = ROUTES.find(([path]) => path === url.pathname);

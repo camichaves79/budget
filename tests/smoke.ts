@@ -24,7 +24,7 @@ import { createHmac, createSign, generateKeyPairSync } from 'node:crypto';
 import { FREE_DAILY_PARSES, nextQuota, remainingFreeToday } from '../src/lib/quota';
 import { licenseIsActive, parseLicenseToken } from '../src/lib/license';
 import { decodeJwtParts, fromFields, setDocMerge, signJwt, toFields, verifyJwtSignature } from '../api/_firebase.js';
-import worker, { createNodeRes, toNodeReq } from '../worker.js';
+import worker, { createNodeRes, hydrateEnv, toNodeReq } from '../worker.js';
 import type { Category } from '../src/lib/types';
 
 let failures = 0;
@@ -865,6 +865,23 @@ check('origin allow-list rejects unknown origins', isAllowedOrigin('https://exam
 
 // ---- Cloudflare Worker entry (A15 Phase 2): Node-style handlers behind a
 //      Web Request adapter — the handlers themselves stay unmodified ----
+{
+  // Deployed Workers expose env bindings as NON-enumerable getters — the
+  // prod env shape that broke Object.assign(process.env, env). The explicit-
+  // key hydration must read them anyway.
+  const prodShapedEnv: Record<string, string> = {};
+  Object.defineProperty(prodShapedEnv, 'BUDGET_PARSE_SECRET', { get: () => 'via-getter', enumerable: false });
+  Object.defineProperty(prodShapedEnv, 'LICENSE_DAILY_CAP', { get: () => '42', enumerable: false });
+  hydrateEnv(prodShapedEnv);
+  check(
+    'worker hydration reads non-enumerable bindings (prod env shape)',
+    [process.env.BUDGET_PARSE_SECRET, process.env.LICENSE_DAILY_CAP],
+    ['via-getter', '42'],
+  );
+  delete process.env.BUDGET_PARSE_SECRET;
+  delete process.env.LICENSE_DAILY_CAP;
+}
+
 await (async () => {
   const testEnv: Record<string, string> = {
     BUDGET_PARSE_SECRET: 'testparse',
