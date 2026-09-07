@@ -1,0 +1,27 @@
+# Deploys the API Worker (worker.js + wrangler.toml) to Cloudflare on every
+# push to main — hosting migration A15, Phase 2. The Vercel functions stay
+# live during the dual-run until the cutover completes.
+#
+# Requires repo secrets:
+#   CLOUDFLARE_API_TOKEN  — Workers deploy token (Account → Workers → API Tokens)
+#   CLOUDFLARE_ACCOUNT_ID — 32-hex account id (dashboard URL or Overview)
+name: Deploy API Worker
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy

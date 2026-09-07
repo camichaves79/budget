@@ -1,0 +1,11 @@
+# Cloudflare Worker config (hosting migration A15, Phase 2).
+# The six Vercel Functions become routes of this ONE worker — see worker.js.
+# nodejs_compat provides Buffer + node:crypto for the api modules; the
+# compatibility date pins the v2 compat layer.
+name = "budget-api"
+main = "worker.js"
+compatibility_date = "2026-09-07"
+compatibility_flags = ["nodejs_compat"]
+
+[observability]
+enabled = true

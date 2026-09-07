@@ -24,6 +24,7 @@ import { createHmac, createSign, generateKeyPairSync } from 'node:crypto';
 import { FREE_DAILY_PARSES, nextQuota, remainingFreeToday } from '../src/lib/quota';
 import { licenseIsActive, parseLicenseToken } from '../src/lib/license';
 import { decodeJwtParts, fromFields, setDocMerge, signJwt, toFields, verifyJwtSignature } from '../api/_firebase.js';
+import worker, { createNodeRes, toNodeReq } from '../worker.js';
 import type { Category } from '../src/lib/types';
 
 let failures = 0;
@@ -861,6 +862,100 @@ check('origin allow-list accepts pages.dev preview hashes', isAllowedOrigin('htt
 check('origin allow-list accepts localhost dev', isAllowedOrigin('http://localhost:5173'), true);
 check('origin allow-list rejects a lookalike suffix', isAllowedOrigin('https://budget.pages.dev.evil.com'), false);
 check('origin allow-list rejects unknown origins', isAllowedOrigin('https://example.com'), false);
+
+// ---- Cloudflare Worker entry (A15 Phase 2): Node-style handlers behind a
+//      Web Request adapter — the handlers themselves stay unmodified ----
+await (async () => {
+  const testEnv: Record<string, string> = {
+    BUDGET_PARSE_SECRET: 'testparse',
+    BUDGET_ADMIN_SECRET: 'testadmin',
+    BUDGET_LICENSE_SECRET: 'testlicense',
+  };
+  const envBackup: Record<string, string | undefined> = {};
+  for (const k of Object.keys(testEnv)) envBackup[k] = process.env[k];
+
+  {
+    const req = toNodeReq(
+      new Request('https://budget-api.test.workers.dev/api/parse', {
+        method: 'POST',
+        headers: { Origin: 'https://budget-7ad.pages.dev', 'x-budget-secret': 'testparse', 'X-Forwarded-For': '10.0.0.1', 'cf-connecting-ip': '9.9.9.9' },
+        body: '{}',
+      }),
+    );
+    check('worker req lowercases header names', typeof req.headers['origin'] === 'string', true);
+    check('worker req keeps the secret header', req.headers['x-budget-secret'], 'testparse');
+    check('worker req prefers an explicit x-forwarded-for', req.headers['x-forwarded-for'], '10.0.0.1');
+    const chunks: Buffer[] = [];
+    for await (const c of req) chunks.push(c as Buffer);
+    check('worker req streams the body', Buffer.concat(chunks).toString('utf8'), '{}');
+  }
+  {
+    const req = toNodeReq(new Request('https://budget-api.test.workers.dev/api/ledger/export?format=csv'));
+    check('worker req keeps the query string', req.url, '/api/ledger/export?format=csv');
+    check('worker req maps cf-connecting-ip when no forwarded header', req.headers['x-forwarded-for'], undefined);
+  }
+  {
+    const res = createNodeRes();
+    res.setHeader('Content-Type', 'text/csv');
+    res.statusCode = 200;
+    res.end('a,b');
+    const response = res.toResponse();
+    check('worker res captures status and body', [response.status, await response.text()], [200, 'a,b']);
+    check('worker res captures headers', response.headers.get('content-type'), 'text/csv');
+  }
+  {
+    const res = createNodeRes();
+    res.statusCode = 204;
+    res.end();
+    check('worker 204 carries no body', await res.toResponse().text(), '');
+  }
+  {
+    const res = await worker.fetch(
+      new Request('https://budget-api.test.workers.dev/api/license/check', {
+        method: 'POST',
+        headers: { Origin: 'https://budget-7ad.pages.dev', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'not-a-license' }),
+      }),
+      testEnv,
+    );
+    check('worker routes check and guards the shared secret', [res.status, await res.json()], [401, { ok: false, code: 'unauthorized' }]);
+  }
+  {
+    const res = await worker.fetch(
+      new Request('https://budget-api.test.workers.dev/api/license/check', {
+        method: 'POST',
+        headers: { Origin: 'https://budget-7ad.pages.dev', 'Content-Type': 'application/json', 'x-budget-secret': 'testparse' },
+        body: JSON.stringify({ key: 'not-a-license' }),
+      }),
+      testEnv,
+    );
+    check('worker check passes the secret then demands sign-in', [res.status, await res.json()], [401, { ok: false, code: 'sign-in-required' }]);
+  }
+  {
+    const res = await worker.fetch(
+      new Request('https://budget-api.test.workers.dev/api/parse', {
+        method: 'POST',
+        headers: { Origin: 'https://budget-7ad.pages.dev', 'Content-Type': 'application/json', 'x-budget-secret': 'testparse' },
+        body: '{}',
+      }),
+      testEnv,
+    );
+    check('worker parse passes origin+secret then rejects the empty input', [res.status, await res.json()], [400, { ok: false, code: 'bad-request' }]);
+  }
+  {
+    const res = await worker.fetch(new Request('https://budget-api.test.workers.dev/api/ledger/export?format=csv'), testEnv);
+    check('worker guards the ledger export', [res.status, await res.json()], [401, { ok: false, code: 'unauthorized' }]);
+  }
+  {
+    const res = await worker.fetch(new Request('https://budget-api.test.workers.dev/nope'), testEnv);
+    check('worker answers 404 for unknown paths', res.status, 404);
+  }
+
+  for (const [k, v] of Object.entries(envBackup)) {
+    if (v === undefined) delete process.env[k];
+    else process.env[k] = v;
+  }
+})();
 
 await (async () => {
   // Self-signed idToken + JWKS stub (same technique as the fallback tests).

@@ -48,7 +48,11 @@ const GEMINI_MODEL = 'gemini-3.6-flash';
  * primary's quota is exhausted. Set the env var to an empty string to
  * disable the fallback.
  */
-const FALLBACK_MODEL = (process.env.GEMINI_FALLBACK_MODEL ?? 'gemini-3.5-flash-lite').trim() || null;
+const FALLBACK_MODEL_DEFAULT = 'gemini-3.5-flash-lite';
+/** Call-time read — Workers have no env at module scope (A15 Phase 2). */
+function fallbackModel() {
+  return (process.env.GEMINI_FALLBACK_MODEL ?? FALLBACK_MODEL_DEFAULT).trim() || null;
+}
 const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/';
 
 /**
@@ -59,22 +63,38 @@ const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/';
  * then carries the parse so a broken paid key never bricks licensed parses.
  * The free tier cannot back a paid product (ARCHITECTURE.md A14).
  */
-const PAID_API_KEY = (process.env.GEMINI_PAID_API_KEY ?? '').trim() || null;
+/** Call-time read — Workers have no env at module scope (A15 Phase 2). */
+function paidApiKey() {
+  return (process.env.GEMINI_PAID_API_KEY ?? '').trim() || null;
+}
 
 /**
  * Licensed parses run Lite-first with Flash as fallback — the inverse of the
  * free path, since the Lite model is ~25% cheaper per parse (A14).
+ * Built at call time (see fallbackModel — Workers env note, A15 Phase 2).
  */
-const LICENSED_MODEL_ORDER = {
-  primary: FALLBACK_MODEL ?? GEMINI_MODEL,
-  fallback: FALLBACK_MODEL ? GEMINI_MODEL : null,
-};
+function licensedModelOrder() {
+  const fallback = fallbackModel();
+  return { primary: fallback ?? GEMINI_MODEL, fallback: fallback ? GEMINI_MODEL : null };
+}
 
-/** HMAC secret that signs license tokens; verified on every licensed parse. */
-const LICENSE_SECRET = (process.env.BUDGET_LICENSE_SECRET ?? '').trim();
-/** Daily parse cap per license (cost bound; instance-local like the limiter). */
-const LICENSE_DAILY_CAP = Number(process.env.LICENSE_DAILY_CAP) || 100;
-const licenseMeter = createLicenseMeter({ limitPerDay: LICENSE_DAILY_CAP });
+/** HMAC secret that signs license tokens; verified on every licensed parse.
+ *  Call-time read — Workers have no env at module scope (A15 Phase 2). */
+function licenseSecret() {
+  return (process.env.BUDGET_LICENSE_SECRET ?? '').trim();
+}
+/** Daily parse cap per license (cost bound; instance-local like the limiter).
+ *  The meter's state must persist across requests, so it is created ONCE, on
+ *  first licensed use — the cap is read at that call time (A15 Phase 2). */
+/** @type {ReturnType<typeof createLicenseMeter> | null} */
+let licenseMeter = null;
+/** @returns {ReturnType<typeof createLicenseMeter>} */
+function getLicenseMeter() {
+  if (licenseMeter === null) {
+    licenseMeter = createLicenseMeter({ limitPerDay: Number(process.env.LICENSE_DAILY_CAP) || 100 });
+  }
+  return licenseMeter;
+}
 
 /**
  * Gemini's free tier is shared, so transient 429/5xx responses are common.
@@ -521,7 +541,7 @@ async function callGemini(model, input, apiKey) {
  */
 async function parseWithGemini(input, apiKey, modelOrder) {
   const primary = modelOrder?.primary ?? GEMINI_MODEL;
-  const fallback = modelOrder?.fallback ?? FALLBACK_MODEL;
+  const fallback = modelOrder?.fallback ?? fallbackModel();
   const models = [primary];
   if (fallback && fallback !== primary) models.push(fallback);
 
@@ -653,16 +673,17 @@ export default async function handler(req, res) {
   const licenseToken = typeof raw.license === 'string' && raw.license !== '' ? raw.license : null;
   let licensed = false;
   if (licenseToken !== null) {
-    if (LICENSE_SECRET === '') {
+    const secret = licenseSecret();
+    if (secret === '') {
       send(res, 502, { ok: false, code: 'license-config' }, cors);
       return;
     }
-    const verified = verifyLicenseToken(licenseToken, LICENSE_SECRET);
+    const verified = verifyLicenseToken(licenseToken, secret);
     if (!verified.ok) {
       send(res, 403, { ok: false, code: 'license-invalid' }, cors);
       return;
     }
-    if (!licenseMeter.allow(verified.payload.lic)) {
+    if (!getLicenseMeter().allow(verified.payload.lic)) {
       send(res, 429, { ok: false, code: 'license-limit' }, cors);
       return;
     }
@@ -689,10 +710,11 @@ export default async function handler(req, res) {
   // else — free parses and licensed parses without a paid key — uses the
   // free key with the licensed model order when a license is attached.
   let outcome;
-  if (licensed && PAID_API_KEY !== null) {
-    outcome = await parseLicensedWithFallback(input, PAID_API_KEY, apiKey, LICENSED_MODEL_ORDER);
+  const paidKey = paidApiKey();
+  if (licensed && paidKey !== null) {
+    outcome = await parseLicensedWithFallback(input, paidKey, apiKey, licensedModelOrder());
   } else {
-    outcome = await parseWithGemini(input, apiKey, licensed ? LICENSED_MODEL_ORDER : undefined);
+    outcome = await parseWithGemini(input, apiKey, licensed ? licensedModelOrder() : undefined);
   }
   if (outcome.ok) {
     cacheSet(responseCache, cacheKey, outcome.parsed);
