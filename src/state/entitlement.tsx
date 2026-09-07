@@ -63,6 +63,9 @@ export interface EntitlementValue {
   pendingOrder: string | null;
   busy: 'redeeming' | null;
   lastEvent: EntitlementEvent | null;
+  /** Specific failure message from the last redeem/check attempt (e.g. the
+   * email-mismatch guidance) — null after a success or a new attempt. */
+  redeemError: string | null;
   /** Count one parse attempt against the free allowance. */
   recordParseUse: () => void;
   activateLicenseToken: (token: string) => void;
@@ -147,6 +150,7 @@ export function EntitlementProvider({ children }: { children: ReactNode }) {
   });
   const [busy, setBusy] = useState<'redeeming' | null>(null);
   const [lastEvent, setLastEvent] = useState<EntitlementEvent | null>(null);
+  const [redeemError, setRedeemError] = useState<string | null>(null);
 
   const licensedActive = licenseIsActive(license);
   const licenseExpiryLabel = license ? formatLicenseExpiry(license.exp) : null;
@@ -179,6 +183,7 @@ export function EntitlementProvider({ children }: { children: ReactNode }) {
   const redeemAndApply = useCallback(
     async (reference: string): Promise<'ok' | 'none' | 'error'> => {
       setBusy('redeeming');
+      setRedeemError(null);
       // Purchases are always account-bound: the server requires the idToken,
       // so an unsigned redeem is a guaranteed 401. The UI gates on sign-in
       // too — this is the defensive layer (keeps the reference parked).
@@ -201,6 +206,13 @@ export function EntitlementProvider({ children }: { children: ReactNode }) {
         setPendingOrder(null);
         return 'none';
       }
+      // email-mismatch keeps the reference parked: signing in with the
+      // buyer's account and retrying is the recovery path.
+      setRedeemError(
+        result.code === 'email-mismatch' || result.code === 'internal' || result.code === 'rate-limited'
+          ? result.message
+          : null,
+      );
       return 'error';
     },
     [applyToken],
@@ -270,9 +282,13 @@ export function EntitlementProvider({ children }: { children: ReactNode }) {
   const activatePastedKey = useCallback(
     async (key: string): Promise<'ok' | 'invalid' | 'error'> => {
       const trimmed = key.trim();
+      setRedeemError(null);
       const idToken = await getUserIdToken();
       const result = await checkLicenseKey(trimmed, idToken ?? undefined);
-      if (!result.ok) return 'error';
+      if (!result.ok) {
+        setRedeemError(result.message);
+        return 'error';
+      }
       if (!result.active) return 'invalid';
       applyToken(trimmed, 'licensed');
       return 'ok';
@@ -302,6 +318,7 @@ export function EntitlementProvider({ children }: { children: ReactNode }) {
       pendingOrder,
       busy,
       lastEvent,
+      redeemError,
       recordParseUse,
       activateLicenseToken: (token: string) => applyToken(token, null),
       dropLicense,
@@ -322,6 +339,7 @@ export function EntitlementProvider({ children }: { children: ReactNode }) {
       pendingOrder,
       busy,
       lastEvent,
+      redeemError,
       recordParseUse,
       applyToken,
       dropLicense,

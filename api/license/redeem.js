@@ -5,17 +5,24 @@
  *
  * Body: { orderId?: string, key?: string, idToken: string (required) }
  *   → 200 { ok: true, license }
- *   → 404 purchase-not-found · 409 purchase-not-paid · 401 unauthorized /
- *     sign-in-required / bad-id-token · 400 bad-request · 503 not-configured
+ *   → 404 purchase-not-found · 409 purchase-not-paid / email-mismatch ·
+ *     429 rate-limited · 401 unauthorized / sign-in-required / bad-id-token ·
+ *     400 bad-request · 503 not-configured
  *
  * Idempotent: re-redeeming the same order returns the SAME license.
+ * Ownership (2026-09): the signed-in account's email must match the order's
+ * buyer email — LS order ids are numeric and enumerable, so sign-in alone
+ * is not authorization.
  */
 
-import { handleCors, hasSharedSecret, readJsonBody, send } from '../_http.js';
+import { checkIpRateLimit, createIpRateLimiter, handleCors, hasSharedSecret, readJsonBody, send } from '../_http.js';
 import { db, verifyIdTokenSafe } from '../_firebase.js';
 import { fetchOrderById, findOrderByNumber, generateOrderInvoice, validateLicenseKey } from '../_ls.js';
-import { orderToLedger } from '../_license.js';
+import { emailsMatch, orderToLedger } from '../_license.js';
 import { ensureLicenseForOrder } from '../_licenseops.js';
+
+/** Dampens order-id enumeration (defense-in-depth under the email check). */
+const rateLimiter = createIpRateLimiter();
 
 /**
  * @param {import('node:http').IncomingMessage} req
@@ -30,6 +37,10 @@ export default async function handler(req, res) {
   }
   if (!hasSharedSecret(req)) {
     send(res, 401, { ok: false, code: 'unauthorized' }, cors);
+    return;
+  }
+  if (!checkIpRateLimit(rateLimiter, req)) {
+    send(res, 429, { ok: false, code: 'rate-limited' }, cors);
     return;
   }
 
@@ -95,6 +106,15 @@ async function redeem(req, res, cors) {
   const status = typeof attributes.status === 'string' ? attributes.status : '';
   if (status !== 'paid') {
     send(res, 409, { ok: false, code: status === 'refunded' ? 'purchase-refunded' : 'purchase-not-paid' }, cors);
+    return;
+  }
+
+  // Ownership (2026-09): the redeemer's account email must match the LS buyer
+  // email. Without this, an attacker could enumerate numeric order ids and
+  // claim any paid order for their own account — sign-in is identity, this
+  // is authorization.
+  if (!emailsMatch(verified.email, attributes.user_email)) {
+    send(res, 409, { ok: false, code: 'email-mismatch' }, cors);
     return;
   }
 

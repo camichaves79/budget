@@ -411,6 +411,12 @@ Everything below is **shipped and live** (main ≈ `9068739`, 2026-09-06):
   (2) `GEMINI_PAID_API_KEY` was rejected 400 by Gemini (invalid key/project),
   which bricked licensed parses → `98d0757` added the paid-key→free-key
   fallback on config errors (A14 safety floor).
+- **Redemption email-authorization (`redeem-email-check`, 2026-09):** redeem
+  and the paste-key check now require the signed-in Google email to match the
+  LS buyer email (409 `email-mismatch` otherwise) — numeric order ids are
+  enumerable, so sign-in alone was not authorization; the license endpoints
+  also got per-IP rate limits (30/10min). Buyers must use their Google email
+  at checkout.
 - **Four-section redesign (`5700d69`, user-approved):** Categories split out of
   Settings into its own tab — Cash Flow · Budgets · Categories · Settings;
   Categories gets the bullet-list icon + pinned layout; Settings keeps Data,

@@ -76,6 +76,20 @@ export async function redeemLicense(reference: string, idToken?: string): Promis
     return { ok: false, code: 'unexpected', message: 'The licensing service answered unexpectedly. Try again shortly.' };
   }
   const code = typeof payload?.code === 'string' ? payload.code : '';
+  if (code === 'email-mismatch') {
+    return {
+      ok: false,
+      code: 'email-mismatch',
+      message: 'This purchase belongs to a different email — sign in with the Google account used at checkout.',
+    };
+  }
+  if (code === 'rate-limited') {
+    return {
+      ok: false,
+      code: 'rate-limited',
+      message: 'Too many attempts in a short time. Wait a few minutes and try again.',
+    };
+  }
   if (code === 'purchase-not-paid' || status === 409) {
     return { ok: false, code: 'purchase-not-paid', message: "Your payment hasn't been confirmed yet. Try again in a moment." };
   }
@@ -140,6 +154,15 @@ export async function checkLicenseKey(key: string, idToken?: string): Promise<Ch
   }
   if (code === 'sign-in-required') {
     return { ok: false, message: 'Sign in with Google first — licenses are tied to your account.' };
+  }
+  if (code === 'email-mismatch') {
+    return {
+      ok: false,
+      message: 'This key belongs to a different email — sign in with the Google account used at checkout.',
+    };
+  }
+  if (code === 'rate-limited') {
+    return { ok: false, message: 'Too many attempts in a short time. Wait a few minutes and try again.' };
   }
   return { ok: false, message: "Couldn't reach the licensing service. Check your connection and try again." };
 }

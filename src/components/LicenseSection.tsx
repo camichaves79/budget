@@ -20,6 +20,7 @@ export function LicenseSection() {
     licenseExpiryLabel,
     licensedActive,
     pendingOrder,
+    redeemError,
     remaining,
     restoreLicense,
     signIn,
@@ -44,6 +45,12 @@ export function LicenseSection() {
     );
   }, [lastEvent]);
 
+  // A specific redeem/check failure (e.g. the email-mismatch guidance) is
+  // derived at render time — no state sync needed, so failures that happened
+  // at boot surface the moment the section mounts.
+  const shownNote =
+    note ?? (redeemError ? { text: redeemError, kind: 'error' as const } : null);
+
   const unlock = async () => {
     setNote(null);
     // Purchases are always account-bound: identity first, then checkout.
@@ -58,7 +65,10 @@ export function LicenseSection() {
       if (outcome === 'none')
         setNote({ text: "That purchase couldn't be completed. Contact the app owner if the payment went through.", kind: 'error' });
       else if (outcome === 'error')
-        setNote({ text: "Couldn't reach the licensing service. Check your connection and try again.", kind: 'error' });
+        setNote({
+          text: redeemError ?? "Couldn't reach the licensing service. Check your connection and try again.",
+          kind: 'error',
+        });
       return;
     }
     await buy();
@@ -95,7 +105,11 @@ export function LicenseSection() {
     setBusy(false);
     if (outcome === 'ok') setKeyInput('');
     else if (outcome === 'invalid') setNote({ text: 'That key is not valid. Check it and try again.', kind: 'error' });
-    else setNote({ text: "Couldn't reach the licensing service. Check your connection and try again.", kind: 'error' });
+    else
+      setNote({
+        text: redeemError ?? "Couldn't reach the licensing service. Check your connection and try again.",
+        kind: 'error',
+      });
   };
 
   return (
@@ -186,7 +200,7 @@ export function LicenseSection() {
           </form>
         )}
 
-        {note && <p className={note.kind === 'success' ? 'note-success' : 'error-text'}>{note.text}</p>}
+        {shownNote && <p className={shownNote.kind === 'success' ? 'note-success' : 'error-text'}>{shownNote.text}</p>}
       </div>
     </>
   );

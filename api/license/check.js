@@ -9,16 +9,19 @@
  *      which is then minted into a signed token on the spot. This rescues
  *      purchases whose redirect/redemption never completed.
  *
- * Body: { key: string }
+ * Body: { key: string, idToken?: string }
  *   → 200 { ok: true, active: boolean, license: string | null }
- *   · 503 not-configured
+ *   · 409 email-mismatch · 429 rate-limited · 503 not-configured
  */
 
-import { handleCors, hasSharedSecret, readJsonBody, send } from '../_http.js';
-import { verifyLicenseToken } from '../_license.js';
+import { checkIpRateLimit, createIpRateLimiter, handleCors, hasSharedSecret, readJsonBody, send } from '../_http.js';
+import { emailsMatch, verifyLicenseToken } from '../_license.js';
 import { verifyIdTokenSafe } from '../_firebase.js';
 import { fetchOrderById, validateLicenseKey } from '../_ls.js';
 import { ensureLicenseForOrder, licenseSecret } from '../_licenseops.js';
+
+/** Dampens key brute-force attempts (defense-in-depth under the email check). */
+const rateLimiter = createIpRateLimiter();
 
 /**
  * @param {import('node:http').IncomingMessage} req
@@ -33,6 +36,10 @@ export default async function handler(req, res) {
   }
   if (!hasSharedSecret(req)) {
     send(res, 401, { ok: false, code: 'unauthorized' }, cors);
+    return;
+  }
+  if (!checkIpRateLimit(rateLimiter, req)) {
+    send(res, 429, { ok: false, code: 'rate-limited' }, cors);
     return;
   }
 
@@ -75,6 +82,13 @@ export default async function handler(req, res) {
     const byId = await fetchOrderById(String(metaOrderId));
     const attributes = byId.attributes;
     if (attributes && attributes.status === 'paid') {
+      // Ownership (2026-09): even with the key in hand (e.g. from someone
+      // else's inbox), the license mints bound to the SIGNED-IN account — so
+      // the account email must match the buyer email.
+      if (!emailsMatch(verifiedUser.email, attributes.user_email)) {
+        send(res, 409, { ok: false, code: 'email-mismatch' }, cors);
+        return;
+      }
       const minted = await ensureLicenseForOrder(attributes, verifiedUser.uid);
       if (minted.ok) {
         send(res, 200, { ok: true, active: true, license: minted.license }, cors);

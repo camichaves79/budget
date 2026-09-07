@@ -159,6 +159,24 @@ export function createLicenseMeter({ limitPerDay = DEFAULT_LICENSE_DAILY_CAP, ma
   return { allow };
 }
 
+/* ---------- Redemption ownership ---------- */
+
+/**
+ * Ownership check for redemptions (2026-09): the signed-in account's email
+ * must match the LS order's buyer email (case-insensitive, trimmed). LS
+ * order ids are small NUMERIC values, so without this check anyone could
+ * enumerate them through the redeem endpoint and claim a paid order for
+ * their own account. Empty/missing/non-string values never match.
+ * @param {unknown} accountEmail Firebase id-token email
+ * @param {unknown} buyerEmail   LS order user_email
+ * @returns {boolean}
+ */
+export function emailsMatch(accountEmail, buyerEmail) {
+  const a = typeof accountEmail === 'string' ? accountEmail.trim().toLowerCase() : '';
+  const b = typeof buyerEmail === 'string' ? buyerEmail.trim().toLowerCase() : '';
+  return a !== '' && a === b;
+}
+
 /* ---------- Lemon Squeezy webhook signature ---------- */
 
 /**

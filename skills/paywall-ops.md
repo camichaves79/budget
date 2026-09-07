@@ -19,6 +19,12 @@
   valid Firebase idToken) → an **HMAC-signed license** is minted server-side,
   stored on-device, and bound to the signed-in account. The paste field in
   Settings is recovery-only (also requires sign-in).
+- **Ownership (2026-09):** redeem and paste-key check require the signed-in
+  account's email to match the order's LS `user_email` (409 `email-mismatch`
+  otherwise) — LS order ids are numeric and enumerable, so sign-in alone is
+  not authorization. **Consequence: buyers must purchase with the same email
+  as their Google sign-in.** The license endpoints are also per-IP
+  rate-limited (30/10min) as enumeration damping.
 - The paste fallback accepts **either** the app's own license token **or** a
   Lemon Squeezy license key from the purchase email (resolved via the License
   API at `/api/license/check`) — it rescues purchases whose redirect never

@@ -13,11 +13,13 @@ import {
   parseLicensedWithFallback, parseRetryDelaySeconds, sanitizeRequest,
 } from '../api/parse.js';
 import {
-  DEFAULT_LICENSE_DAILY_CAP, LICENSE_TERM_SECONDS, createLicenseMeter, estimateLsFeeCents,
+  DEFAULT_LICENSE_DAILY_CAP, LICENSE_TERM_SECONDS, createLicenseMeter, emailsMatch, estimateLsFeeCents,
   estimateNetCents, ledgerToCsv, makeLicensePayload, orderToLedger, signLicense,
   verifyLicenseToken, verifyWebhookSignature, webhookToLedger,
 } from '../api/_license.js';
-import { createHmac, generateKeyPairSync } from 'node:crypto';
+import { checkIpRateLimit, createIpRateLimiter } from '../api/_http.js';
+import redeemHandler from '../api/license/redeem.js';
+import { createHmac, createSign, generateKeyPairSync } from 'node:crypto';
 import { FREE_DAILY_PARSES, nextQuota, remainingFreeToday } from '../src/lib/quota';
 import { licenseIsActive, parseLicenseToken } from '../src/lib/license';
 import { decodeJwtParts, fromFields, setDocMerge, signJwt, toFields, verifyJwtSignature } from '../api/_firebase.js';
@@ -692,6 +694,155 @@ await (async () => {
   check('updateMask is a sibling of update', updateMask.fieldPaths, ['order_id', 'gross']);
   check('updateMask is NOT nested inside update', 'updateMask' in update, false);
   check('exactly one write per merge-set', bodies.length, 1);
+})();
+
+// ---- redemption ownership (2026-09): email match + license-endpoint limiter ----
+check('emailsMatch same email different case', emailsMatch('Buyer@Example.COM', '  buyer@example.com '), true);
+check('emailsMatch trims the account email', emailsMatch(' buyer@example.com ', 'buyer@example.com'), true);
+check('emailsMatch rejects a different email', emailsMatch('attacker@example.com', 'buyer@example.com'), false);
+check('emailsMatch rejects empty buyer email', emailsMatch('buyer@example.com', ''), false);
+check('emailsMatch rejects empty account email', emailsMatch(null, 'buyer@example.com'), false);
+
+const ipLimiter = createIpRateLimiter({ limit: 3, windowMs: 1000 });
+const fakeIpReq = (ip: string) => ({ headers: { 'x-forwarded-for': ip } });
+check('ip limiter allows first three', [checkIpRateLimit(ipLimiter, fakeIpReq('9.9.9.9'), 0), checkIpRateLimit(ipLimiter, fakeIpReq('9.9.9.9'), 100), checkIpRateLimit(ipLimiter, fakeIpReq('9.9.9.9'), 200)], [true, true, true]);
+check('ip limiter blocks fourth', checkIpRateLimit(ipLimiter, fakeIpReq('9.9.9.9'), 300), false);
+check('ip limiter resets after window', checkIpRateLimit(ipLimiter, fakeIpReq('9.9.9.9'), 1001), true);
+check('ip limiter independent ips', checkIpRateLimit(ipLimiter, fakeIpReq('8.8.8.8'), 1500), true);
+
+await (async () => {
+  // Self-signed idToken + JWKS stub (same technique as the fallback tests).
+  const jwkPub = { ...rsa.publicKey.export({ format: 'jwk' }), kid: 'local-kid' };
+  const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  const makeIdToken = (email: string) => {
+    const now = Math.floor(Date.now() / 1000);
+    const header = { alg: 'RS256', kid: 'local-kid', typ: 'JWT' };
+    const payload = {
+      aud: 'test-project',
+      iss: 'https://securetoken.google.com/test-project',
+      iat: now,
+      exp: now + 3600,
+      sub: 'uid-1',
+      email,
+    };
+    const input = `${b64(header)}.${b64(payload)}`;
+    const signer = createSign('RSA-SHA256');
+    signer.update(input);
+    return `${input}.${signer.sign(privPem).toString('base64url')}`;
+  };
+
+  const orderAttrs = {
+    identifier: 'order-424242',
+    order_number: 424242,
+    status: 'paid',
+    subtotal: 500,
+    tax: 0,
+    total: 500,
+    currency: 'USD',
+    user_email: 'buyer@example.com',
+    created_at: '2026-09-06T00:00:00Z',
+    urls: { receipt: 'https://receipt.test' },
+    test_mode: true,
+    refunded: false,
+    refunded_amount: 0,
+    refunded_at: null,
+  };
+
+  const prevSa = process.env.FIREBASE_SERVICE_ACCOUNT;
+  process.env.FIREBASE_SERVICE_ACCOUNT = JSON.stringify({
+    client_email: 'svc@test-project.iam.gserviceaccount.com',
+    project_id: 'test-project',
+    private_key: privPem,
+  });
+  const prevLsKey = process.env.LEMONSQUEEZY_API_KEY;
+  process.env.LEMONSQUEEZY_API_KEY = 'test-ls';
+  const prevSecret = process.env.BUDGET_PARSE_SECRET;
+  process.env.BUDGET_PARSE_SECRET = 'testparse';
+  const prevLicenseSecret = process.env.BUDGET_LICENSE_SECRET;
+  process.env.BUDGET_LICENSE_SECRET = 'testlicense';
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: string | URL) => {
+    const u = String(url);
+    if (u.includes('service_accounts/v1/jwk')) {
+      return new Response(JSON.stringify({ keys: [jwkPub] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (u.includes('api.lemonsqueezy.com/v1/orders/424242/generate-invoice')) {
+      return new Response(JSON.stringify({ meta: { urls: { download_invoice: 'https://invoice.test' } } }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (/api\.lemonsqueezy\.com\/v1\/orders\/424242$/.test(u)) {
+      return new Response(JSON.stringify({ data: { attributes: orderAttrs } }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (u === 'https://oauth2.googleapis.com/token') {
+      return new Response(JSON.stringify({ access_token: 'fake', expires_in: 3600 }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (u.includes('firestore.googleapis.com') && u.includes(':commit')) {
+      return new Response(JSON.stringify({ writeResults: [{}] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (u.includes('firestore.googleapis.com')) {
+      return new Response(JSON.stringify({ error: { code: 404, status: 'NOT_FOUND' } }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    return new Response('{}', { status: 404, headers: { 'Content-Type': 'application/json' } });
+  }) as typeof fetch;
+
+  const runRedeem = async (email: string) => {
+    const body = JSON.stringify({ orderId: '424242', key: null, idToken: makeIdToken(email) });
+    const req = {
+      method: 'POST',
+      headers: { origin: 'https://camichaves79.github.io', 'x-budget-secret': 'testparse' },
+      async *[Symbol.asyncIterator]() {
+        yield Buffer.from(body);
+      },
+    } as unknown as import('node:http').IncomingMessage;
+    const res = {
+      statusCode: 0,
+      headers: {} as Record<string, string>,
+      body: '',
+      setHeader(k: string, v: string) {
+        res.headers[k] = v;
+      },
+      end(text: string) {
+        res.body = text ?? '';
+      },
+    } as unknown as import('node:http').ServerResponse;
+    await redeemHandler(req, res);
+    return { statusCode: res.statusCode, body: res.body };
+  };
+
+  {
+    const r = await runRedeem('attacker@example.com');
+    check('redeem rejects a non-buyer account email', [r.statusCode, JSON.parse(r.body).code], [409, 'email-mismatch']);
+  }
+  {
+    const r = await runRedeem('buyer@example.com');
+    const parsed = JSON.parse(r.body) as { ok?: boolean; license?: string };
+    check('redeem succeeds for the buyer email', [r.statusCode, parsed.ok === true, typeof parsed.license === 'string' && parsed.license.length > 20], [200, true, true]);
+  }
+
+  globalThis.fetch = originalFetch;
+  if (prevSa === undefined) delete process.env.FIREBASE_SERVICE_ACCOUNT;
+  else process.env.FIREBASE_SERVICE_ACCOUNT = prevSa;
+  if (prevLsKey === undefined) delete process.env.LEMONSQUEEZY_API_KEY;
+  else process.env.LEMONSQUEEZY_API_KEY = prevLsKey;
+  if (prevSecret === undefined) delete process.env.BUDGET_PARSE_SECRET;
+  else process.env.BUDGET_PARSE_SECRET = prevSecret;
+  if (prevLicenseSecret === undefined) delete process.env.BUDGET_LICENSE_SECRET;
+  else process.env.BUDGET_LICENSE_SECRET = prevLicenseSecret;
 })();
 
 if (failures > 0) {

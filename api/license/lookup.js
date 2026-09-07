@@ -5,15 +5,18 @@
  * (matched by the verified email) is minted and bound on the spot.
  *
  * Body: { idToken: string }
- *   → 200 { ok: true, license: string | null } · 401 bad-id-token ·
- *     503 not-configured
+ *   → 200 { ok: true, license: string | null } · 429 rate-limited ·
+ *     401 bad-id-token · 503 not-configured
  */
 
-import { handleCors, hasSharedSecret, readJsonBody, send } from '../_http.js';
+import { checkIpRateLimit, createIpRateLimiter, handleCors, hasSharedSecret, readJsonBody, send } from '../_http.js';
 import { db, verifyIdTokenSafe } from '../_firebase.js';
 import { findOrdersByEmail } from '../_ls.js';
 import { makeLicensePayload, signLicense } from '../_license.js';
 import { ensureLicenseForOrder, licenseSecret } from '../_licenseops.js';
+
+/** Same posture as the other license endpoints (enumeration damping). */
+const rateLimiter = createIpRateLimiter();
 
 /**
  * @param {import('node:http').IncomingMessage} req
@@ -28,6 +31,10 @@ export default async function handler(req, res) {
   }
   if (!hasSharedSecret(req)) {
     send(res, 401, { ok: false, code: 'unauthorized' }, cors);
+    return;
+  }
+  if (!checkIpRateLimit(rateLimiter, req)) {
+    send(res, 429, { ok: false, code: 'rate-limited' }, cors);
     return;
   }
 

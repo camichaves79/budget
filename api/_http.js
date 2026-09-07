@@ -91,6 +91,39 @@ export function hasSharedSecret(req) {
   return expected !== '' && secret !== '' && secret === expected;
 }
 
+/* ---------- Per-IP rate limiting (shared by the license endpoints) ---------- */
+
+/**
+ * Fixed-window per-IP limiter, same design as api/parse.js (which keeps its
+ * own copy — this one is for the newer endpoints). Dampens order-id
+ * enumeration against the redeem endpoint; NOT a hard guarantee (instances
+ * are ephemeral), just like the parse limiter.
+ * @param {{ limit?: number, windowMs?: number }} [opts]
+ */
+export function createIpRateLimiter({ limit = 30, windowMs = 10 * 60 * 1000 } = {}) {
+  return { limit, windowMs, /** @type {Map<string, { count: number, resetAt: number }>} */ hits: new Map() };
+}
+
+/**
+ * Count one hit from the request's IP (x-forwarded-for first hop, "unknown"
+ * fallback). Returns true when the request is allowed.
+ * @param {{ limit: number, windowMs: number, hits: Map<string, { count: number, resetAt: number }> }} limiter
+ * @param {import('node:http').IncomingMessage} req
+ * @param {number} [now]
+ */
+export function checkIpRateLimit(limiter, req, now = Date.now()) {
+  const forwarded = req.headers['x-forwarded-for'];
+  const ip = (typeof forwarded === 'string' ? forwarded.split(',')[0].trim() : 'unknown') || 'unknown';
+  const entry = limiter.hits.get(ip);
+  if (!entry || now >= entry.resetAt) {
+    limiter.hits.set(ip, { count: 1, resetAt: now + limiter.windowMs });
+    return true;
+  }
+  if (entry.count >= limiter.limit) return false;
+  entry.count += 1;
+  return true;
+}
+
 /**
  * Standard CORS/OPTIONS prologue shared by every function.
  * @param {import('node:http').IncomingMessage} req
