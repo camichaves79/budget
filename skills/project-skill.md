@@ -386,7 +386,7 @@ in those tight overrides.
 
 ## 10. Current state & next-session context
 
-Everything below is **shipped and live** (main ≈ `f4d866f`, 2026-09-06):
+Everything below is **shipped and live** (main ≈ `f8b842e`, 2026-09-06):
 
 - Smart entry end-to-end: PWA → Vercel microservice → Gemini 3.6 Flash → instant save
   with fading toasts; review form only for ambiguous parses. Full spec (revised):
@@ -430,6 +430,10 @@ Everything below is **shipped and live** (main ≈ `f4d866f`, 2026-09-06):
   circular "+" centered on the tab bar (visible in all four sections), its
   horizontal diameter aligned with the bar's upper side; tapping it switches
   to Cash Flow and opens smart entry. Old bottom-right FAB removed.
+- **Icon redesign (`ui-miscelaneous-0008`, `f8b842e`):** the dark center ring
+  was replaced by a bold "$5" sized half the bill's height and centered; the
+  two side dots were preserved at their original positions. Icon source of
+  truth now `tools/icon.svg` + `tools/render-icons.mjs`.
 
 **RESOLVED (2026-09-06):** the Firebase console initially showed NO
 collections because every Firestore merge-set was rejected — `updateMask`
