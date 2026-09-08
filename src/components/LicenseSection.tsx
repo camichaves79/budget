@@ -40,8 +40,8 @@ export function LicenseSection() {
     shownEventRef.current = lastEvent.at;
     setNote(
       lastEvent.kind === 'licensed'
-        ? { text: 'License active ✓ — smart entry is now unlimited.', kind: 'success' }
-        : { text: 'Your license is no longer valid — smart entry is back to the free plan.', kind: 'error' },
+        ? { text: 'License active ✓ — smart entry is unlimited.', kind: 'success' }
+        : { text: 'License no longer valid — smart entry is back to the free plan.', kind: 'error' },
     );
   }, [lastEvent]);
 
@@ -85,7 +85,7 @@ export function LicenseSection() {
     const outcome = await restoreLicense();
     setBusy(false);
     if (outcome === 'none')
-      setNote({ text: 'No license found for this account. Buy one from the smart-entry screen.', kind: 'error' });
+      setNote({ text: 'No license found for this account.', kind: 'error' });
     else if (outcome === 'error')
       setNote({ text: 'Sign-in could not be verified. Try signing out and back in.', kind: 'error' });
   };
@@ -96,7 +96,7 @@ export function LicenseSection() {
     setNote(null);
     // The pasted LS key can only be redeemed for the signed-in account.
     if (!account) {
-      setNote({ text: 'Sign in with Google first — licenses are tied to your account.', kind: 'error' });
+      setNote({ text: 'Sign in first — licenses are tied to your account.', kind: 'error' });
       await signIn();
       return;
     }
@@ -122,7 +122,7 @@ export function LicenseSection() {
             <div className="setting-desc">
               {licensedActive
                 ? `Unlimited smart entry until ${licenseExpiryLabel ?? '…'}.`
-                : `${remaining} of ${freeDaily} free smart entries left today.`}
+                : `${remaining} of ${freeDaily} free entries today.`}
             </div>
           </div>
           {licensedActive ? (
@@ -138,7 +138,7 @@ export function LicenseSection() {
           <div className="setting-row">
             <div>
               <div className="setting-name">Purchase waiting</div>
-              <div className="setting-desc">Your payment reference is parked on this device.</div>
+              <div className="setting-desc">Finish a purchase that didn't complete.</div>
             </div>
             <button type="button" className="btn" onClick={unlock} disabled={busy}>
               {account ? 'Complete purchase' : 'Sign in to complete'}
@@ -151,8 +151,8 @@ export function LicenseSection() {
             <div className="setting-name">Account</div>
             <div className="setting-desc">
               {account
-                ? `${account.email ?? 'Signed in'} — your license is saved to your account.`
-                : 'Sign in with Google to keep your license across devices and reinstalls.'}
+                ? `${account.email ?? 'Signed in'} — license saved to your account.`
+                : 'Sign in to keep your license across devices.'}
             </div>
           </div>
           {account ? (
@@ -170,7 +170,7 @@ export function LicenseSection() {
           <div className="setting-row">
             <div>
               <div className="setting-name">Restore license</div>
-              <div className="setting-desc">Fetch the license bound to this account on a new device.</div>
+              <div className="setting-desc">Get your license back on this device.</div>
             </div>
             <button type="button" className="btn" onClick={() => void doRestore()} disabled={busy}>
               Restore
@@ -181,9 +181,7 @@ export function LicenseSection() {
         {!licensedActive && (
           <form onSubmit={activateKey} className="key-form">
             <div className="setting-name">Have a license key?</div>
-            <div className="setting-desc">
-              Only needed if the automatic setup didn't complete — normally you'll never touch this.
-            </div>
+            <div className="setting-desc">Fallback if the automatic setup didn't complete.</div>
             <div className="key-row">
               <input
                 type="text"

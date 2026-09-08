@@ -143,3 +143,5 @@ subscription auto-renew.
 Every time the app ships a meaningful change: bump the date + `main` hash above, add/amend
 ADRs, re-check §3 rows and §4 items, and keep it terse — this file is a scoreboard, not a log.
 `skills/project-skill.md` is the companion "how we work" file; they are updated together.
+Every ship also bumps the version to `v0.1.N` (N = `main`'s commit count after the merge),
+with the user's breaking/major/minor classification — see `skills/project-skill.md` §8.

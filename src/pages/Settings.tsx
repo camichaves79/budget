@@ -40,8 +40,8 @@ export function Settings() {
       <div className="card">
         <div className="setting-row">
           <div>
-            <div className="setting-name">Export backup</div>
-            <div className="setting-desc">Download all data as a JSON file.</div>
+            <div className="setting-name">Export data</div>
+            <div className="setting-desc">Download all your data as JSON.</div>
           </div>
           <button type="button" className="btn" onClick={() => exportData(data)}>
             Export
@@ -49,8 +49,8 @@ export function Settings() {
         </div>
         <div className="setting-row">
           <div>
-            <div className="setting-name">Import backup</div>
-            <div className="setting-desc">Replaces current data with a backup file.</div>
+            <div className="setting-name">Import data</div>
+            <div className="setting-desc">Replace current data with a backup.</div>
           </div>
           <button type="button" className="btn" onClick={() => fileRef.current?.click()}>
             Import
@@ -84,9 +84,7 @@ export function Settings() {
         <div className="setting-row">
           <div>
             <div className="setting-name">Period starts on</div>
-            <div className="setting-desc">
-              The period runs from this day to the day before it next month, labeled by the month with more days in it.
-            </div>
+            <div className="setting-desc">Runs from this day until the day before it next month.</div>
           </div>
           <select
             className="input period-day-select"
@@ -108,11 +106,11 @@ export function Settings() {
       <h2 className="settings-h">About</h2>
       <div className="card">
         <p className="field-hint">
-          Budget v0.1.0 · Mobile-first personal budget tracker.
+          Budget v0.1.94 · Personal budget tracker.
           <br />
-          All data stays on this device in your browser's local storage. Use Export to make backups.
+          Data stays on this device — export to back up.
           <br />
-          Currency: Colombian Peso (COP), formatted $ 1.234 (integers only).
+          Currency: COP, integer pesos ($ 1.234).
         </p>
       </div>
 
