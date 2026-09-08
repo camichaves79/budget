@@ -1,12 +1,17 @@
 # Architecture — $5 Budget App
 
 > **Living record** — updated whenever the app ships a meaningful change.
-> Last updated: **2026-09-08** (main ≈ `4658257`; **Cloudflare migration
+> Last updated: **2026-09-08** (main ≈ `c4afbe3`; **Cloudflare migration
 > COMPLETE** — frontend on `5budget.app` (Cloudflare Pages, custom domain),
 > the six API functions on ONE Cloudflare Worker at `api.5budget.app`,
 > Vercel retired; Firebase OAuth JWT now signed with WebCrypto (workerd's
 > nodejs_compat lacks `createSign`); sales ledger written complete by
-> construction on every license mint/restore).
+> construction on every license mint/restore. **UI polish batch,
+> user-approved on the iPhone (2026-09):** Cash Flow summary as ONE shared
+> card with a terracotta negative balance, coin-style bold `$` add button,
+> smart-entry sheet copy refresh, amount echo hidden, toasts centered,
+> Settings copy trimmed. **Version ritual:** every ship bumps `v0.1.N` with
+> N = main's commit count — see `skills/project-skill.md` §8.)
 > Read alongside `skills/project-skill.md` (conventions + current state) and
 > `skills/speech-entry.md` (smart-entry spec). Keep this file honest: if a
 > trade-off changes, update the table, not just the date.
@@ -76,15 +81,15 @@ iPhone PWA ──HTTPS──▶ Cloudflare Pages (static, CDN, `5budget.app`)   
 | Quality attribute | Standing (n = 1 user) | Evidence / limit |
 |---|---|---|
 | **Resilience** | Good | Server retries transient 429/5xx; fallback model doubles effective quota; instance cache makes retries instant; client auto-retries once. Limit: free-tier RPD exhaustion degrades smart entry until midnight PT; **manual entry always works, offline** — the app never hard-fails. |
-| **Availability** | No SLA, graceful degradation | Depends on free services (Pages, Vercel, Gemini, Firebase, Lemon Squeezy). Worst case the app remains fully usable minus smart entry; a locally stored license keeps working offline and signed-out. |
+| **Availability** | No SLA, graceful degradation | Depends on free services (Pages, Workers, Gemini, Firebase, Lemon Squeezy). Worst case the app remains fully usable minus smart entry; a locally stored license keeps working offline and signed-out. |
 | **Scalability** | Ready to grow, not yet proven | Static frontend scales via CDN for free. The license flow assumes ≤ hundreds of payers: Firestore Spark ceilings are far away; the shared client secret (A10) and the client-side free allowance must be replaced by identity-gated quota around 10k+ installs (see §5). |
 | **Security** | Thin but layered | Origin allow-list, secret header, request whitelisting, rate limiting, LLM-output validation. Licenses are HMAC bearer tokens verified server-side on every parse (100/day meter); new endpoints keep the A10 posture; Firestore is admin-SDK-only. The parse secret is baked into the static bundle — readable by any client: **obfuscation, not authentication**. |
 | **Privacy** | Strong | Transaction history never leaves the device; only utterance + category list are sent; logs carry metadata only (status/model/retryDelay). The cloud now stores identity, entitlement and purchase metadata (A13) — budget data still never leaves the device. Free-tier Gemini data-use caveat remains; the licensed tier uses a paid key (the opt-out). |
 | **Maintainability** | Good | ~2k LOC app + one 600-line function; pure logic modules; docs in `skills/`; conventions in `project-skill.md`. |
-| **Observability** | Weakest link | Vercel logs are metadata-only and ad-hoc; no metrics, no alerting, no error budget. The sales ledger + per-license usage meters improve visibility; diagnosis still = user report + log grep. |
-| **Testability** | Solid for logic, thin for UI | 220 smoke checks cover money/periods/validators/microservice helpers/license+paywall logic (incl. the paid-key fallback); no UI test framework; handler smoke-testable via fetch stubbing. |
+| **Observability** | Weakest link | Worker logs (Cloudflare → `budget-api` → Logs) are metadata-only and ad-hoc; no metrics, no alerting, no error budget. The sales ledger + per-license usage meters improve visibility; diagnosis still = user report + log grep. |
+| **Testability** | Solid for logic, thin for UI | 282 smoke checks cover money/periods/validators/microservice helpers/license+paywall logic (incl. the paid-key fallback); no UI test framework; handler smoke-testable via fetch stubbing. |
 | **Cost efficiency** | $5/yr license, ~40–70% ROI | Infra stays free at current scale; operating cost is almost entirely Gemini usage. The free tier's cross-subsidy is the scale risk (A12, §5) — free users' Gemini ≈ $0.14/user/yr vs $4.25 net per payer. |
-| **Portability** | Medium | Provider swap is one function + one client module; storage adapter swappable; backend pinned to Vercel's Node handler signature (`handler(req, res)`). |
+| **Portability** | Medium | Provider swap is one function + one client module; storage adapter swappable; backend pinned to the Node-style `handler(req, res)` contract behind `worker.js`'s Web-Request shim. |
 
 ## 4. Known limits & single points of failure
 
@@ -93,13 +98,14 @@ iPhone PWA ──HTTPS──▶ Cloudflare Pages (static, CDN, `5budget.app`)   
 2. **Shared client secret** (A10): anyone who extracts it can call the function up to
    the per-IP limiter. Fine for one user; must be replaced by real auth before the
    user base grows.
-3. **Instance-local cache**: Vercel may run several warm instances; cache hits are not
-   guaranteed, and cold starts lose it. Free-tier trade-off (no KV/Redis on Hobby).
+3. **Instance-local cache**: the Worker may run several warm isolates; cache hits
+   are not guaranteed, and cold starts lose it. Free-tier trade-off (no KV/Redis
+   on the free plan).
 4. **Per-IP rate limiter is best-effort**: instances are ephemeral, so counters reset;
    it damps abuse, it does not guarantee anything.
-5. **Single deployment path**: main = production for both Pages and Vercel; no staging,
-   no preview gate beyond local testing. Rollback = revert commit + PWA refresh
-   (the service worker caches the old build).
+5. **Single deployment path**: main = production for both Pages and the Worker; no
+   staging, no preview gate beyond local testing. Rollback = revert commit + PWA
+   refresh (the service worker caches the old build).
 6. **No observability/alerting**: we learn about problems from the user.
 7. **No data sync**: each device is its own island (JSON export/import is the bridge).
 8. **Lemon Squeezy dependency**: checkout, orders API and webhooks are external.
@@ -127,10 +133,10 @@ iPhone PWA ──HTTPS──▶ Cloudflare Pages (static, CDN, `5budget.app`)   
 
 | Stage | Paying users | Changes |
 |---|---|---|
-| **Now** | 1 | Keep $0 infra. Watch the ledger, license meters and Vercel logs. Reconcile the ledger monthly against LS payouts. |
+| **Now** | 1 | Keep $0 infra. Watch the ledger, license meters and Worker logs. Reconcile the ledger monthly against LS payouts. |
 | **A few trusted users** | 2–20 | Invite a few testers; free allowance stays 10/day; monitor per-license usage counters for the heavy tail (each $5 payer nets $4.25; their own Gemini ≈ $2–9/yr depending on usage). |
 | **Growth** | 20–500 | Identity-gate the free allowance (anonymous Firebase auth) so it stops being client-enforced; watch the free-tier cross-subsidy (the dominant scale variable); enable Gemini context caching for the static share of the prompt. |
-| **Scale** | 500+ | Auto-renew subscriptions in LS; revisit the $5 price and the 50¢ fee floor; move functions off Vercel Hobby ceilings; alerting on usage/costs; staging environment. |
+| **Scale** | 500+ | Auto-renew subscriptions in LS; revisit the $5 price and the 50¢ fee floor; move functions off Worker free-tier ceilings; alerting on usage/costs; staging environment. |
 
 **Pivots to anticipate** (each is localized by design): A10 shared secret → authenticated
 backend; A6 per-model fallback → provider-agnostic adapter; instance cache → shared cache;

@@ -106,7 +106,7 @@ export function Settings() {
       <h2 className="settings-h">About</h2>
       <div className="card">
         <p className="field-hint">
-          Budget v0.1.94 · Personal budget tracker.
+          Budget v0.1.95 · Personal budget tracker.
           <br />
           Data stays on this device — export to back up.
           <br />

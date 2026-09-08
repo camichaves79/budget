@@ -38,7 +38,7 @@ and (except for smart entry) never leaves the device.
 **In scope (v1):**
 - **Cash Flow** tab: period summary (Income / Expenses / Balance), day-grouped
   transaction list (add / edit / delete), pinned header + internally scrolling list
-- **Smart entry** (AI-assisted): the tab-bar "+" button (see below) opens a
+- **Smart entry** (AI-assisted): the tab-bar coin "$" button (see below) opens a
   natural-language field; dictate
   via the native keyboard mic (NO SpeechRecognition API). **Submit** → parse
   microservice → **instant save + fading toast** when the parse is complete;
@@ -80,11 +80,13 @@ and (except for smart entry) never leaves the device.
 - Savings goals feature was **removed entirely** (page, tab, state, types, CSS, docs).
 - Demo transaction seeder was **removed**.
 - No app header bar (tab bar is the navigation identity).
-- The add button is a **plain "+"** (2026-09): a circular button centered on the
-  tab bar (visible in all four sections), its horizontal diameter aligned with the
-  bar's upper side so the top half floats above it; tapping it switches to Cash
-  Flow and opens smart entry. A lightning overlay and the old bottom-right FAB
-  were tried/removed.
+- The add button is a **coin-style "$"** (2026-09): a circular engraving-green
+  button with a thin white rim + green outer ring and a bold Rajdhani `$`,
+  centered on the tab bar (visible in all four sections), its horizontal
+  diameter aligned with the bar's upper side so the top half floats above it;
+  tapping it switches to Cash Flow and opens smart entry. A lightning overlay
+  and the old bottom-right FAB were tried/removed; the "+" glyph itself was
+  replaced on the user's coin direction.
 - The parse button label is **"Submit"**, not "Parse" (user-friendly copy).
 - **Certainty grading:** each parsed element carries a `confidence` grade (0–1,
   self-assessed). `needsReview` = no category **or** confidence <
@@ -108,7 +110,7 @@ and (except for smart entry) never leaves the device.
   the bundler to lose. Client dep: `firebase` (auth module only, modular
   imports) — the one deliberate dependency addition, justified by A13.
 - No router, no UI library, no icon library (inline stroke SVGs)
-- Lint: `oxlint` · Tests: hand-rolled smoke suite (`tests/smoke.ts`, 237 checks)
+- Lint: `oxlint` · Tests: hand-rolled smoke suite (`tests/smoke.ts`, 282 checks)
 - npm scripts: `dev` · `build` (tsc -b && vite build) · `lint` · `preview` ·
   `test` (bundles tests/smoke.ts via `vite.test.config.ts` into `.smoke/` and runs it)
 - **Local npm quirk:** the global npm cache in this environment has permission issues.
@@ -294,9 +296,10 @@ in those tight overrides.
   `validateParsedTransactions`, `needsReview`), **microservice helpers** (rate
   limiter, request sanitizer, Gemini array parser, retry policy, response cache),
   **license/paywall logic** (token sign/verify/meter, free-allowance quota, LS fee
-  math, order→ledger mapping, webhook signature, CSV export). 220 checks.
-- `npm run build` + `npm run lint` before shipping. Lint has 3 known harmless
-  react-refresh warnings (store.tsx exports).
+  math, order→ledger mapping, webhook signature, CSV export). 282 checks.
+- `npm run build` + `npm run lint` before shipping. Lint has 5 known harmless
+  warnings (react-refresh export rules in `store.tsx`/`entitlement.tsx`/
+  `AmountInput.tsx` and one set-state-in-effect in `App.tsx`).
 - `api/parse.js` logic is tested via tests/smoke.ts imports; the handler itself can be
   smoke-tested locally by stubbing `fetch` and calling it with fake Node-style
   req/res objects (see session history pattern).
@@ -421,7 +424,7 @@ in those tight overrides.
 
 ## 10. Current state & next-session context
 
-Everything below is **shipped and live** (main ≈ `4658257`, 2026-09-08):
+Everything below is **shipped and live** (main ≈ `c4afbe3`, 2026-09-08):
 
 - Smart entry end-to-end: PWA → Vercel microservice → Gemini 3.6 Flash → instant save
   with fading toasts; review form only for ambiguous parses. Full spec (revised):
@@ -508,8 +511,33 @@ accountant CSV has the rows.
   is a fresh user-recorded value; `GEMINI_PAID_API_KEY` was re-pasted and
   should be re-verified against a licensed parse.
 
+**UI polish batch — shipped and APPROVED on the iPhone (2026-09-08, main ≈ `c4afbe3`):**
+- **Cash Flow summary (`8bc7c03`):** ONE shared white card around Income /
+  Expenses / Balance (the three per-value boxes read as input fields);
+  distribution unchanged. Negative balance renders in terracotta
+  (`--terracotta`), the palette's reddish "over" accent.
+- **Coin-style add button (`4d020ed`, `d3cd63e`):** the tab-bar button is now
+  a bold Rajdhani `$` (white) on the engraving-green disc with a thin white
+  rim and a thin green outer ring; still opens smart entry on Cash Flow,
+  aria-label unchanged.
+- **Smart-entry sheet copy (`6a851c7`, `8d43c4d`):** title **"Tell me what
+  the transaction is:"**, "What happened?" label removed (aria-label kept),
+  placeholder **"Use your keyboard's microphone 🎤"**, the "Type, or use…"
+  hint and the "Your text is sent…" disclosure removed.
+- **Amount echo hidden (`8d43c4d`):** `amountHint` no longer shows the
+  under-box `= $ 1.234` replica — hints appear only for problems.
+- **Toasts centered (`8d43c4d`):** `translateX(-50%)` lives on the element;
+  the hold phase no longer drifts right.
+- **Empty Cash Flow state (`8d43c4d`):** "Tap **$** to record income or an
+  expense." with the `$` bold and one size larger.
+- **Settings copy trimmed (`c4afbe3`):** Data / Budget period / About /
+  Smart-entry rows summarized; safety confirmations and the paywall-ops
+  error-map strings kept as-is.
+- **Version ritual (`c4afbe3`):** every ship bumps `v0.1.N` (N = main's
+  commit count) with a breaking/major/minor classification — `v0.1.94`,
+  classified **Minor**. See §8.
+
 Candidate next steps (ask the user, don't assume):
-- UI changes the user has queued (they'll spell them out next session).
 - Parked: console-clearing prod walkthrough of the ledger-by-construction fix;
   LS webhook flip verification (test-mode purchase → watch Firestore) — the
   webhook URL/secret now live at `api.5budget.app`; enable the Lemon Squeezy

@@ -28,12 +28,13 @@ calculations.
 
 ## 1. Transaction Button (revised)
 
-- The "+" transaction button opens smart entry. It lives in the **tab bar** and is
+- The "$" transaction button opens smart entry. It lives in the **tab bar** and is
   visible in all four sections (2026-09 relocation): a circular button centered on
   the bar, its horizontal diameter aligned with the bar's upper side; tapping it
   switches to Cash Flow and opens the input.
-- Keep it a **plain "+"** — a lightning overlay was tried and removed (2026-09);
-  the button should not be visually cluttered.
+- The glyph is a **bold "$"** on a coin-style circle — engraving-green disc, thin
+  white rim, thin green outer ring (2026-09 user direction). A lightning overlay
+  was tried and removed (2026-09); the button stays visually simple.
 - Provide an accessible label such as "Add transaction". Do not rely on the glyph alone.
 
 ## 2. Smart Transaction Input
@@ -50,7 +51,7 @@ When the user taps the transaction button:
   home, 30000 in a hamburger, and yesterday 20000 in a pizza slice"). Each described
   transaction must be parsed and recorded separately.
 
-Suggested placeholder: *"Tell me what you spent..."*
+Suggested placeholder (2026-09 revision): *"Use your keyboard's microphone 🎤"*
 
 Use the existing design system and responsive behavior.
 
@@ -247,7 +248,7 @@ unnecessary cloud/database infrastructure.
 - [ ] Inspect existing transaction architecture
 - [ ] Inspect existing categories
 - [ ] Inspect existing "+" button
-- [ ] Keep the + button plain (lightning overlay removed — see §1)
+- [ ] Add-button glyph: bold "$" in the coin-style circle (lightning overlay removed — see §1)
 - [ ] Add natural-language input
 - [ ] Auto-focus input on mobile
 - [ ] Verify native keyboard dictation works through the focused field
