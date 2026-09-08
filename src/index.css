@@ -441,7 +441,7 @@ select:focus-visible {
   flex: 1;
 }
 
-/* Global add button (2026-09): plain + centered on the tab bar, its
+/* Global add button (2026-09): bold $ centered on the tab bar, its
    horizontal diameter aligned with the bar's upper side (top half floats
    above the bar). */
 .tab-bar-add {
@@ -460,6 +460,13 @@ select:focus-visible {
   box-shadow: 0 4px 14px rgba(30, 41, 59, 0.35);
   z-index: 31;
   touch-action: manipulation;
+}
+
+/* The glyph itself: Rajdhani bold, vertically centered. */
+.tab-bar-add-glyph {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1;
 }
 
 /* ---------- Smart entry ---------- */

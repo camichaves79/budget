@@ -87,21 +87,12 @@ export function TabBar({
           <span>{t.label}</span>
         </button>
       ))}
-      {/* Global add button (2026-09): plain +, centered on the bar, its
+      {/* Global add button (2026-09): bold $, centered on the bar, its
           horizontal diameter aligned with the bar's upper side. */}
       <button type="button" className="tab-bar-add" onClick={onAdd} aria-label="Add transaction">
-        <svg
-          width="22"
-          height="22"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.4"
-          strokeLinecap="round"
-        >
-          <path d="M12 5v14" />
-          <path d="M5 12h14" />
-        </svg>
+        <span className="tab-bar-add-glyph" aria-hidden="true">
+          $
+        </span>
       </button>
     </nav>
   );
