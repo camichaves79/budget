@@ -534,6 +534,9 @@ accountant CSV has the rows.
 - **Settings copy trimmed (`c4afbe3`):** Data / Budget period / About /
   Smart-entry rows summarized; safety confirmations and the paywall-ops
   error-map strings kept as-is.
+- **Icon tweak (`ui-miscelaneous-0011`):** the banknote's rectangle
+  border on the app icon is now white (dots + $5 stay engraving green); PNGs
+  and favicon re-rendered from `tools/icon.svg`.
 - **Version ritual (`c4afbe3`):** every ship bumps `v0.1.N` (N = main's
   commit count) with a breaking/major/minor classification — `v0.1.94`,
   classified **Minor**. See §8.
