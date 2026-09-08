@@ -1,10 +1,20 @@
 # Skill — Hosting Migration to Cloudflare (Pages + Workers)
 
-> Decision record: **user-directed 2026-09-07.** Status: **PLANNED — nothing
-> implemented yet.** Target: static frontend → **Cloudflare Pages**; the six
-> API functions → **Cloudflare Workers**. ADR A15 in `ARCHITECTURE.md`.
+> Decision record: **user-directed 2026-09-07.** ADR A15 in `ARCHITECTURE.md`.
 > Read `skills/project-skill.md` for conventions; everything here respects
 > "one feature branch per change" and "commit/push only on explicit say-so".
+>
+> **Progress:** **MIGRATION COMPLETE 2026-09-08, user-verified** — the live
+> site is `https://5budget.app/` (Cloudflare Pages, custom domain); the six
+> API functions run on ONE Worker at `https://api.5budget.app` (dashboard
+> custom-domain route, Smart Placement enabled near Gemini — the latency
+> fix); Vercel and GitHub Pages are fully retired. Repo anchors: origin
+> allow-lists incl. `5budget.app` (`066b75e`), explicit-key env hydration
+> (`f831b92`), WebCrypto `signJwt` replacing workerd's missing `createSign`
+> (`4658257`). A fresh Firebase service-account key fixed the last breakage
+> (`firebase: token endpoint 400` = orphaned key). License sign-in/restore,
+> licensed parses and the accountant CSV verified in prod. §3/§4 below stay
+> as the reference for future moves or rollbacks.
 
 ## 1. Why: the ToS problem (the trigger)
 
@@ -12,8 +22,8 @@
   commercial transactions". The $5/year license (A12) makes this app exactly
   that.
 - **Vercel Hobby**: personal/non-commercial use only — and that is where the
-  paid API (parse + license + ledger) runs today. Same problem, one layer
-  deeper.
+  paid API (parse + license + ledger) ran until 2026-09-08. Same problem, one
+  layer deeper.
 - **Cloudflare** free tiers have no such restriction: Pages serves the static
   site (unlimited requests/bandwidth, 500 builds/mo, free custom domain +
   SSL); Workers free = 100k requests/day (our volume is orders of magnitude
@@ -44,7 +54,15 @@ Two shapes on the table (user picks at implementation time):
    `dist/` (`assets` binding + fall-through to `env.ASSETS.fetch`). Cleaner
    end state; fold in as optional Phase 3 after Phase 2 proves the worker.
 
-## 3. Phase 1 — frontend to Cloudflare Pages (≈ half a session)
+## 3. Phase 1 — frontend to Cloudflare Pages ✅ SHIPPED (2026-09-07)
+
+Executed as planned below; the final state: Pages project `budget` on
+`budget-7ad.pages.dev`, env vars + `NODE_VERSION=22` set, `*.pages.dev`
+origin wildcard shipped (`65568f1`), Firebase + LS dashboards updated, the
+whole flow re-verified from the iPhone (smart entry, sign-in, restore, PWA,
+test-mode purchase → auto-redeem), GitHub Pages workflow deleted
+(`5a8033c`) and the Pages site disabled. The step list below stays as the
+reference for any future re-migration or a second domain.
 
 `base: './'` in `vite.config.ts` means **zero client code changes** — the app
 already works at any path; on the new domain it simply lives at the root (no
@@ -85,7 +103,17 @@ already works at any path; on the new domain it simply lives at the root (no
 - The installed PWA must be re-added from the new origin; service-worker
   scopes are per-origin so there is no conflict.
 
-## 4. Phase 2 — functions to Cloudflare Workers (one focused session)
+## 4. Phase 2 — functions to Cloudflare Workers ✅ SHIPPED (2026-09-08)
+
+Executed as planned below (Worker `budget-api` on `api.5budget.app`, dual-run
+cutover, Vercel retired). **Extra gotchas discovered during the port, all
+fixed in prod** (they also live in `skills/project-skill.md` §9):
+workerd's `nodejs_compat` lacks `crypto.createSign` → JWT signing moved to
+WebCrypto; Worker env bindings are non-enumerable → explicit-key
+`hydrateEnv`; the Variables page needs an explicit Deploy click; a dashboard
+Quick Edit diverges from the repo and is overwritten by the next
+`wrangler deploy`; `firebase: token endpoint 400` = orphaned service-account
+key (fresh key + minify + re-paste).
 
 Small because the functions are **zero-dependency** and the pure modules
 (`_license.js`, `_firebase.js`, `_http.js`, `_ls.js`, `_licenseops.js`) never

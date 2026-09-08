@@ -57,11 +57,12 @@
    activation limit high/unlimited — we never consume activations, we only
    *validate* keys).
 3. **Confirmation button link** (the post-purchase redirect): set it to
-   `https://camichaves79.github.io/budget/?key=[license_key]&order_id=[order_id]`
-   — both are documented [link variables](https://docs.lemonsqueezy.com/help/products/link-variables)
+   `https://5budget.app/?key=[license_key]&order_id=[order_id]`
+   (Cloudflare, 2026-09-08 migration, A15) — both are documented
+   [link variables](https://docs.lemonsqueezy.com/help/products/link-variables)
    (square-bracket syntax). The app accepts `key`/`license_key`/`order_id`/
    `order_identifier` query params and strips them on boot.
-4. **Webhook:** Settings → Webhooks → add `https://budget-beta-two.vercel.app/api/webhooks/ls`
+4. **Webhook:** Settings → Webhooks → add `https://api.5budget.app/api/webhooks/ls`
    with a signing secret (6–40 chars) → this becomes `LEMONSQUEEZY_WEBHOOK_SECRET`.
    Events: `order_created`, `order_refunded` (minimum `order_created`).
 5. **API key:** Settings → API → create key → `LEMONSQUEEZY_API_KEY` (server-only).
@@ -73,26 +74,30 @@
 1. Create a project at console.firebase.google.com (Spark plan).
 2. **Security → Authentication → Sign-in method → Google → Enable → Save.**
 3. **Security → Authentication → Settings → Authorized domains**: add
-   `camichaves79.github.io` and `localhost`.
+   `5budget.app` and `localhost`.
 4. **Databases & Storage → Firestore → Create database → Production mode**, then
    set rules to deny ALL client access (the Admin SDK bypasses rules):
    `match /{document=**} { allow read, write: if false; }`
 5. **Project settings ⚙ → Service accounts → Generate new private key** (JSON).
-   Copy its contents into the Vercel env var `FIREBASE_SERVICE_ACCOUNT`
-   (single line, ~2.3 KB — fine for Node functions' 64 KB env budget).
+   Minify it to ONE line and copy it into the Worker's Secret variable
+   `FIREBASE_SERVICE_ACCOUNT` (Cloudflare → `budget-api` → Settings →
+   Variables and Secrets). **The key must stay ACTIVE** — deleting it in the
+   Firebase console orphans the Worker's copy and every Firestore read fails
+   with `firebase: token endpoint 400` (2026-09-08 incident).
 6. **Project settings → General → Your apps → Web app → Config**: copy
    `apiKey`, `authDomain`, `projectId`, `appId` into the client env vars.
-7. **Vercel Node version:** the functions are dependency-free (hand-rolled
-   Firebase REST client — Vercel's tracing silently dropped `firebase-admin`
-   from the bundles, see `ARCHITECTURE.md` §1), so the default Node 24 runtime
-   is fine.
+7. **Worker runtime:** the functions are dependency-free (hand-rolled Firebase
+   REST client — tracing silently dropped `firebase-admin` from serverless
+   bundles, see `ARCHITECTURE.md` §1); the Worker runs `nodejs_compat` and
+   the Firebase OAuth JWT is signed with WebCrypto (workerd lacks
+   `crypto.createSign`).
 
 Collections created at runtime (never touch them by hand): `licenses/{lic}`,
 `entitlements/{uid}`, `sales/{orderId}`.
 
 ## 5. Environment variables
 
-**Vercel project (`budget-beta-two`):**
+**Cloudflare Worker (`budget-api`, served at `api.5budget.app`):**
 
 | Var | Purpose |
 |---|---|
@@ -106,38 +111,39 @@ Collections created at runtime (never touch them by hand): `licenses/{lic}`,
 | `FIREBASE_SERVICE_ACCOUNT` | service-account JSON (single line) |
 | `BUDGET_ADMIN_SECRET` | protects `/api/ledger/export` |
 
-**GitHub repo secrets (Pages build) + local `.env`** — see `.env.example`:
-`VITE_PARSE_ENDPOINT`, `VITE_PARSE_SECRET` (existing), `VITE_API_BASE`
-(= `https://budget-beta-two.vercel.app`), `VITE_FIREBASE_API_KEY`,
-`VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_APP_ID`,
-`VITE_CHECKOUT_URL` (the store's buy link).
+**Cloudflare Pages env vars (build-time) + local `.env`** — see `.env.example`:
+`VITE_PARSE_ENDPOINT` (= `https://api.5budget.app/api/parse`), `VITE_PARSE_SECRET`
+(existing), `VITE_API_BASE` (= `https://api.5budget.app`),
+`VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`,
+`VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_APP_ID`, `VITE_CHECKOUT_URL`
+(the store's buy link).
 
 ## 6. Verify after setup
 
 **Client error-code map (for debugging "Complete purchase" failures):**
-- "Couldn't reach the licensing service…" → function 500/network (check Vercel logs for `firebase:` lines)
-- "The licensing service isn't fully set up yet…" → `not-configured` (FIREBASE_SERVICE_ACCOUNT missing/unparseable in Vercel env, or not redeployed)
+- "Couldn't reach the licensing service…" → function 500/network (check the Worker logs — Cloudflare → `budget-api` → Logs — for `firebase:` lines)
+- "The licensing service isn't fully set up yet…" → `not-configured` (FIREBASE_SERVICE_ACCOUNT missing/unparseable in the Worker variables, or the variable change wasn't Deployed)
 - "That purchase couldn't be completed…" → order not paid/found/refunded (test-mode or link-variable issue)
 - "Your payment hasn't been confirmed yet…" → order still pending
 
 ```bash
 # 1. Redeem a TEST-mode order (license key from the test purchase email):
-curl -s -X POST https://budget-beta-two.vercel.app/api/license/redeem \
+curl -s -X POST https://api.5budget.app/api/license/redeem \
   -H 'Content-Type: application/json' -H "x-budget-secret: $SECRET" \
   -d '{"key":"<test-license-key>"}'
 
 # 2. Parse with the returned license:
-curl -s -X POST https://budget-beta-two.vercel.app/api/parse \
+curl -s -X POST https://api.5budget.app/api/parse \
   -H 'Content-Type: application/json' -H "x-budget-secret: $SECRET" \
-  -H 'Origin: https://camichaves79.github.io' \
+  -H 'Origin: https://5budget.app' \
   -d '{"utterance":"300 in bread","categories":[],"today":"2026-09-05","license":"<token>"}'
 
 # 3. Ledger export (accountant CSV):
 curl -s -H "x-budget-admin: $ADMIN" \
-  "https://budget-beta-two.vercel.app/api/ledger/export?format=csv" -o sales.csv
+  "https://api.5budget.app/api/ledger/export?format=csv" -o sales.csv
 
 # 4. Webhook signature (sanity): the function answers 401 to a bad signature.
-curl -s -X POST https://budget-beta-two.vercel.app/api/webhooks/ls \
+curl -s -X POST https://api.5budget.app/api/webhooks/ls \
   -H 'X-Signature: deadbeef' -d '{}'
 ```
 
@@ -155,7 +161,7 @@ orders API without Firestore).
 ## 7. Operations
 
 - **Accountant export:** `curl -H "x-budget-admin: <secret>"
-  https://budget-beta-two.vercel.app/api/ledger/export?format=csv`. Columns:
+  https://api.5budget.app/api/ledger/export?format=csv`. Columns:
   date, order_number, status, gross, tax, total, fees_estimate, net_estimate,
   currency, buyer_email, license_id, receipt_url, invoice_url, refunded,
   refunded_amount, refunded_at, test_mode. Invoices are generated
@@ -172,7 +178,8 @@ orders API without Firestore).
   restore path). Rotating `BUDGET_LICENSE_SECRET` invalidates every issued
   token — only as a last resort.
 - **Watch:** license meters (parse `license-limit` responses), ledger rows,
-  Vercel logs for `license-invalid`/`bad-signature`.
+  Worker logs (Cloudflare → `budget-api` → Logs) for
+  `license-invalid`/`bad-signature`.
 
 ## 8. Apple sign-in — DISCARDED (2026-09-06)
 
@@ -186,19 +193,19 @@ auth boundary: `OAuthProvider('apple.com')` + a Service ID + private key.)
 - **Secret placement (2026-09 incident):** the Firebase **service-account JSON**
   (with its `private_key`) was once pasted into the client secret
   `VITE_FIREBASE_API_KEY` and shipped inside the public bundle. It belongs ONLY
-  in Vercel's `FIREBASE_SERVICE_ACCOUNT`; the client secret takes the web-app
+  in the Worker's Secret variable `FIREBASE_SERVICE_ACCOUNT`; the client secret
+  takes the web-app
   `apiKey` (an `AIza…` token from Project settings → General → Your apps →
   Config). After rotation, the build now REJECTS any `VITE_FIREBASE_API_KEY`
   that doesn't match `AIza…` (`src/lib/auth.ts`), so a wrong paste degrades to
   "sign-in unavailable" instead of leaking. If a server key ever leaks again:
-  generate a new key, delete the old one, update Vercel, rebuild.
+  generate a new key, delete the old one, update the Worker variable, redeploy.
 
 - **Google sign-in is popup-first** with a redirect fallback: since June 2024,
-  third-party-storage blocking breaks `signInWithRedirect` on GitHub Pages
+  third-party-storage blocking breaks `signInWithRedirect` on shared-hosting
   domains (Firebase's
   [redirect best practices](https://firebase.google.com/docs/auth/web/redirect-best-practices)).
-  If popup misbehaves in the installed PWA, the documented fix is self-hosting
-  the `__/auth/*` helper files on Pages (option 4) — test empirically.
+  On the custom domain `5budget.app` redirect auth works normally.
 - **LS overlay** in Safari: known 404 issue (lmsqueezy/lemonsqueezy.js#68);
   the app falls back to a new tab / full redirect automatically.
 - **Order fetch** uses the NUMERIC id; `order_number` is separate; the
@@ -216,13 +223,16 @@ auth boundary: `OAuthProvider('apple.com')` + a Service ID + private key.)
   Firestore answered `INVALID_ARGUMENT … Unknown name "updateMask"` on every
   merge-set. Fixed (updateMask as a Write-level sibling + a body-capturing
   smoke regression test); the smoke suite can no longer be fooled by a stub
-  that accepts any body. Future triage via Vercel logs: `firebase: token
+  that accepts any body. Future triage via the Worker logs (Cloudflare →
+  `budget-api` → Logs): `firebase: token
   endpoint <status>` = the service-account JWT was rejected at the OAuth
-  endpoint (revoked/wrong/mismatched key after rotation; re-paste +
-  redeploy), `firebase: commit failed <status>` = Firestore answered the
+  endpoint (revoked/wrong/mismatched key after rotation — re-paste a FRESH
+  key; the 2026-09-08 instance was an orphaned key, 400), `firebase: commit
+  failed <status>` = Firestore answered the
   commit with an error. Restore keeps working in both cases because
   `/api/license/lookup` self-heals from the Lemon Squeezy orders API, which
   is exactly why this failure is invisible to the user and must be checked
-  in the console. **Verified fixed end-to-end in prod (2026-09-06):** all
+  in the console. **Verified fixed end-to-end in prod (2026-09-06, re-verified
+  2026-09-08 on the Worker):** all
   three collections populated for the test orders and the accountant CSV
   export has the rows.

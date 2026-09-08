@@ -15,22 +15,23 @@ Budget data is fully client-side and offline: it lives in the browser's `localSt
 and (except for smart entry) never leaves the device.
 
 - Repo: https://github.com/camichaves79/budget
-- Live site: https://camichaves79.github.io/budget/ (auto-deployed from `main`)
+- Live site: https://5budget.app/ (custom domain on Cloudflare Pages,
+  auto-deployed from `main` — hosting migration A15, completed 2026-09-08;
+  `budget-7ad.pages.dev` and the old GitHub Pages URL still resolve but are
+  not the product URL. Migration plan + ops: `skills/hosting-migration.md`)
 - Local dev: `npm run dev` → http://localhost:5173/
 - **PWA install name: "$5 Budget"** (manifest + apple meta in `index.html`; icons
   mint `#60c784` + engraving-green banknote with a bold "$5" center in `public/`;
   source in `tools/icon.svg`).
-- **Parse microservice** (the app's first backend): Vercel Function
-  `https://budget-beta-two.vercel.app/api/parse` — see §4/§8. Free-tier
-  resilience: transient Gemini 429/5xx are retried with backoff, quota-blocked
-  calls fall back to `gemini-3.5-flash-lite` (own free quota), and successful
-  parses are cached per warm instance (1h) so retries skip Gemini entirely.
-- **Paywall backend (2026-09):** the same Vercel
-  project gains `/api/license/*` (redeem / lookup / check), `/api/webhooks/ls`
-  and `/api/ledger/export`; Firebase Auth (Google) + Firestore hold identity,
-  entitlement and the sales ledger (server-side REST writes, client never touches
-  Firestore). Lemon Squeezy is the merchant of record. Ops checklist:
-  `skills/paywall-ops.md`.
+- **API backend** (the app's only backend, since 2026-09-08): ONE Cloudflare
+  Worker at `https://api.5budget.app` — `/api/parse` (Gemini proxy; free-tier
+  resilience: transient 429/5xx retried with backoff, quota-blocked calls fall
+  back to `gemini-3.5-flash-lite`, warm-instance response cache 1h) plus
+  `/api/license/*` (redeem / lookup / check), `/api/webhooks/ls` and
+  `/api/ledger/export`. Vercel is RETIRED (A15). Firebase Auth (Google) +
+  Firestore hold identity, entitlement and the sales ledger (server-side REST
+  writes, client never touches Firestore). Lemon Squeezy is the merchant of
+  record. Ops checklist: `skills/paywall-ops.md`.
 
 ## 2. Product scope & confirmed decisions
 
@@ -311,31 +312,37 @@ in those tight overrides.
 - **Only commit/push when the user explicitly says so.**
 - **"ship"** = commit → push branch → fast-forward merge into `main` → push → delete
   branch locally and remotely → verify deploys. History stays linear (no merge commits).
-- **GitHub Pages**: Actions on push to `main`. Verify with
-  `curl -s -o /dev/null -w "%{http_code}" https://camichaves79.github.io/budget/` and
-  poll `/repos/camichaves79/budget/actions/runs` every ~10s until `completed success`.
-  Repo secrets `VITE_PARSE_ENDPOINT` / `VITE_PARSE_SECRET` are baked at build time.
-- **Vercel**: Git integration auto-deploys `main` to the `budget-beta-two` project
-  (Framework: Other, no build command). **The `/api` functions are
-  dependency-free** (the only npm packages are the client's) — Vercel's
-  zero-config tracing silently dropped `firebase-admin` from function bundles,
-  which is why `api/_firebase.js` is a hand-rolled REST client. Env vars there:
-  `GEMINI_API_KEY`,
-  `BUDGET_PARSE_SECRET`, optional `GEMINI_FALLBACK_MODEL` (default
-  `gemini-3.5-flash-lite`; empty string disables the fallback) — plus the paywall
-  vars: `BUDGET_LICENSE_SECRET`, `LEMONSQUEEZY_API_KEY`,
-  `LEMONSQUEEZY_WEBHOOK_SECRET`, `LEMONSQUEEZY_STORE_ID`, `FIREBASE_SERVICE_ACCOUNT`
-  (service-account JSON string), `BUDGET_ADMIN_SECRET` (ledger export), optional
-  `LICENSE_DAILY_CAP` (default 100). Function URLs:
-  `https://budget-beta-two.vercel.app/api/parse` + `/api/license/*`,
-  `/api/webhooks/ls`, `/api/ledger/export`.
+- **Frontend deploy (Cloudflare Pages):** git-connected project `budget` (build
+  `npm run build`, output `dist`, `NODE_VERSION=22`), custom domain
+  `5budget.app`. The `VITE_*` vars live in Cloudflare Pages → Settings →
+  Environment variables (Production + Preview; both endpoints point at
+  `https://api.5budget.app`). Verify with
+  `curl -s -o /dev/null -w "%{http_code}" https://5budget.app/` and the
+  Deployments tab. Saving env vars redeploys automatically; otherwise push a
+  trivial commit (docs touch). The GitHub Pages workflow was retired
+  (`5a8033c`); repo secrets `VITE_*` are unused (prune any time).
+- **API deploy (Cloudflare Worker):** one worker `budget-api` (`worker.js` +
+  `wrangler.toml`, `nodejs_compat`) served at `api.5budget.app` (dashboard
+  custom-domain route) with **Smart Placement** enabled (near Gemini — the
+  latency fix). GitHub Actions `.github/workflows/deploy-worker.yml` runs
+  `cloudflare/wrangler-action@v3` on push to `main` (secrets
+  `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID`). The 11 server vars are
+  **Secret-type variables on the Worker** (Settings → Variables and Secrets)
+  — they survive `wrangler deploy`. Vercel is RETIRED (A15). The `/api`
+  handlers stay dependency-free Node-style `handler(req, res)` code, bridged
+  by `worker.js` — Vercel's zero-config tracing originally forced the
+  hand-rolled REST client in `api/_firebase.js`, and the same
+  dependency-free rule now keeps the Worker bundle trivial. Function URLs:
+  `https://api.5budget.app/api/parse` + `/api/license/*`, `/api/webhooks/ls`,
+  `/api/ledger/export`.
 - Local `.env` (gitignored) holds `VITE_PARSE_ENDPOINT` + `VITE_PARSE_SECRET` for dev;
   pattern in `.env.example`. New client vars: `VITE_API_BASE` (license endpoints),
   `VITE_FIREBASE_API_KEY` / `VITE_FIREBASE_AUTH_DOMAIN` /
   `VITE_FIREBASE_PROJECT_ID` / `VITE_FIREBASE_APP_ID`, `VITE_CHECKOUT_URL`
-  (LS buy link). Same names in repo secrets for the Pages build.
-- To trigger a Pages rebuild without code changes (e.g. after setting repo secrets),
-  push a trivial commit (docs touch) — workflow_dispatch re-runs need a token.
+  (LS buy link). Same names in the Cloudflare Pages env vars for the build.
+- Local Worker dev: `npx wrangler dev --port 8787` reads `.dev.vars`
+  (gitignored; same 11 names, dummy values fine for guard-path testing).
+  Wrangler is installed `--no-save` — check `package-lock.json` stays clean.
 
 ## 9. Gotchas
 
@@ -348,8 +355,27 @@ in those tight overrides.
   layouts — `Sheet` lifts via `window.visualViewport` delta → `--kb-inset` on `:root`
   + `.sheet-backdrop { padding-bottom: var(--kb-inset) }` + `max-height: 100%`;
   `html.kb-open .sheet` rounds the bottom corners while floating.
-- **Vercel** invokes functions Node-style `handler(req, res)` — a Web-standard
-  `Request` handler throws FUNCTION_INVOCATION_FAILED.
+- **Cloudflare Workers gotchas (all diagnosed live, 2026-09-08):**
+  - workerd's `nodejs_compat` does NOT implement `node:crypto` `createSign` /
+    `createVerify` (asymmetric RSA) — `[unenv] crypto.createSign is not
+    implemented yet!` in the logs. `api/_firebase.js` signs the Firebase OAuth
+    JWT with WebCrypto `crypto.subtle` (`signJwt` is async; PEM→DER via
+    `pemToDer`). Keep new server crypto on WebCrypto.
+  - Worker env **bindings are non-enumerable getters**: `Object.assign(process.env,
+    env)` copies NOTHING in production (local `wrangler dev` passes a plain
+    object, so it only works there). `worker.js` hydrates `process.env` by an
+    explicit key list (`hydrateEnv`, ENV_KEYS).
+  - The Workers Variables page keeps edits as a **draft** until you click the
+    Deploy button/banner — "saved but not deployed" looks like a missing var.
+  - The dashboard **Quick Edit** diverges the deployed script from the repo;
+    the next `wrangler deploy` (any push to `main`) overwrites it — keep
+    prod-only tweaks in the repo instead.
+  - `firebase: token endpoint 400` = the Worker's `FIREBASE_SERVICE_ACCOUNT`
+    private key doesn't match an ACTIVE Firebase key (old/revoked/mangled
+    paste). Fix: generate a fresh key, minify (`python3 -c "import json;print(json.dumps(json.load(open(PATH))))"`),
+    re-paste as a Secret. A good key parses with `private_key length` ≈ 1704.
+- **Vercel is retired (A15)** — the Node-style `handler(req, res)` contract now
+  lives behind `worker.js`'s Web-Request shim; handlers stay unmodified.
 - **Gemini**: model string must be current for NEW accounts (2.5-flash is retired for
   them; now `gemini-3.6-flash`). Gemini 3.x thinks by default and hidden thoughts
   consume `maxOutputTokens` — keep `thinkingConfig: { thinkingLevel: 'low' }` or the
@@ -370,9 +396,10 @@ in those tight overrides.
   with `LemonSqueezy.Url.Open(url)` (no `Checkout.Open`); the overlay has a known
   Safari 404 issue → the app falls back to a tab/redirect. Sub-$10 products may
   need LS "custom pricing" support; payouts have a $50 minimum and a 13-day hold.
-- **Firebase**: `signInWithRedirect` is broken on GitHub Pages domains by
+- **Firebase**: `signInWithRedirect` is broken on shared-hosting domains by
   third-party-storage blocking (Safari 16.1+/Chrome 115+) → the app is
-  popup-first with redirect fallback. Server-side, never rely on Vercel
+  popup-first with redirect fallback; on the custom domain (`5budget.app`)
+  redirect auth works normally. Server-side, never rely on Vercel
   zero-config tracing for npm packages in `/api` functions: it silently
   dropped `firebase-admin` from the bundles (diagnosed via a temp endpoint
   showing "Cannot find package … imported from /var/task/api/"). The repo's
@@ -386,7 +413,7 @@ in those tight overrides.
 
 ## 10. Current state & next-session context
 
-Everything below is **shipped and live** (main ≈ `2792ba9`, 2026-09-06):
+Everything below is **shipped and live** (main ≈ `4658257`, 2026-09-08):
 
 - Smart entry end-to-end: PWA → Vercel microservice → Gemini 3.6 Flash → instant save
   with fading toasts; review form only for ambiguous parses. Full spec (revised):
@@ -446,14 +473,38 @@ regression) and **verified in prod**: all three collections (`sales`,
 `licenses`, `entitlements`) are populated for both test orders and the
 accountant CSV has the rows.
 
+**NEW since 2026-09-06 (all shipped, user-tested where noted):**
+- **Ledger-by-construction (`7f5e995`):** `ensureLicenseForOrder` now writes
+  the COMPLETE sales-ledger row (money columns from the LS order attributes)
+  on every mint/restore path, backfills rows that only had
+  `license_id`/`redeemed_at`, and never downgrades a recorded refund or the
+  generated invoice/receipt URLs (`saleRowForMerge`). Smoke suite now 282
+  checks. The console-clearing prod walkthrough stayed parked; the code is
+  live on the Worker.
+- **Two discards recorded (`6b693ad`):** Apple sign-in DISCARDED and the BYOK
+  stash dropped (A11/A12 docs).
+- **Cloudflare migration A15 — COMPLETE and user-verified (2026-09-08):**
+  frontend on **`https://5budget.app/`** (Cloudflare Pages, custom domain,
+  `VITE_*` + `NODE_VERSION=22` env vars); the six API functions on ONE Worker
+  at **`https://api.5budget.app`** (dashboard route + Smart Placement near
+  Gemini — the latency fix); Vercel and GitHub Pages fully retired. Fixed
+  along the way, all verified in prod: non-enumerable env bindings
+  (`hydrateEnv`, `f831b92`), `5budget.app` origin allow-lists (`066b75e`),
+  workerd's missing `createSign` → WebCrypto `signJwt` (`4658257`), and a
+  fresh Firebase service-account key (the old one was orphaned → `firebase:
+  token endpoint 400`). License sign-in/restore + licensed parses + the
+  accountant CSV all verified from the phone against prod.
+- **User-side dashboard state to remember:** the 11 Worker variables are
+  Secret-type on `budget-api`; `BUDGET_LICENSE_SECRET` was REGENERATED
+  (2026-09-07) — old tokens invalidate, restore re-mints; `BUDGET_ADMIN_SECRET`
+  is a fresh user-recorded value; `GEMINI_PAID_API_KEY` was re-pasted and
+  should be re-verified against a licensed parse.
+
 Candidate next steps (ask the user, don't assume):
-- Re-paste a fresh `GEMINI_PAID_API_KEY` (current one rejected 400; billing was
-  enabled but the key value itself appears wrong — until then the fallback
-  carries licensed parses on the free key).
-- Enable the Lemon Squeezy store (storefront still 403) before any real
-  (non-test-mode) purchase.
-- Optional hardening: `ensureLicenseForOrder` could upsert the ledger row by
-  construction (today the self-heal path writes only `license_id`/`redeemed_at`
-  — a restore alone won't backfill missing ledger columns).
+- UI changes the user has queued (they'll spell them out next session).
+- Parked: console-clearing prod walkthrough of the ledger-by-construction fix;
+  LS webhook flip verification (test-mode purchase → watch Firestore) — the
+  webhook URL/secret now live at `api.5budget.app`; enable the Lemon Squeezy
+  storefront (still 403) before any real non-test-mode purchase.
 - Anything else the user raises; always read `skills/speech-entry.md` for the
   feature spec and this file for conventions before coding.

@@ -1,11 +1,12 @@
 # Architecture — $5 Budget App
 
 > **Living record** — updated whenever the app ships a meaningful change.
-> Last updated: **2026-09-06** (main ≈ `2792ba9`; smart-entry paywall
-> **user-approved and verified end-to-end** — Firestore collections +
-> accountant ledger populated; redemptions are email-authorized;
-> paid-key→free-key fallback shipped; four-section tab bar with the + add
-> button in the bar).
+> Last updated: **2026-09-08** (main ≈ `4658257`; **Cloudflare migration
+> COMPLETE** — frontend on `5budget.app` (Cloudflare Pages, custom domain),
+> the six API functions on ONE Cloudflare Worker at `api.5budget.app`,
+> Vercel retired; Firebase OAuth JWT now signed with WebCrypto (workerd's
+> nodejs_compat lacks `createSign`); sales ledger written complete by
+> construction on every license mint/restore).
 > Read alongside `skills/project-skill.md` (conventions + current state) and
 > `skills/speech-entry.md` (smart-entry spec). Keep this file honest: if a
 > trade-off changes, update the table, not just the date.
@@ -13,9 +14,10 @@
 ## 1. System context (today)
 
 ```
-iPhone PWA ──HTTPS──▶ GitHub Pages (static, CDN)                    [free]
+iPhone PWA ──HTTPS──▶ Cloudflare Pages (static, CDN, `5budget.app`)      [free]
    │  smart entry text + categories (+ signed license when licensed)
-   ├───────────────▶ Vercel Functions                                [Hobby, free]
+   ├───────────────▶ Cloudflare Worker (`api.5budget.app`, one script,     [free]
+   │                 Smart Placement keeps it near Gemini) 
    │                    /api/parse          Gemini proxy (licensed path: paid key,
    │                                        Lite→Flash; free path: A6 resilience)
    │                    /api/license/*      redeem / lookup / check (HMAC licenses)
@@ -30,25 +32,24 @@ iPhone PWA ──HTTPS──▶ GitHub Pages (static, CDN)                    [f
 
 - **Client:** React 19 + TS 6 + Vite 8 PWA, `base: './'`, no router/UI/framework.
   All budget data lives in `localStorage` behind a `StorageAdapter` interface.
-- **Backend:** a small set of Vercel Functions (`api/parse.js` + the license/ledger
-  endpoints above, Node-style handlers). No database of our own: Firestore holds
-  entitlement + sales-ledger documents only (identity/entitlement/purchase
-  metadata — budget data still never reaches the cloud, see A1/A13). Firebase
-  access is a zero-dependency REST client (service-account JWT → OAuth →
-  Firestore REST + JWKS token verification): Vercel's zero-config tracing
-  silently dropped the firebase-admin package from function bundles, and the
-  hand-rolled client has nothing for the bundler to lose.
+- **Backend:** ONE Cloudflare Worker (`worker.js` + `wrangler.toml`, the six
+  Vercel-era `api/` handlers unmodified behind a Node→Web shim; Vercel is
+  RETIRED — A15). No database of our own: Firestore holds entitlement +
+  sales-ledger documents only (identity/entitlement/purchase metadata — budget
+  data still never reaches the cloud, see A1/A13). Firebase access is a
+  zero-dependency REST client (service-account JWT → OAuth → Firestore REST +
+  JWKS token verification); the service-account JWT is signed with WebCrypto
+  (`crypto.subtle`), because workerd's `nodejs_compat` does not implement
+  `node:crypto` `createSign`.
 - **AI:** free tier — Gemini `gemini-3.6-flash` primary + `gemini-3.5-flash-lite`
   fallback (A6); licensed tier — paid key, Lite primary + Flash fallback (A14).
   Structured JSON **array** out (1 element per transaction, cap 20, each with a
   0–1 `confidence` grade).
-- **Cost today: $0** — GitHub Pages free, Vercel Hobby (1M function invocations/mo,
-  300s max duration), Gemini free tier, Firebase Spark. The license sale is the
-  app's first revenue (A12).
-- **Planned (2026-09-07, A15):** hosting migrates to Cloudflare — Pages for the
-  static frontend (Phase 1), Workers for the API functions (Phase 2), because
-  GitHub Pages' ToS and Vercel Hobby are non-commercial and the paywall makes
-  this app commercial. Plan: `skills/hosting-migration.md`.
+- **Cost today: $0** — Cloudflare Pages + Workers free tiers, Gemini free tier,
+  Firebase Spark. The license sale is the app's first revenue (A12).
+- **Hosting (2026-09-08, A15):** migration COMPLETE — GitHub Pages and Vercel
+  (both non-commercial ToS) are gone; Cloudflare carries the static frontend
+  and the API Worker. Details + ops: `skills/hosting-migration.md`.
 
 ## 2. Decision records
 
@@ -68,7 +69,7 @@ iPhone PWA ──HTTPS──▶ GitHub Pages (static, CDN)                    [f
 | A12 | Smart-entry paywall: 10 free parses/day (client-side counter, UX not security), then a **$5/year** license sold through Lemon Squeezy (MoR, 5% + $0.50/txn) with an in-app checkout overlay; the post-purchase redirect carries the order id and the app auto-redeems it server-side into an **HMAC-signed license** (verified on every parse, 100/day meter); **buying always requires Google sign-in — every license is account-bound at mint time**; a Settings paste-key is a recovery fallback only. **Redemption is email-authorized (2026-09):** the signed-in email must match the LS buyer email (409 `email-mismatch` otherwise) and the license endpoints are per-IP rate-limited, so enumerable numeric order ids cannot be claimed; buyers must use their Google email at checkout | Price chosen for brand fit + positive expected earnings at 50+ users (~40–70% ROI, break-even ~10–12 payers); license minting stays server-side so keys can't be forged client-side; mandatory sign-in makes restore airtight and kills the unsigned-buyer edge cases; the email match is the actual authorization layer (sign-in alone is only identity) | Accepted |
 | A13 | Identity for license binding: **Firebase Auth** (Google sign-in only — Apple sign-in discarded 2026-09-06, the $99/yr developer account was never justified) + **Firestore** for entitlements and the sales ledger, written via a zero-dependency REST client (service-account JWT → Firestore REST; the client never touches Firestore) | Firebase over Supabase: $0 Spark tier with no project-pause risk and the same Google account as Gemini; cloud holds identity/entitlement/purchase metadata only — budget data stays on-device | Accepted |
 | A14 | Licensed tier runs on a **paid Gemini key** with `gemini-3.5-flash-lite` primary and `gemini-3.6-flash` fallback (inverted from the free tier), and a cache-friendly system prompt ready for context-caching savings. **Safety floor (2026-09-06):** when the paid key is rejected with a config-type error (400/401/403/404 — invalid key, permissions, billing, unknown model), the parse retries with the free key so a broken paid key never bricks licensed parses; quota/transient failures stay on the paid key | Free-tier quotas can't back a paid product; Lite ≈25% cheaper per parse and is already the proven fallback; paid tier also opts out of training use; the fallback keeps paying users working through key-rotation/billing mishaps (validated in prod) | Accepted |
-| A15 | Hosting migration to **Cloudflare**: static frontend → **Cloudflare Pages**, the six API functions → **Cloudflare Workers** (Node→Web handler shim + `nodejs_compat`, still zero runtime dependencies) | GitHub Pages' ToS forbids primarily-commercial sites and Vercel Hobby is non-commercial — the paywall (A12) makes this app commercial, so both current homes are non-compliant. Phased for reversibility: Pages first (Phase 1, origin allow-list + dashboard cutover), Worker port with dual-run cutover second (Phase 2), Vercel retired last | Accepted (2026-09-07, staged — plan: `skills/hosting-migration.md`) |
+| A15 | Hosting migration to **Cloudflare**: static frontend → **Cloudflare Pages**, the six API functions → **Cloudflare Workers** (Node→Web handler shim + `nodejs_compat`, still zero runtime dependencies) | GitHub Pages' ToS forbids primarily-commercial sites and Vercel Hobby is non-commercial — the paywall (A12) makes this app commercial, so both current homes were non-compliant. Phased for reversibility: Pages first, Worker port with dual-run cutover second, Vercel retired last | **Shipped 2026-09-08** — `5budget.app` (Pages, custom domain) + `api.5budget.app` (Worker, Smart Placement near Gemini); Vercel + GitHub Pages fully retired; gotchas fixed along the way: Worker env bindings are non-enumerable getters (explicit-key hydration), and workerd lacks `crypto.createSign` (WebCrypto `signJwt`). Ops: `skills/hosting-migration.md` |
 
 ## 3. The "-ilities" — where we stand
 

@@ -42,7 +42,7 @@ Smart entry parses natural language through a small **parse microservice** — t
 first backend. The LLM API key lives server-side and never reaches the client.
 
 ```
-React PWA (GitHub Pages) → HTTPS → Parse microservice (Vercel Function) → Google Gemini
+React PWA (Cloudflare Pages) → HTTPS → API Worker (Cloudflare) → Google Gemini
 ```
 
 Only the transaction text you submit and your category list are sent. Transaction history
@@ -57,22 +57,24 @@ recorded.
 ### One-time setup
 
 1. **Google AI Studio key** — create one at https://aistudio.google.com/apikey (free tier).
-2. **Deploy the microservice** (`api/parse.js`) to Vercel:
-   - Create a Vercel project importing this repo. In *Build and Output Settings* use the
-     **Other** framework preset, no build command, no output directory (only `/api` is needed).
-   - Add environment variables on the project: `GEMINI_API_KEY` (your AI Studio key),
-     `BUDGET_PARSE_SECRET` (any long random string — pick your own), and optionally
-     `GEMINI_FALLBACK_MODEL` (the quota-fallback model; defaults to
-     `gemini-3.5-flash-lite`, set it to an empty string to disable the fallback).
-   - Deploy. Note the function URL: `https://<project>.vercel.app/api/parse`.
+2. **Deploy the API Worker** (`worker.js` + `wrangler.toml`) to Cloudflare:
+   - `wrangler.toml` is in the repo; `npx wrangler deploy` (or push to `main` — the
+     `Deploy API Worker` workflow runs `cloudflare/wrangler-action`).
+   - Add Worker variables (Settings → Variables and Secrets, Secret type):
+     `GEMINI_API_KEY` (your AI Studio key), `BUDGET_PARSE_SECRET` (any long random
+     string — pick your own), optionally `GEMINI_FALLBACK_MODEL` (the quota-fallback
+     model; defaults to `gemini-3.5-flash-lite`, set it to an empty string to disable
+     the fallback) — plus the paywall vars listed in `skills/paywall-ops.md` §5.
+   - Note the Worker URL: `https://<name>.<your-subdomain>.workers.dev` (or a
+     custom-domain route like `api.5budget.app`).
 3. **Point the app at it** — the app reads two build-time vars (see `.env.example`):
-   - `VITE_PARSE_ENDPOINT` = the function URL above
+   - `VITE_PARSE_ENDPOINT` = the Worker URL + `/api/parse`
    - `VITE_PARSE_SECRET` = the same value as `BUDGET_PARSE_SECRET`
-   - For the live site: set both as **GitHub repo secrets**
-     (Settings → Secrets and variables → Actions → `VITE_PARSE_ENDPOINT`, `VITE_PARSE_SECRET`);
-     the Pages workflow bakes them into the build.
-   - For local dev: copy `.env.example` to `.env` and fill it in; deploy the function once
-     (or use `vercel dev`) and set the endpoint to the deployed or local URL.
+   - For the live site: set both (plus the other `VITE_*` vars) as **Cloudflare Pages
+     environment variables** (Workers & Pages → `budget` → Settings → Environment
+     variables → Production + Preview); the build bakes them in.
+   - For local dev: copy `.env.example` to `.env` and fill it in; run the Worker with
+     `npx wrangler dev` (`.dev.vars`) and point the endpoint at the local or deployed URL.
 
 The primary Gemini model is a single constant (`GEMINI_MODEL` in `api/parse.js`,
 currently `gemini-3.6-flash`, free tier) and is trivial to swap. When the primary is
