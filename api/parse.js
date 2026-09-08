@@ -116,6 +116,8 @@ const ALLOWED_ORIGINS = ['https://camichaves79.github.io', 'https://5budget.app'
 
 const MAX_BODY_BYTES = 10_000;
 const MAX_UTTERANCE_CHARS = 500;
+const PARSE_LANGUAGES = ['en', 'es', 'fr', 'pt', 'zh', 'hi', 'bn', 'ru', 'ur', 'ar'];
+
 const MAX_CATEGORIES = 50;
 const MAX_ID_CHARS = 64;
 const MAX_NAME_CHARS = 64;
@@ -123,7 +125,7 @@ const MAX_NAME_CHARS = 64;
 const MAX_TRANSACTIONS = 20;
 
 /** @typedef {{ id: string, name: string, kind: 'expense' | 'income' }} CategoryRef */
-/** @typedef {{ utterance: string, categories: CategoryRef[], today: string }} ParseInput */
+/** @typedef {{ utterance: string, categories: CategoryRef[], today: string, language: string }} ParseInput */
 
 /* ---------- CORS ---------- */
 
@@ -275,7 +277,13 @@ export function sanitizeRequest(raw) {
 
   if (typeof r.today !== 'string' || !isISODate(r.today)) return null;
 
-  return { utterance, categories, today: r.today };
+  // UI language hint (2026-09 i18n): optional, whitelisted; defaults to 'en'.
+  let language = 'en';
+  if (typeof r.language === 'string' && PARSE_LANGUAGES.includes(r.language)) {
+    language = r.language;
+  }
+
+  return { utterance, categories, today: r.today, language };
 }
 
 /* ---------- Retry policy (Gemini free-tier 429s are common) ---------- */
@@ -386,11 +394,14 @@ export function cacheSet(cache, key, parsed, now = Date.now()) {
  * @param {CategoryRef[]} categories
  * @param {string} today
  */
-export function buildSystemPrompt(categories, today) {
+export function buildSystemPrompt(categories, today, language = 'en') {
   const lines = categories.map((c) => `${c.id} | ${c.name} | ${c.kind}`);
   return [
     'You turn short natural-language transaction descriptions into structured JSON for a budget app.',
     'The user may type or dictate in any language; the JSON keys stay fixed.',
+    language === 'en'
+      ? "The app's UI language is English; expect the utterance in English."
+      : `The app's UI language is ${language}; expect the utterance in that language (notes may stay in the language spoken).`,
     'The user may describe SEVERAL transactions in one message (a list of payments or income). Split them into one array element per transaction. Do not merge two items into one, and do not split one item into several.',
     'Amounts are in Colombian pesos (COP). Read the number the user said as pesos — do not convert currencies and do no arithmetic beyond reading the amount.',
     `Today's date is ${today}. Resolve relative dates ("yesterday", "last Friday") against it. If no date can be determined, use null.`,
@@ -472,7 +483,7 @@ async function callGemini(model, input, apiKey) {
         'x-goog-api-key': apiKey,
       },
       body: JSON.stringify({
-        system_instruction: { parts: [{ text: buildSystemPrompt(input.categories, input.today) }] },
+        system_instruction: { parts: [{ text: buildSystemPrompt(input.categories, input.today, input.language) }] },
         contents: [{ role: 'user', parts: [{ text: input.utterance }] }],
         generationConfig: {
           responseMimeType: 'application/json',

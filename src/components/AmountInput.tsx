@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { parseAmountToCents } from '../lib/money';
+import { t } from '../lib/i18n';
 import { FloatField } from './FloatField';
 
 export function AmountInput({
@@ -30,7 +31,7 @@ export function AmountInput({
       onChange={(e) => onChange(e.target.value)}
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
-      aria-label={label ?? 'Amount'}
+      aria-label={label ?? t('tx.amount')}
     />
   );
 
@@ -61,8 +62,8 @@ export function amountHint(value: string): { text: string; error: boolean } | nu
   const trimmed = value.trim();
   if (trimmed === '') return null;
   const cents = parseAmountToCents(trimmed);
-  if (cents === null) return { text: 'Not a valid amount', error: true };
-  if (cents <= 0) return { text: 'Amount must be greater than zero', error: true };
+  if (cents === null) return { text: t('tx.amountBad'), error: true };
+  if (cents <= 0) return { text: t('tx.amountZero'), error: true };
   // Valid amounts get NO echo under the box — the typed value is already
   // visible in it (2026-09 user direction).
   return null;

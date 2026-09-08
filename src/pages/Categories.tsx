@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { t } from '../lib/i18n';
 import type { FormEvent } from 'react';
 import type { Category, TxType } from '../lib/types';
 import { useStore } from '../state/store';
@@ -27,30 +28,30 @@ export function Categories() {
   return (
     <div className="pinned-page">
       <div className="pinned-head">
-        <h2 className="section-title page-label">Categories</h2>
+        <h2 className="section-title page-label">{t('cats.categories')}</h2>
       </div>
 
       <div className="pinned-scroll">
         <div className="card">
           <CategoryGroup
-            title="Expenses"
+            title={t('cats.expenses')}
             cats={expenseCats}
             onEdit={(c) => setEditing(c)}
             onDelete={(c) => setDeleting(c)}
           />
           <CategoryGroup
-            title="Income"
+            title={t('cats.income')}
             cats={incomeCats}
             onEdit={(c) => setEditing(c)}
             onDelete={(c) => setDeleting(c)}
           />
           <button type="button" className="btn btn-block" onClick={() => setAdding(true)}>
-            + Add category
+            {t('cats.addCategory')}
           </button>
         </div>
       </div>
 
-      <Sheet className="sheet-tight" open={adding} onClose={() => setAdding(false)} title="New category">
+      <Sheet className="sheet-tight" open={adding} onClose={() => setAdding(false)} title={t('cats.newCategory')}>
         <CategoryForm
           onClose={() => setAdding(false)}
           onSave={(cat) => {
@@ -60,7 +61,7 @@ export function Categories() {
         />
       </Sheet>
 
-      <Sheet className="sheet-tight" open={editing !== null} onClose={() => setEditing(null)} title="Edit category">
+      <Sheet className="sheet-tight" open={editing !== null} onClose={() => setEditing(null)} title={t('cats.editCategory')}>
         {editing && (
           <CategoryForm
             initial={editing}
@@ -75,11 +76,11 @@ export function Categories() {
 
       <ConfirmDialog
         open={deleting !== null}
-        title="Delete category?"
+        title={t('cats.deleteCategoryTitle')}
         message={
           deleting && fallbackFor(deleting)
-            ? `Transactions in “${deleting.name}” will be moved to “${fallbackFor(deleting)?.name}”. Its budget (if any) is removed.`
-            : 'This category will be removed.'
+            ? t('cats.deleteReassign', { from: deleting.name, to: fallbackFor(deleting)?.name ?? '' })
+            : t('cats.deleteSimple')
         }
         onCancel={() => setDeleting(null)}
         onConfirm={() => {
@@ -116,12 +117,12 @@ function CategoryGroup({
               {c.emoji}
             </span>
             <span className="tx-name">{c.name}</span>
-            {c.archived && <span className="kind-badge">archived</span>}
+            {c.archived && <span className="kind-badge">{t('cats.archived')}</span>}
           </button>
           <button
             type="button"
             className="mini-delete"
-            aria-label={`Delete ${c.name}`}
+            aria-label={t('cats.deleteAria', { name: c.name })}
             onClick={() => onDelete(c)}
           >
             ✕
@@ -149,11 +150,11 @@ function CategoryForm({
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
-      setError('Give the category a name.');
+      setError(t('cats.errName'));
       return;
     }
     if (!emoji.trim()) {
-      setError('Pick an emoji for the category.');
+      setError(t('cats.errEmoji'));
       return;
     }
     onSave({ name: name.trim(), emoji: emoji.trim(), kind, archived: initial?.archived ?? false });
@@ -162,44 +163,44 @@ function CategoryForm({
   return (
     <form onSubmit={submit}>
       <div className="field">
-        <label htmlFor="cat-name">Name</label>
+        <label htmlFor="cat-name">{t('cats.name')}</label>
         <input
           id="cat-name"
           type="text"
           className="input"
-          placeholder="e.g. Mascotas"
+          placeholder={t('cats.namePlaceholder')}
           value={name}
           autoFocus
           onChange={(e) => setName(e.target.value)}
         />
       </div>
       <div className="field">
-        <label htmlFor="cat-emoji">Emoji</label>
+        <label htmlFor="cat-emoji">{t('cats.emoji')}</label>
         <input
           id="cat-emoji"
           type="text"
           className="input"
           value={emoji}
           onChange={(e) => setEmoji(e.target.value)}
-          aria-label="Emoji"
+          aria-label={t('cats.emoji')}
         />
       </div>
       {!initial && (
-        <div className="segmented" role="radiogroup" aria-label="Category type">
+        <div className="segmented" role="radiogroup" aria-label={t('cats.typeAria')}>
           <button type="button" className={kind === 'expense' ? 'active expense' : ''} onClick={() => setKind('expense')}>
-            Expense
+            {t('tx.expense')}
           </button>
           <button type="button" className={kind === 'income' ? 'active income' : ''} onClick={() => setKind('income')}>
-            Income
+            {t('tx.income')}
           </button>
         </div>
       )}
       {error && <p className="error-text">{error}</p>}
       <button type="submit" className="btn btn-primary btn-block">
-        {initial ? 'Save changes' : 'Add category'}
+        {initial ? t('tx.saveChanges') : t('cats.addCat')}
       </button>
       <button type="button" className="btn btn-block" onClick={onClose}>
-        Cancel
+        {t('smart.cancel')}
       </button>
     </form>
   );

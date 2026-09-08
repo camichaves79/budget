@@ -1,4 +1,6 @@
-import { formatCOP, parseAmountToCents } from '../src/lib/money';
+import { formatCOP, formatMoney, parseAmountToCents } from '../src/lib/money';
+import { LANGS, availableLanguages, catalogKeys, catalogs, setLanguage, t, to } from '../src/lib/i18n';
+import { defaultCategories } from '../src/lib/seed';
 import { isValidISODate } from '../src/lib/dates';
 import { periodForDate, shiftPeriod } from '../src/lib/periods';
 import { isInPeriod } from '../src/lib/selectors';
@@ -335,7 +337,17 @@ const cat = { id: 'c1', name: 'Mercado', kind: 'expense' };
 check(
   'sanitize valid request',
   sanitizeRequest({ utterance: '  lunch 35  ', categories: [cat], today: '2026-09-03' }),
-  { utterance: 'lunch 35', categories: [cat], today: '2026-09-03' },
+  { utterance: 'lunch 35', categories: [cat], today: '2026-09-03', language: 'en' },
+);
+check(
+  'sanitize language whitelisted',
+  sanitizeRequest({ utterance: 'x', categories: [cat], today: '2026-09-03', language: 'es' })?.language,
+  'es',
+);
+check(
+  'sanitize unknown language falls back to en',
+  sanitizeRequest({ utterance: 'x', categories: [cat], today: '2026-09-03', language: 'xx' })?.language,
+  'en',
 );
 check('sanitize empty utterance rejected', sanitizeRequest({ utterance: '   ', categories: [cat], today: '2026-09-03' }), null);
 check('sanitize missing categories rejected', sanitizeRequest({ utterance: 'x', today: '2026-09-03' }), null);
@@ -1110,6 +1122,61 @@ await (async () => {
   if (prevLicenseSecret === undefined) delete process.env.BUDGET_LICENSE_SECRET;
   else process.env.BUDGET_LICENSE_SECRET = prevLicenseSecret;
 })();
+
+// ---- i18n (2026-09): catalogs, plurals, ordinals, amounts, seeds ----
+{
+  check('i18n available languages (branch 1)', availableLanguages(), ['en', 'es', 'fr', 'pt']);
+  check('i18n rtl flags', [LANGS.ar.dir, LANGS.ur.dir], ['rtl', 'rtl']);
+  for (const lang of availableLanguages()) {
+    const missing = catalogKeys().filter((k) => catalogs[lang]?.[k] === undefined);
+    check(`i18n catalog complete for ${lang}`, missing, []);
+  }
+  {
+    // Placeholder consistency: every shipped language must use exactly the
+    // same {params} as its English counterpart (catches branch-2 typos).
+    const paramsOf = (v: unknown): string => {
+      const grab = (s: string) => new Set(Array.from(s.matchAll(/\{(\w+)\}/g), (m) => m[1]));
+      const out = new Set<string>();
+      if (typeof v === 'string') grab(v).forEach((p) => out.add(p));
+      else if (v && typeof v === 'object')
+        for (const k of Object.keys(v)) grab(String((v as Record<string, string>)[k])).forEach((p) => out.add(p));
+      return [...out].sort().join(',');
+    };
+    for (const lang of availableLanguages()) {
+      for (const key of catalogKeys()) {
+        const enV = (catalogs.en as Record<string, unknown>)[key];
+        const trV = catalogs[lang]?.[key] as unknown;
+        const a = paramsOf(enV);
+        const b = paramsOf(trV);
+        if (a !== b) check(`i18n ${lang} placeholders match en for ${key}`, b, a);
+      }
+    }
+    check('i18n placeholder consistency across all shipped languages', failures, 0);
+  }
+  check('i18n en plural one', t('smart.addedBatch', { n: 1, amount: '$ 5' }), 'Added 1 transaction · $ 5');
+  check('i18n en plural many', t('smart.addedBatch', { n: 3, amount: '$ 5' }), 'Added 3 transactions · $ 5');
+  setLanguage('es');
+  check('i18n es plural one', t('smart.addedBatch', { n: 1, amount: '$ 5' }), 'Agregada 1 transacción · $ 5');
+  check('i18n es tab', t('tabs.cashFlow'), 'Flujo de caja');
+  setLanguage('fr');
+  check('i18n fr plural many', t('smart.addedBatch', { n: 3, amount: '5 $' }), '3 transactions ajoutées · 5 $');
+  setLanguage('en');
+  check('i18n en ordinal', [to(1), to(2), to(3), to(4)], ['1st', '2nd', '3rd', '4th']);
+  setLanguage('es');
+  check('i18n es ordinal', to(3), '3º');
+  setLanguage('fr');
+  check('i18n fr ordinal', [to(1), to(2)], ['1er', '2e']);
+  setLanguage('en');
+  check('money en locale format', formatMoney(123456), '$\u00A01,235');
+  setLanguage('es');
+  check('money es locale format (grouping from 10k)', formatMoney(12345600), '$\u00A0123.456');
+  check('money fr suffix no grouping', formatMoney(50000, 'fr'), '500\u00A0$');
+  setLanguage('fr');
+  check('seed localized for new installs', defaultCategories()[0].name, 'Logement');
+  setLanguage('en');
+  check('seed english for new installs', defaultCategories()[0].name, 'Housing');
+  setLanguage('en');
+}
 
 if (failures > 0) {
   console.log(`\n${failures} failure(s)`);

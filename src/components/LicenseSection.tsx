@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { t } from '../lib/i18n';
 import type { FormEvent } from 'react';
 import { useEntitlement } from '../state/entitlement';
 
@@ -40,8 +41,8 @@ export function LicenseSection() {
     shownEventRef.current = lastEvent.at;
     setNote(
       lastEvent.kind === 'licensed'
-        ? { text: 'License active ✓ — smart entry is unlimited.', kind: 'success' }
-        : { text: 'License no longer valid — smart entry is back to the free plan.', kind: 'error' },
+        ? { text: t('license.activeNote'), kind: 'success' }
+        : { text: t('license.lostNote'), kind: 'error' },
     );
   }, [lastEvent]);
 
@@ -63,10 +64,10 @@ export function LicenseSection() {
       const outcome = await completePendingPurchase();
       setBusy(false);
       if (outcome === 'none')
-        setNote({ text: "That purchase couldn't be completed. Contact the app owner if the payment went through.", kind: 'error' });
+        setNote({ text: t('paywall.purchaseFailed'), kind: 'error' });
       else if (outcome === 'error')
         setNote({
-          text: redeemError ?? "Couldn't reach the licensing service. Check your connection and try again.",
+          text: redeemError ?? t('paywall.unreachable'),
           kind: 'error',
         });
       return;
@@ -85,9 +86,9 @@ export function LicenseSection() {
     const outcome = await restoreLicense();
     setBusy(false);
     if (outcome === 'none')
-      setNote({ text: 'No license found for this account.', kind: 'error' });
+      setNote({ text: t('license.noLicense'), kind: 'error' });
     else if (outcome === 'error')
-      setNote({ text: 'Sign-in could not be verified. Try signing out and back in.', kind: 'error' });
+      setNote({ text: t('license.verifyFailed'), kind: 'error' });
   };
 
   const activateKey = async (e: FormEvent) => {
@@ -96,7 +97,7 @@ export function LicenseSection() {
     setNote(null);
     // The pasted LS key can only be redeemed for the signed-in account.
     if (!account) {
-      setNote({ text: 'Sign in first — licenses are tied to your account.', kind: 'error' });
+      setNote({ text: t('license.signInFirst'), kind: 'error' });
       await signIn();
       return;
     }
@@ -104,32 +105,32 @@ export function LicenseSection() {
     const outcome = await activatePastedKey(keyInput);
     setBusy(false);
     if (outcome === 'ok') setKeyInput('');
-    else if (outcome === 'invalid') setNote({ text: 'That key is not valid. Check it and try again.', kind: 'error' });
+    else if (outcome === 'invalid') setNote({ text: t('license.badKey'), kind: 'error' });
     else
       setNote({
-        text: redeemError ?? "Couldn't reach the licensing service. Check your connection and try again.",
+        text: redeemError ?? t('paywall.unreachable'),
         kind: 'error',
       });
   };
 
   return (
     <>
-      <h2 className="settings-h">Smart entry</h2>
+      <h2 className="settings-h">{t('license.smartEntry')}</h2>
       <div className="card">
         <div className="setting-row">
           <div>
-            <div className="setting-name">{licensedActive ? 'Unlimited license' : 'Free plan'}</div>
+            <div className="setting-name">{licensedActive ? t('license.unlimited') : t('license.freePlan')}</div>
             <div className="setting-desc">
               {licensedActive
-                ? `Unlimited smart entry until ${licenseExpiryLabel ?? '…'}.`
-                : `${remaining} of ${freeDaily} free entries today.`}
+                ? t('license.until', { date: licenseExpiryLabel ?? '…' })
+                : t('license.freeLeft', { n: remaining, m: freeDaily })}
             </div>
           </div>
           {licensedActive ? (
-            <span className="license-pill">Active</span>
+            <span className="license-pill">{t('license.active')}</span>
           ) : (
             <button type="button" className="btn" onClick={unlock} disabled={!checkoutReady || busy}>
-              {busy ? 'Working…' : account ? 'Unlock · $5/year' : 'Sign in to unlock'}
+              {busy ? t('license.working') : account ? t('license.unlockYear') : t('license.signInUnlock')}
             </button>
           )}
         </div>
@@ -137,31 +138,31 @@ export function LicenseSection() {
         {pendingOrder && !licensedActive && (
           <div className="setting-row">
             <div>
-              <div className="setting-name">Purchase waiting</div>
-              <div className="setting-desc">Finish a purchase that didn't complete.</div>
+              <div className="setting-name">{t('license.purchaseWaiting')}</div>
+              <div className="setting-desc">{t('license.finishPurchase')}</div>
             </div>
             <button type="button" className="btn" onClick={unlock} disabled={busy}>
-              {account ? 'Complete purchase' : 'Sign in to complete'}
+              {account ? t('license.complete') : t('license.signInComplete')}
             </button>
           </div>
         )}
 
         <div className="setting-row">
           <div>
-            <div className="setting-name">Account</div>
+            <div className="setting-name">{t('license.account')}</div>
             <div className="setting-desc">
               {account
-                ? `${account.email ?? 'Signed in'} — license saved to your account.`
-                : 'Sign in to keep your license across devices.'}
+                ? t('license.accountDesc', { email: account.email ?? t('license.signedIn') })
+                : t('license.accountHint')}
             </div>
           </div>
           {account ? (
             <button type="button" className="btn" onClick={() => void signOut()}>
-              Sign out
+              {t('license.signOut')}
             </button>
           ) : (
             <button type="button" className="btn" onClick={() => void doSignIn()} disabled={!authConfigured}>
-              Sign in with Google
+              {t('license.signInGoogle')}
             </button>
           )}
         </div>
@@ -169,30 +170,30 @@ export function LicenseSection() {
         {account && !licensedActive && (
           <div className="setting-row">
             <div>
-              <div className="setting-name">Restore license</div>
-              <div className="setting-desc">Get your license back on this device.</div>
+              <div className="setting-name">{t('license.restore')}</div>
+              <div className="setting-desc">{t('license.restoreDesc')}</div>
             </div>
             <button type="button" className="btn" onClick={() => void doRestore()} disabled={busy}>
-              Restore
+              {t('license.restoreBtn')}
             </button>
           </div>
         )}
 
         {!licensedActive && (
           <form onSubmit={activateKey} className="key-form">
-            <div className="setting-name">Have a license key?</div>
-            <div className="setting-desc">Fallback if the automatic setup didn't complete.</div>
+            <div className="setting-name">{t('license.haveKey')}</div>
+            <div className="setting-desc">{t('license.keyFallback')}</div>
             <div className="key-row">
               <input
                 type="text"
                 className="input"
-                placeholder="Paste license key"
+                placeholder={t('license.pasteKey')}
                 value={keyInput}
                 onChange={(e) => setKeyInput(e.target.value)}
-                aria-label="License key"
+                aria-label={t('license.keyAria')}
               />
               <button type="submit" className="btn" disabled={busy || keyInput.trim() === ''}>
-                Activate
+                {t('license.activate')}
               </button>
             </div>
           </form>

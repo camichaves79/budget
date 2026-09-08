@@ -5,7 +5,8 @@ import { useStore } from '../state/store';
 import { useEntitlement } from '../state/entitlement';
 import { parseUtterance, needsReview } from '../lib/parseService';
 import type { ParsedDraft } from '../lib/parseService';
-import { formatCOP } from '../lib/money';
+import { formatMoney } from '../lib/money';
+import { t, useI18n } from '../lib/i18n';
 import { formatDateShort, todayISO } from '../lib/dates';
 import { TransactionForm } from './TransactionForm';
 import { PaywallCard } from './PaywallCard';
@@ -47,6 +48,7 @@ interface RecordedItem {
 export function SmartEntry({ onClose, onToast }: Props) {
   const { data, dispatch } = useStore();
   const { dropLicense, licensedActive, licenseToken, recordParseUse, remaining } = useEntitlement();
+  const { intl } = useI18n();
   const [mode, setMode] = useState<'smart' | 'manual'>('smart');
   const [text, setText] = useState('');
   const [parsing, setParsing] = useState(false);
@@ -78,7 +80,7 @@ export function SmartEntry({ onClose, onToast }: Props) {
       categoryId: tx.categoryId,
       date: tx.date,
       note: tx.note,
-      name: cat?.name ?? 'Transaction',
+      name: cat?.name ?? t('tx.transaction'),
       emoji: cat?.emoji ?? '🧾',
     };
   };
@@ -99,12 +101,11 @@ export function SmartEntry({ onClose, onToast }: Props) {
   /** `Added N transactions · $ X` — total only when the items share a type. */
   const batchToast = (items: RecordedItem[]): string => {
     const n = items.length;
-    const label = n === 1 ? 'transaction' : 'transactions';
     const spent = items.filter((i) => i.type === 'expense').reduce((s, i) => s + i.amountCents, 0);
     const received = items.filter((i) => i.type === 'income').reduce((s, i) => s + i.amountCents, 0);
-    if (spent > 0 && received === 0) return `Added ${n} ${label} · ${formatCOP(spent)}`;
-    if (received > 0 && spent === 0) return `Added ${n} ${label} · ${formatCOP(received)}`;
-    return `Added ${n} ${label}`;
+    if (spent > 0 && received === 0) return t('smart.addedBatch', { n, amount: formatMoney(spent) });
+    if (received > 0 && spent === 0) return t('smart.addedBatch', { n, amount: formatMoney(received) });
+    return t('smart.addedBatchNoAmount', { n });
   };
 
   const startBatch = (drafts: ParsedDraft[]) => {
@@ -137,7 +138,7 @@ export function SmartEntry({ onClose, onToast }: Props) {
     if (parsing) return;
     const utterance = text.trim();
     if (!utterance) {
-      onToast('error', 'Tell me what you spent first.');
+      onToast('error', t('smart.errEmpty'));
       return;
     }
     setParsing(true);
@@ -178,7 +179,7 @@ export function SmartEntry({ onClose, onToast }: Props) {
             note: d.note,
           },
         });
-        onToast('success', `Added ${cat?.name ?? 'transaction'} · ${formatCOP(d.amountCents)}`);
+        onToast('success', t('smart.addedOne', { name: cat?.name ?? t('tx.transaction'), amount: formatMoney(d.amountCents) }));
         onClose();
         return;
       }
@@ -193,7 +194,7 @@ export function SmartEntry({ onClose, onToast }: Props) {
 
   const save = (tx: Omit<Transaction, 'id'>) => {
     dispatch({ type: 'addTransaction', tx });
-    onToast('success', `Added · ${formatCOP(tx.amountCents)}`);
+    onToast('success', t('smart.addedSimple', { amount: formatMoney(tx.amountCents) }));
     onClose();
   };
 
@@ -242,12 +243,12 @@ export function SmartEntry({ onClose, onToast }: Props) {
     const pct = Math.round(d.confidence * 100);
     if (d.categoryId !== null) {
       return total === 1
-        ? `I'm only ${pct}% sure about this one — check the details. Nothing is saved yet.`
-        : `I'm only ${pct}% sure about this one (${position} of ${total}) — check the details. Nothing is saved for these yet.`;
+        ? t('smart.unsureOne', { pct })
+        : t('smart.unsureMany', { pct, pos: position, total });
     }
     return total === 1
-      ? 'Almost there — pick the missing details. Nothing is saved yet.'
-      : `Almost there — ${position} of ${total} need details. Nothing is saved for these yet.`;
+      ? t('smart.almostOne')
+      : t('smart.almostMany', { pos: position, total });
   };
 
   // ---- Single-entry review: ambiguous or doubtful, nothing saved yet ----
@@ -257,9 +258,7 @@ export function SmartEntry({ onClose, onToast }: Props) {
     return (
       <>
         <p className="field-hint">
-          {doubtful
-            ? `I'm only ${pct}% sure about this one — check the details. Nothing is saved yet.`
-            : 'Almost there — pick the missing details. Nothing is saved yet.'}
+          {doubtful ? t('smart.unsureOne', { pct }) : t('smart.almostOne')}
         </p>
         <p className="smart-quote">{text.trim()}</p>
         <TransactionForm
@@ -271,15 +270,15 @@ export function SmartEntry({ onClose, onToast }: Props) {
             date: draft.date ?? todayISO(),
             note: draft.note,
           }}
-          submitLabel="Add transaction"
+          submitLabel={t('tx.addTx')}
           onSave={save}
         />
         <div className="btn-row">
           <button type="button" className="btn" onClick={() => setDraft(null)}>
-            Back to text
+            {t('smart.backToText')}
           </button>
           <button type="button" className="btn" onClick={onClose}>
-            Cancel
+            {t('smart.cancel')}
           </button>
         </div>
       </>
@@ -292,9 +291,7 @@ export function SmartEntry({ onClose, onToast }: Props) {
     const received = recorded.filter((i) => i.type === 'income').reduce((s, i) => s + i.amountCents, 0);
     return (
       <>
-        <p className="field-hint">
-          Recorded ✓ — need a change? Open the list and tap any transaction to edit it.
-        </p>
+        <p className="field-hint">{t('smart.recorded')}</p>
         <div className="recorded-list">
           {recorded.map((item, i) => (
             <div key={i} className="tx-row">
@@ -307,37 +304,37 @@ export function SmartEntry({ onClose, onToast }: Props) {
               <span className="tx-main">
                 <span className="tx-name">{item.name}</span>
                 <span className="tx-note">
-                  {formatDateShort(item.date)}
+                  {formatDateShort(item.date, intl)}
                   {item.note ? ` · ${item.note}` : ''}
                 </span>
               </span>
-              <span className={`tx-amount ${item.type}`}>{formatCOP(item.amountCents)}</span>
+              <span className={`tx-amount ${item.type}`}>{formatMoney(item.amountCents)}</span>
             </div>
           ))}
         </div>
         <div className="batch-total">
           {spent > 0 && received > 0 ? (
             <>
-              <span>Spent / Received</span>
+              <span>{t('smart.spentReceived')}</span>
               <span className="batch-total-amounts">
-                <span className="tx-amount expense">{formatCOP(spent)}</span>
-                <span className="tx-amount income">{formatCOP(received)}</span>
+                <span className="tx-amount expense">{formatMoney(spent)}</span>
+                <span className="tx-amount income">{formatMoney(received)}</span>
               </span>
             </>
           ) : (
             <>
-              <span>Total</span>
+              <span>{t('smart.total')}</span>
               <span className={`tx-amount ${spent > 0 ? 'expense' : 'income'}`}>
-                {formatCOP(spent > 0 ? spent : received)}
+                {formatMoney(spent > 0 ? spent : received)}
               </span>
             </>
           )}
         </div>
         <button type="button" className="btn btn-primary btn-block" onClick={onClose}>
-          Done
+          {t('smart.done')}
         </button>
         <button type="button" className="btn btn-block" onClick={recordMore}>
-          Record more
+          {t('smart.recordMore')}
         </button>
       </>
     );
@@ -361,15 +358,15 @@ export function SmartEntry({ onClose, onToast }: Props) {
             date: current.date ?? todayISO(),
             note: current.note,
           }}
-          submitLabel={isLast ? 'Add transaction' : 'Save & next'}
+          submitLabel={isLast ? t('tx.addTx') : t('smart.saveNext')}
           onSave={saveQueued}
         />
         <div className="btn-row">
           <button type="button" className="btn" onClick={skipQueued}>
-            Skip this one
+            {t('smart.skip')}
           </button>
           <button type="button" className="btn" onClick={backToText}>
-            Back to text
+            {t('smart.backToText')}
           </button>
         </div>
       </>
@@ -382,7 +379,7 @@ export function SmartEntry({ onClose, onToast }: Props) {
       <>
         <TransactionForm key="manual" initial={null} onSave={save} />
         <button type="button" className="btn btn-block" onClick={() => setMode('smart')}>
-          ⚡ Use smart entry instead
+          {t('smart.smartInstead')}
         </button>
       </>
     );
@@ -402,8 +399,8 @@ export function SmartEntry({ onClose, onToast }: Props) {
           ref={textRef}
           className="input smart-textarea"
           rows={3}
-          placeholder="Use your keyboard's microphone 🎤"
-          aria-label="Describe the transaction"
+          placeholder={t('smart.placeholder')}
+          aria-label={t('smart.describe')}
           value={text}
           autoFocus
           onChange={(e) => setText(e.target.value)}
@@ -411,11 +408,11 @@ export function SmartEntry({ onClose, onToast }: Props) {
       </div>
 
       <button type="submit" className="btn btn-primary btn-block" disabled={parsing || text.trim() === ''}>
-        {parsing ? (retrying ? 'Retrying…' : 'Submitting…') : 'Submit'}
+        {parsing ? (retrying ? t('smart.retrying') : t('smart.submitting')) : t('smart.submit')}
       </button>
 
       <button type="button" className="btn btn-block" onClick={() => setMode('manual')}>
-        Enter manually instead
+        {t('smart.manualInstead')}
       </button>
     </form>
   );

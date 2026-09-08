@@ -29,6 +29,7 @@ import {
 import type { LicensePayload } from '../lib/license';
 import { FREE_DAILY_PARSES, loadQuota, nextQuota, remainingFreeToday, saveQuota } from '../lib/quota';
 import { checkLicenseKey, lookupLicense, redeemLicense } from '../lib/licenseService';
+import { useI18n } from '../lib/i18n';
 import {
   authConfigured as authEnvConfigured,
   getUserIdToken,
@@ -153,7 +154,8 @@ export function EntitlementProvider({ children }: { children: ReactNode }) {
   const [redeemError, setRedeemError] = useState<string | null>(null);
 
   const licensedActive = licenseIsActive(license);
-  const licenseExpiryLabel = license ? formatLicenseExpiry(license.exp) : null;
+  const { intl } = useI18n();
+  const licenseExpiryLabel = license ? formatLicenseExpiry(license.exp, intl) : null;
 
   const applyToken = useCallback((token: string, event: EntitlementEvent['kind'] | null) => {
     saveLicenseToken(token);

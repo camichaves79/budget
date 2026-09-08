@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from 'react';
+import { t } from '../lib/i18n';
 
 /** Bottom sheet modal for forms and detail views. */
 export function Sheet({
@@ -61,7 +62,7 @@ export function Sheet({
         <div className="sheet-grabber" />
         <div className="sheet-head">
           <h2>{title}</h2>
-          <button type="button" className="icon-btn" onClick={onClose} aria-label="Close">
+          <button type="button" className="icon-btn" onClick={onClose} aria-label={t('close')}>
             ✕
           </button>
         </div>

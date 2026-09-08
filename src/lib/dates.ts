@@ -26,12 +26,12 @@ export function parseISODate(s: string): Date {
   return new Date(y, m - 1, d);
 }
 
-export function formatDateShort(s: string): string {
-  return parseISODate(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+export function formatDateShort(s: string, intl: string = 'en-US'): string {
+  return parseISODate(s).toLocaleDateString(intl, { month: 'short', day: 'numeric' });
 }
 
-export function formatDateFull(s: string): string {
-  return parseISODate(s).toLocaleDateString('en-US', {
+export function formatDateFull(s: string, intl: string = 'en-US'): string {
+  return parseISODate(s).toLocaleDateString(intl, {
     weekday: 'short',
     month: 'short',
     day: 'numeric',

@@ -69,8 +69,8 @@ export function licenseIsActive(payload: LicensePayload | null, nowMs = Date.now
 }
 
 /** "Sep 4, 2027" — the date the current license runs out. */
-export function formatLicenseExpiry(expSeconds: number): string {
-  return new Date(expSeconds * 1000).toLocaleDateString('en-US', {
+export function formatLicenseExpiry(expSeconds: number, intl: string = 'en-US'): string {
+  return new Date(expSeconds * 1000).toLocaleDateString(intl, {
     year: 'numeric',
     month: 'short',
     day: 'numeric',

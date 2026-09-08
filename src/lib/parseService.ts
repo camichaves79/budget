@@ -1,5 +1,6 @@
 import type { Category, TxType } from './types';
 import { isValidISODate, todayISO } from './dates';
+import { getLanguage, t } from './i18n';
 
 /**
  * AI transaction parsing through the app's parse microservice
@@ -163,7 +164,7 @@ const NOT_CONFIGURED: ParseResult = {
   ok: false,
   error: {
     kind: 'not-configured',
-    message: "Smart entry isn't set up for this build. Ask the app owner to finish the setup.",
+    message: t('parse.notConfigured'),
   },
 };
 
@@ -188,7 +189,7 @@ export async function parseUtterance(
 async function parseUtteranceOnce(utterance: string, categories: Category[], license: string | null): Promise<ParseResult> {
   const text = utterance.trim();
   if (!text) {
-    return { ok: false, error: { kind: 'invalid-response', message: 'Nothing to parse yet.' } };
+    return { ok: false, error: { kind: 'invalid-response', message: t('parse.nothing') } };
   }
   if (!ENDPOINT || !SECRET) return NOT_CONFIGURED;
 
@@ -204,12 +205,12 @@ async function parseUtteranceOnce(utterance: string, categories: Category[], lic
         'Content-Type': 'application/json',
         'x-budget-secret': SECRET,
       },
-      body: JSON.stringify({ utterance: text, categories: refs, today: todayISO(), license: license ?? null }),
+      body: JSON.stringify({ utterance: text, categories: refs, today: todayISO(), language: getLanguage(), license: license ?? null }),
     });
   } catch {
     return {
       ok: false,
-      error: { kind: 'network', message: "Couldn't reach the parsing service. Check your connection and try again." },
+      error: { kind: 'network', message: t('parse.unreachable') },
     };
   }
 
@@ -248,7 +249,7 @@ function licenseGone(): ParseResult {
     ok: false,
     error: {
       kind: 'license',
-      message: "Your license isn't valid anymore. Check it in Settings — manual entry still works.",
+      message: t('parse.licenseGone'),
     },
   };
 }
@@ -258,7 +259,7 @@ function licenseLimit(): ParseResult {
     ok: false,
     error: {
       kind: 'license',
-      message: "You've reached today's smart-entry limit — it resets at midnight.",
+      message: t('parse.licenseLimit'),
     },
   };
 }
@@ -266,27 +267,27 @@ function licenseLimit(): ParseResult {
 function busy(): ParseResult {
   return {
     ok: false,
-    error: { kind: 'rate-limit', message: 'The parsing service is busy right now. Try again in a moment.' },
+    error: { kind: 'rate-limit', message: t('parse.busy') },
   };
 }
 
 function providerTrouble(): ParseResult {
   return {
     ok: false,
-    error: { kind: 'provider', message: 'The parsing service is having trouble. Try again shortly.' },
+    error: { kind: 'provider', message: t('parse.trouble') },
   };
 }
 
 function unexpected(): ParseResult {
   return {
     ok: false,
-    error: { kind: 'network', message: 'The parsing service answered unexpectedly. Try again shortly.' },
+    error: { kind: 'network', message: t('parse.unexpected') },
   };
 }
 
 function invalidResponse(): ParseResult {
   return {
     ok: false,
-    error: { kind: 'invalid-response', message: "Couldn't understand that. Try rewording it, or enter it manually." },
+    error: { kind: 'invalid-response', message: t('parse.unclear') },
   };
 }

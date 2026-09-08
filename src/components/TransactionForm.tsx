@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { t } from '../lib/i18n';
 import type { FormEvent } from 'react';
 import type { Transaction, TxType } from '../lib/types';
 import { useStore } from '../state/store';
@@ -42,15 +43,15 @@ export function TransactionForm({ initial, onSave, onDelete, submitLabel }: Prop
     e.preventDefault();
     const cents = parseAmountToCents(amount);
     if (cents === null || cents <= 0) {
-      setError('Enter a valid amount greater than zero.');
+      setError(t('tx.errAmount'));
       return;
     }
     if (!categoryId) {
-      setError('Pick a category.');
+      setError(t('tx.errCategory'));
       return;
     }
     if (!date) {
-      setError('Pick a date.');
+      setError(t('tx.errDate'));
       return;
     }
     onSave({
@@ -64,32 +65,32 @@ export function TransactionForm({ initial, onSave, onDelete, submitLabel }: Prop
 
   return (
     <form onSubmit={submit}>
-      <div className="segmented" role="radiogroup" aria-label="Transaction type">
+      <div className="segmented" role="radiogroup" aria-label={t('tx.typeAria')}>
         <button
           type="button"
           className={type === 'expense' ? 'active expense' : ''}
           onClick={() => switchType('expense')}
         >
-          Expense
+          {t('tx.expense')}
         </button>
         <button
           type="button"
           className={type === 'income' ? 'active income' : ''}
           onClick={() => switchType('income')}
         >
-          Income
+          {t('tx.income')}
         </button>
       </div>
 
       <div className="field">
-        <AmountInput label="Amount" value={amount} onChange={setAmount} autoFocus={!initial} />
+        <AmountInput label={t('tx.amount')} value={amount} onChange={setAmount} autoFocus={!initial} />
         {hint && (
           <p className={hint.error ? 'field-hint error' : 'field-hint'}>{hint.text}</p>
         )}
       </div>
 
       <div className="field">
-        <FloatField id="tx-category" label="Category" floated={active === 'category' || categoryId !== ''}>
+        <FloatField id="tx-category" label={t('tx.category')} floated={active === 'category' || categoryId !== ''}>
           <select
             id="tx-category"
             className={categoryId === '' && active !== 'category' ? 'float-select text-hidden' : 'float-select'}
@@ -98,7 +99,7 @@ export function TransactionForm({ initial, onSave, onDelete, submitLabel }: Prop
             onFocus={() => setActive('category')}
             onBlur={() => setActive(null)}
           >
-            <option value="">— Pick a category —</option>
+            <option value="">{t('tx.pickCategory')}</option>
             {cats.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.emoji} {c.name}
@@ -109,7 +110,7 @@ export function TransactionForm({ initial, onSave, onDelete, submitLabel }: Prop
       </div>
 
       <div className="field">
-        <FloatField id="tx-date" label="Date" floated={active === 'date' || date !== ''}>
+        <FloatField id="tx-date" label={t('tx.date')} floated={active === 'date' || date !== ''}>
           <input
             id="tx-date"
             type="date"
@@ -123,7 +124,7 @@ export function TransactionForm({ initial, onSave, onDelete, submitLabel }: Prop
       </div>
 
       <div className="field">
-        <FloatField id="tx-note" label="Note (optional)" floated={active === 'note' || note !== ''}>
+        <FloatField id="tx-note" label={t('tx.note')} floated={active === 'note' || note !== ''}>
           <input
             id="tx-note"
             type="text"
@@ -138,7 +139,7 @@ export function TransactionForm({ initial, onSave, onDelete, submitLabel }: Prop
       {error && <p className="error-text">{error}</p>}
 
       <button type="submit" className="btn btn-primary btn-block">
-        {submitLabel ?? (initial ? 'Save changes' : 'Add transaction')}
+        {submitLabel ?? (initial ? t('tx.saveChanges') : t('tx.addTx'))}
       </button>
 
       {onDelete && (
@@ -147,14 +148,14 @@ export function TransactionForm({ initial, onSave, onDelete, submitLabel }: Prop
           className="btn btn-soft-danger btn-block"
           onClick={() => setConfirmingDelete(true)}
         >
-          Delete transaction
+          {t('tx.deleteTx')}
         </button>
       )}
 
       <ConfirmDialog
         open={confirmingDelete}
-        title="Delete transaction?"
-        message="This removes the transaction permanently."
+        title={t('tx.deleteTxTitle')}
+        message={t('tx.deleteTxMsg')}
         onCancel={() => setConfirmingDelete(false)}
         onConfirm={() => {
           setConfirmingDelete(false);

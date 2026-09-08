@@ -1,9 +1,17 @@
 /**
  * Colombian Peso money helpers.
- * Display format: "$ 1.234" — integer pesos only, dots for thousands,
- * no decimals (cents are rounded to the nearest peso for display).
  * Amounts are stored as integer centavos to avoid floating-point errors.
+ *
+ * Display:
+ * - `formatCOP` — the app's classic format: "$ 1.234" (integer pesos, dots
+ *   for thousands, NBSP) — kept as-is for tests and the en fallback.
+ * - `formatMoney` — locale-aware (2026-09 i18n): per-language digit grouping
+ *   (Intl) and the "$" placed prefix or suffix per the locale's convention.
+ *   Cents round to the nearest peso, signs stay an ASCII "-".
  */
+
+import { getLanguage, LANGS } from './i18n';
+import type { Lang } from './i18n';
 
 export function formatCOP(cents: number): string {
   const sign = cents < 0 ? '-' : '';
@@ -11,6 +19,17 @@ export function formatCOP(cents: number): string {
   const grouped = String(pesos).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
   // Non-breaking space keeps the $ glued to the number on narrow screens.
   return `${sign}$\u00A0${grouped}`;
+}
+
+/** Locale-aware display amount for the CURRENT UI language. */
+export function formatMoney(cents: number, lang: Lang = getLanguage()): string {
+  const meta = LANGS[lang];
+  const sign = cents < 0 ? '-' : '';
+  const pesos = Math.round(Math.abs(cents) / 100);
+  const grouped = new Intl.NumberFormat(meta.intl, { maximumFractionDigits: 0 }).format(pesos);
+  const sym = '$';
+  if (meta.money.suffix) return `${sign}${grouped}${meta.money.space ? '\u00A0' : ''}${sym}`;
+  return `${sign}${sym}${meta.money.space ? '\u00A0' : ''}${grouped}`;
 }
 
 export function centsToPesos(cents: number): number {

@@ -1,4 +1,7 @@
 import { useRef, useState } from 'react';
+import { LANGS, availableLanguages, setLanguage, t, to, useI18n } from '../lib/i18n';
+import type { Lang } from '../lib/i18n';
+import { APP_VERSION } from '../lib/version';
 import { useStore } from '../state/store';
 import { exportData, validateAppData } from '../lib/importExport';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -8,6 +11,7 @@ import { LicenseSection } from '../components/LicenseSection';
  *  management moved to its own tab in the 2026-09 four-section redesign. */
 export function Settings() {
   const { data, dispatch } = useStore();
+  const { lang } = useI18n();
 
   const [resetStep, setResetStep] = useState<0 | 1 | 2>(0);
   const [importError, setImportError] = useState('');
@@ -36,24 +40,24 @@ export function Settings() {
 
   return (
     <div>
-      <h2 className="settings-h">Data</h2>
+      <h2 className="settings-h">{t('settings.data')}</h2>
       <div className="card">
         <div className="setting-row">
           <div>
-            <div className="setting-name">Export data</div>
-            <div className="setting-desc">Download all your data as JSON.</div>
+            <div className="setting-name">{t('settings.exportData')}</div>
+            <div className="setting-desc">{t('settings.exportDesc')}</div>
           </div>
           <button type="button" className="btn" onClick={() => exportData(data)}>
-            Export
+            {t('settings.export')}
           </button>
         </div>
         <div className="setting-row">
           <div>
-            <div className="setting-name">Import data</div>
-            <div className="setting-desc">Replace current data with a backup.</div>
+            <div className="setting-name">{t('settings.importData')}</div>
+            <div className="setting-desc">{t('settings.importDesc')}</div>
           </div>
           <button type="button" className="btn" onClick={() => fileRef.current?.click()}>
-            Import
+            {t('settings.import')}
           </button>
           <input
             ref={fileRef}
@@ -70,31 +74,53 @@ export function Settings() {
         {importError && <p className="error-text">{importError}</p>}
         <div className="setting-row">
           <div>
-            <div className="setting-name">Reset app</div>
-            <div className="setting-desc">Erase all transactions and budgets.</div>
+            <div className="setting-name">{t('settings.resetApp')}</div>
+            <div className="setting-desc">{t('settings.resetDesc')}</div>
           </div>
           <button type="button" className="btn btn-soft-danger" onClick={() => setResetStep(1)}>
-            Reset
+            {t('settings.reset')}
           </button>
         </div>
       </div>
 
-      <h2 className="settings-h">Budget period</h2>
+      <h2 className="settings-h">{t('settings.budgetPeriod')}</h2>
       <div className="card">
         <div className="setting-row">
           <div>
-            <div className="setting-name">Period starts on</div>
-            <div className="setting-desc">Runs from this day until the day before it next month.</div>
+            <div className="setting-name">{t('settings.periodStarts')}</div>
+            <div className="setting-desc">{t('settings.periodDesc')}</div>
           </div>
           <select
             className="input period-day-select"
             value={data.periodStartDay}
             onChange={(e) => dispatch({ type: 'setPeriodStartDay', day: Number(e.target.value) })}
-            aria-label="Period start day"
+            aria-label={t('settings.periodAria')}
           >
             {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
               <option key={d} value={d}>
-                {ordinal(d)}
+                {to(d)}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <h2 className="settings-h">{t('settings.language')}</h2>
+      <div className="card">
+        <div className="setting-row">
+          <div>
+            <div className="setting-name">{t('settings.language')}</div>
+            <div className="setting-desc">{LANGS[lang].name}</div>
+          </div>
+          <select
+            className="input language-select"
+            value={lang}
+            onChange={(e) => setLanguage(e.target.value as Lang)}
+            aria-label={t('settings.languageAria')}
+          >
+            {availableLanguages().map((l) => (
+              <option key={l} value={l}>
+                {LANGS[l].name}
               </option>
             ))}
           </select>
@@ -103,22 +129,22 @@ export function Settings() {
 
       <LicenseSection />
 
-      <h2 className="settings-h">About</h2>
+      <h2 className="settings-h">{t('settings.about')}</h2>
       <div className="card">
         <p className="field-hint">
-          Budget v0.1.95 · Personal budget tracker.
+          {`Budget ${APP_VERSION} · ${t('settings.aboutTitle')}`}
           <br />
-          Data stays on this device — export to back up.
+          {t('settings.aboutData')}
           <br />
-          Currency: COP, integer pesos ($ 1.234).
+          {t('settings.aboutCurrency')}
         </p>
       </div>
 
       <ConfirmDialog
         open={pendingImport !== undefined}
-        title="Replace all data?"
-        message="Importing a backup replaces everything currently in the app. This cannot be undone."
-        confirmLabel="Replace data"
+        title={t('settings.replaceTitle')}
+        message={t('settings.replaceMsg')}
+        confirmLabel={t('settings.replaceConfirm')}
         onCancel={() => setPendingImport(undefined)}
         onConfirm={() => {
           if (pendingImport) dispatch({ type: 'importData', data: pendingImport });
@@ -128,17 +154,17 @@ export function Settings() {
 
       <ConfirmDialog
         open={resetStep === 1}
-        title="Reset the app?"
-        message="This erases ALL transactions, budgets, and custom categories. You should export a backup first."
-        confirmLabel="Erase everything"
+        title={t('settings.resetTitle')}
+        message={t('settings.resetMsg')}
+        confirmLabel={t('settings.eraseAll')}
         onCancel={() => setResetStep(0)}
         onConfirm={() => setResetStep(2)}
       />
       <ConfirmDialog
         open={resetStep === 2}
-        title="Are you absolutely sure?"
-        message="There is no undo. Your data will be gone forever."
-        confirmLabel="Yes, erase everything"
+        title={t('settings.sureTitle')}
+        message={t('settings.sureMsg')}
+        confirmLabel={t('settings.yesErase')}
         onCancel={() => setResetStep(0)}
         onConfirm={() => {
           dispatch({ type: 'resetAll' });
@@ -147,11 +173,4 @@ export function Settings() {
       />
     </div>
   );
-}
-
-/** "1st", "2nd", … "28th" for the period start-day picker. */
-function ordinal(n: number): string {
-  const s = ['th', 'st', 'nd', 'rd'];
-  const v = n % 100;
-  return `${n}${s[(v - 20) % 10] ?? s[v] ?? s[0]}`;
 }

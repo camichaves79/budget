@@ -6,6 +6,7 @@
  */
 
 import { parseLicenseToken } from './license';
+import { t } from './i18n';
 import type { LicensePayload } from './license';
 
 const API_BASE = (import.meta.env.VITE_API_BASE ?? '').trim();
@@ -73,50 +74,50 @@ export async function redeemLicense(reference: string, idToken?: string): Promis
   if (payload && payload.ok === true && typeof payload.license === 'string') {
     const parsed = parseLicenseToken(payload.license);
     if (parsed) return { ok: true, license: payload.license, payload: parsed };
-    return { ok: false, code: 'unexpected', message: 'The licensing service answered unexpectedly. Try again shortly.' };
+    return { ok: false, code: 'unexpected', message: t('licensing.unexpected') };
   }
   const code = typeof payload?.code === 'string' ? payload.code : '';
   if (code === 'email-mismatch') {
     return {
       ok: false,
       code: 'email-mismatch',
-      message: 'This purchase belongs to a different email — sign in with the Google account used at checkout.',
+      message: t('licensing.emailMismatch'),
     };
   }
   if (code === 'rate-limited') {
     return {
       ok: false,
       code: 'rate-limited',
-      message: 'Too many attempts in a short time. Wait a few minutes and try again.',
+      message: t('licensing.rateLimited'),
     };
   }
   if (code === 'purchase-not-paid' || status === 409) {
-    return { ok: false, code: 'purchase-not-paid', message: "Your payment hasn't been confirmed yet. Try again in a moment." };
+    return { ok: false, code: 'purchase-not-paid', message: t('licensing.notPaid') };
   }
   if (code === 'purchase-refunded') {
-    return { ok: false, code: 'purchase-refunded', message: 'That purchase was refunded, so no license was issued.' };
+    return { ok: false, code: 'purchase-refunded', message: t('licensing.refunded') };
   }
   if (code === 'purchase-not-found' || status === 404) {
     return {
       ok: false,
       code: 'purchase-not-found',
-      message: "That purchase reference wasn't found. If the payment went through, contact the app owner.",
+      message: t('licensing.notFound'),
     };
   }
   if (status === 401 || status === 403) {
-    return { ok: false, code: 'unauthorized', message: 'The licensing service rejected the request. Check the app setup.' };
+    return { ok: false, code: 'unauthorized', message: t('licensing.unauthorized') };
   }
   if (code === 'not-configured' || status === 503) {
     return {
       ok: false,
       code: 'not-configured',
-      message: "The licensing service isn't fully set up yet — the app owner is on it. Try again shortly.",
+      message: t('licensing.notConfigured'),
     };
   }
   if (code === 'internal' && typeof payload?.reason === 'string' && payload.reason !== '') {
-    return { ok: false, code: 'internal', message: `Server error: ${payload.reason.slice(0, 160)}` };
+    return { ok: false, code: 'internal', message: t('licensing.serverError', { reason: payload.reason.slice(0, 160) }) };
   }
-  return { ok: false, code: 'network', message: "Couldn't reach the licensing service. Check your connection and try again." };
+  return { ok: false, code: 'network', message: t('licensing.unreachable') };
 }
 
 /** Restore the license bound to the signed-in account (new device/reinstall). */
@@ -130,9 +131,9 @@ export async function lookupLicense(idToken: string): Promise<LookupResult> {
     return { ok: true, license: null, payload: null };
   }
   if (status === 401 || status === 403) {
-    return { ok: false, message: 'Sign-in could not be verified. Try signing out and back in.' };
+    return { ok: false, message: t('licensing.verifyFailed') };
   }
-  return { ok: false, message: "Couldn't reach the licensing service. Check your connection and try again." };
+  return { ok: false, message: t('licensing.unreachable') };
 }
 
 /**
@@ -153,16 +154,16 @@ export async function checkLicenseKey(key: string, idToken?: string): Promise<Ch
     return { ok: true, active: false, payload: null };
   }
   if (code === 'sign-in-required') {
-    return { ok: false, message: 'Sign in with Google first — licenses are tied to your account.' };
+    return { ok: false, message: t('licensing.signInRequired') };
   }
   if (code === 'email-mismatch') {
     return {
       ok: false,
-      message: 'This key belongs to a different email — sign in with the Google account used at checkout.',
+      message: t('licensing.keyEmailMismatch'),
     };
   }
   if (code === 'rate-limited') {
-    return { ok: false, message: 'Too many attempts in a short time. Wait a few minutes and try again.' };
+    return { ok: false, message: t('licensing.rateLimited') };
   }
-  return { ok: false, message: "Couldn't reach the licensing service. Check your connection and try again." };
+  return { ok: false, message: t('licensing.unreachable') };
 }

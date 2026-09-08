@@ -4,8 +4,9 @@ import type { Transaction } from '../lib/types';
 import { useStore } from '../state/store';
 import { useEntitlement } from '../state/entitlement';
 import { categoryById, periodTransactions, totalsFor } from '../lib/selectors';
-import { formatCOP } from '../lib/money';
+import { formatMoney } from '../lib/money';
 import { formatDateFull } from '../lib/dates';
+import { t, useI18n } from '../lib/i18n';
 import { PeriodNav } from '../components/PeriodNav';
 import { EmptyState } from '../components/EmptyState';
 import { Sheet } from '../components/Sheet';
@@ -32,6 +33,7 @@ export function Dashboard({
 }) {
   const { data, dispatch } = useStore();
   const { lastEvent } = useEntitlement();
+  const { intl } = useI18n();
   const txs = periodTransactions(data, period);
   const totals = totalsFor(data, period);
 
@@ -53,8 +55,8 @@ export function Dashboard({
         kind: kind === 'licensed' ? 'success' : 'error',
         message:
           kind === 'licensed'
-            ? 'License active ✓ — smart entry is now unlimited.'
-            : 'Your license is no longer valid — smart entry is back to the free plan.',
+            ? t('license.activeNote')
+            : t('license.lostNote'),
       });
     });
   }, [lastEvent]);
@@ -84,49 +86,50 @@ export function Dashboard({
       <div className="pinned-head">
         <PeriodNav period={period} onShift={onShiftPeriod} onToday={onToday} isToday={isToday} />
 
-        <h2 className="section-title page-label">Cash flow:</h2>
-        <section className="summary-grid" aria-label="Period summary">
+        <h2 className="section-title page-label">{t('dashboard.cashFlow')}</h2>
+        <section className="summary-grid" aria-label={t('dashboard.periodSummary')}>
           <div className="summary-card">
-            <span className="summary-label">Income</span>
-            <span className="summary-value income">{formatCOP(totals.income)}</span>
+            <span className="summary-label">{t('dashboard.income')}</span>
+            <span className="summary-value income">{formatMoney(totals.income)}</span>
           </div>
           <div className="summary-card">
-            <span className="summary-label">Expenses</span>
-            <span className="summary-value expense">{formatCOP(totals.expense)}</span>
+            <span className="summary-label">{t('dashboard.expenses')}</span>
+            <span className="summary-value expense">{formatMoney(totals.expense)}</span>
           </div>
           <div className="summary-card balance">
-            <span className="summary-label">Balance</span>
+            <span className="summary-label">{t('dashboard.balance')}</span>
             <span className={totals.net >= 0 ? 'summary-value income' : 'summary-value negative'}>
-              {formatCOP(totals.net)}
+              {formatMoney(totals.net)}
             </span>
           </div>
         </section>
 
-        <h2 className="section-title page-label divider">Transactions:</h2>
+        <h2 className="section-title page-label divider">{t('dashboard.transactions')}</h2>
       </div>
 
       <div className="pinned-scroll">
         {txs.length === 0 ? (
           <EmptyState
             emoji="🧾"
-            title="No transactions in this period"
+            title={t('dashboard.noTxTitle')}
             hint={
               <>
-                Tap <span className="empty-hint-dollar">$</span> to record income or an
-                expense.
+                {t('dashboard.noTxHintBefore')}
+                <span className="empty-hint-dollar">$</span>
+                {t('dashboard.noTxHintAfter')}
               </>
             }
           />
         ) : (
-          <div className="tx-list" aria-label="Transactions">
+          <div className="tx-list" aria-label={t('dashboard.txList')}>
             {groups.map(([date, group]) => {
               const net = dayNet.get(date) ?? 0;
               return (
                 <section key={date}>
                   <div className="day-head">
-                    <span>{formatDateFull(date)}</span>
+                    <span>{formatDateFull(date, intl)}</span>
                     <span className={`day-total ${net >= 0 ? 'income' : 'expense'}`}>
-                      {formatCOP(net)}
+                      {formatMoney(net)}
                     </span>
                   </div>
                   {group.map((t) => {
@@ -148,7 +151,7 @@ export function Dashboard({
                         </span>
                         <span className={`tx-amount ${t.type}`}>
                           {sign}
-                          {formatCOP(t.amountCents)}
+                          {formatMoney(t.amountCents)}
                         </span>
                       </button>
                     );
@@ -160,7 +163,7 @@ export function Dashboard({
         )}
       </div>
 
-      <Sheet className="sheet-tight" open={smartOpen} onClose={onCloseSmart} title="Tell me what the transaction is:">
+      <Sheet className="sheet-tight" open={smartOpen} onClose={onCloseSmart} title={t('dashboard.tellMe')}>
         <SmartEntry
           onClose={onCloseSmart}
           onToast={(kind, message) => setToast({ id: Date.now(), kind, message })}
@@ -169,7 +172,7 @@ export function Dashboard({
 
       {toast && <Toast key={toast.id} toast={toast} onDismiss={() => setToast(null)} />}
 
-      <Sheet className="sheet-tight" open={formOpen} onClose={closeForm} title={editing ? 'Edit transaction' : 'Tell me what the transaction is:'}>
+      <Sheet className="sheet-tight" open={formOpen} onClose={closeForm} title={editing ? t('dashboard.editTx') : t('dashboard.tellMe')}>
         <TransactionForm
           key={editing?.id ?? 'new'}
           initial={editing}

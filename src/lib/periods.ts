@@ -31,7 +31,7 @@ export interface Period {
 }
 
 /** The period containing `date`, given the period start day (1–28). */
-export function periodForDate(date: Date, startDay: number = PERIOD_START_DAY): Period {
+export function periodForDate(date: Date, startDay: number = PERIOD_START_DAY, intl: string = 'en-US'): Period {
   const safe = clampStartDay(startDay);
   let startYear = date.getFullYear();
   let startMonth0 = date.getMonth();
@@ -42,25 +42,25 @@ export function periodForDate(date: Date, startDay: number = PERIOD_START_DAY): 
       startYear -= 1;
     }
   }
-  return periodForStart(startYear, startMonth0, safe);
+  return periodForStart(startYear, startMonth0, safe, intl);
 }
 
-export function currentPeriod(startDay: number = PERIOD_START_DAY): Period {
-  return periodForDate(new Date(), startDay);
+export function currentPeriod(startDay: number = PERIOD_START_DAY, intl: string = 'en-US'): Period {
+  return periodForDate(new Date(), startDay, intl);
 }
 
-export function shiftPeriod(period: Period, delta: number): Period {
+export function shiftPeriod(period: Period, delta: number, intl: string = 'en-US'): Period {
   const [y, m, d] = period.key.split('-').map(Number);
   const startDay = clampStartDay(d);
   const shifted = new Date(y, m - 1 + delta, startDay);
-  return periodForStart(shifted.getFullYear(), shifted.getMonth(), startDay);
+  return periodForStart(shifted.getFullYear(), shifted.getMonth(), startDay, intl);
 }
 
 export function isCurrentPeriod(period: Period, startDay: number = PERIOD_START_DAY): boolean {
   return period.key === currentPeriod(startDay).key;
 }
 
-function periodForStart(startYear: number, startMonth0: number, startDay: number): Period {
+function periodForStart(startYear: number, startMonth0: number, startDay: number, intl: string): Period {
   const start = new Date(startYear, startMonth0, startDay);
   const end = new Date(startYear, startMonth0 + 1, startDay - 1);
   // Majority month: the month holding more days of the period; tie → start.
@@ -68,8 +68,8 @@ function periodForStart(startYear: number, startMonth0: number, startDay: number
   const labelDate = startMonthDays >= end.getDate() ? start : end;
   return {
     key: toISODate(start),
-    label: labelDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
-    shortLabel: `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
+    label: labelDate.toLocaleDateString(intl, { month: 'long', year: 'numeric' }),
+    shortLabel: `${start.toLocaleDateString(intl, { month: 'short', day: 'numeric' })} – ${end.toLocaleDateString(intl, { month: 'short', day: 'numeric' })}`,
     startISO: toISODate(start),
     endISO: toISODate(end),
   };

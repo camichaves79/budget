@@ -1,10 +1,11 @@
 import { useState } from 'react';
+import { t } from '../lib/i18n';
 import type { FormEvent } from 'react';
 import type { Period } from '../lib/periods';
 import type { Category } from '../lib/types';
 import { useStore } from '../state/store';
 import { activeCategories, spentByCategory } from '../lib/selectors';
-import { formatCOP, parseAmountToCents } from '../lib/money';
+import { formatMoney, parseAmountToCents } from '../lib/money';
 import { PeriodNav } from '../components/PeriodNav';
 import { Sheet } from '../components/Sheet';
 import { ProgressBar } from '../components/ProgressBar';
@@ -49,10 +50,12 @@ export function Budgets({
           <section className="card">
             <div className="budget-summary">
               <span>
-                <strong>{formatCOP(totalSpent)}</strong> spent of {formatCOP(totalLimit)} budgeted
+                <strong>{formatMoney(totalSpent)}</strong>{' '}
+                <strong>{formatMoney(totalSpent)}</strong> {t('budgets.spentOf')}{' '}
+                {formatMoney(totalLimit)} {t('budgets.budgeted')}
               </span>
               <span className={totalSpent > totalLimit ? 'over' : 'muted'}>
-                {formatCOP(totalLimit - totalSpent)} left
+                {t('budgets.left', { amount: formatMoney(totalLimit - totalSpent) })}
               </span>
             </div>
           </section>
@@ -61,12 +64,12 @@ export function Budgets({
 
       <div className="pinned-scroll">
         {cats.length === 0 ? (
-          <EmptyState emoji="🎯" title="No expense categories" hint="Add an expense category in the Categories tab first." />
+          <EmptyState emoji="🎯" title={t('budgets.noExpCats')} hint={t('budgets.noExpCatsHint')} />
         ) : (
           <>
 
           {withBudget.length > 0 && (
-            <section className="card" aria-label="Categories with budgets">
+            <section className="card" aria-label={t('budgets.withBudgetsAria')}>
               {withBudget.map(({ cat, limit, spent: s }) => (
                 <button
                   key={cat.id}
@@ -82,19 +85,19 @@ export function Budgets({
                       {cat.name}
                     </span>
                     <span className={s > limit ? 'amounts over' : 'amounts'}>
-                      {formatCOP(s)} <span className="muted">/ {formatCOP(limit)}</span>
+                      {formatMoney(s)} <span className="muted">/ {formatMoney(limit)}</span>
                     </span>
                   </div>
                   <ProgressBar value={s} max={limit} />
-                  {s > limit && <span className="over-chip">Over budget by {formatCOP(s - limit)}</span>}
+                  {s > limit && <span className="over-chip">{t('budgets.overBy', { amount: formatMoney(s - limit) })}</span>}
                 </button>
               ))}
             </section>
           )}
 
           {withoutBudget.length > 0 && (
-            <section className="card" aria-label="Categories without budgets">
-              <h3 className="section-title">No limit yet</h3>
+            <section className="card" aria-label={t('budgets.withoutBudgetsAria')}>
+              <h3 className="section-title">{t('budgets.noLimitYet')}</h3>
               {withoutBudget.map(({ cat, spent: s }) => (
                 <button
                   key={cat.id}
@@ -110,7 +113,7 @@ export function Budgets({
                       {cat.name}
                     </span>
                     <span className="amounts muted">
-                      {s > 0 ? `${formatCOP(s)} spent` : 'Set a limit'}
+                      {s > 0 ? t('budgets.spentLabel', { amount: formatMoney(s) }) : t('budgets.setLimit')}
                     </span>
                   </div>
                 </button>
@@ -162,7 +165,7 @@ function BudgetEditor({
     }
     const cents = parseAmountToCents(value);
     if (cents === null || cents <= 0) {
-      setError('Enter a valid amount greater than zero.');
+      setError(t('tx.errAmount'));
       return;
     }
     onSave(cents);
@@ -172,16 +175,16 @@ function BudgetEditor({
     <form onSubmit={submit}>
       <p className="field-hint">
         {spent > 0
-          ? `${formatCOP(spent)} spent in this category this period.`
-          : 'No spending in this category this period yet.'}
+          ? t('budgets.spentThisPeriod', { amount: formatMoney(spent) })
+          : t('budgets.noneThisPeriod')}
       </p>
       <div className="field">
-        <AmountInput label="Monthly limit" value={value} onChange={setValue} autoFocus />
+        <AmountInput label={t('budgets.monthlyLimit')} value={value} onChange={setValue} autoFocus />
         {hint && <p className={hint.error ? 'field-hint error' : 'field-hint'}>{hint.text}</p>}
       </div>
       {error && <p className="error-text">{error}</p>}
       <button type="submit" className="btn btn-primary btn-block">
-        {value.trim() === '' ? 'Remove limit' : 'Save limit'}
+        {value.trim() === '' ? t('budgets.removeLimit') : t('budgets.saveLimit')}
       </button>
       {currentLimit > 0 && (
         <button
@@ -192,11 +195,11 @@ function BudgetEditor({
             onSave(null);
           }}
         >
-          Remove limit
+          {t('budgets.removeLimit')}
         </button>
       )}
       <button type="button" className="btn btn-block" onClick={onClose}>
-        Cancel
+        {t('smart.cancel')}
       </button>
     </form>
   );

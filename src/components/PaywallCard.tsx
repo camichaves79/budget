@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { t } from '../lib/i18n';
 import { useEntitlement } from '../state/entitlement';
 
 /**
@@ -29,35 +30,35 @@ export function PaywallCard({ onClose, onManual }: { onClose: () => void; onManu
     // instead of charging again.
     if (pendingOrder) {
       const outcome = await completePendingPurchase();
-      if (outcome === 'none') setError("That purchase couldn't be completed. Contact the app owner if the payment went through.");
-      else if (outcome === 'error') setError("Couldn't reach the licensing service. Check your connection and try again.");
+      if (outcome === 'none') setError(t('paywall.purchaseFailed'));
+      else if (outcome === 'error') setError(t('paywall.unreachable'));
       return;
     }
     setOpening(true);
     const mode = await buy();
     setOpening(false);
     if (mode === 'unavailable') {
-      setError('The checkout link is not set up for this build yet. Contact the app owner.');
+      setError(t('paywall.checkoutMissing'));
     }
   };
 
   const label = !account
     ? signingIn
-      ? 'Signing in…'
-      : 'Sign in with Google to unlock'
+      ? t('paywall.signingIn')
+      : t('paywall.signInToUnlock')
     : busy === 'redeeming'
-      ? 'Completing purchase…'
+      ? t('paywall.completing')
       : opening
-        ? 'Opening checkout…'
+        ? t('paywall.opening')
         : pendingOrder
-          ? 'Complete your purchase'
-          : 'Unlock unlimited smart entry · $5/year';
+          ? t('paywall.completePurchase')
+          : t('paywall.unlock');
 
   return (
     <div className="paywall-card">
-      <p className="paywall-title">You've used today's free smart entries</p>
+      <p className="paywall-title">{t('paywall.title')}</p>
       <p className="field-hint">
-        Smart entry is free for {freeDaily} parses a day. Get unlimited smart entry for a full year — $5 USD.
+        {t('paywall.body', { n: freeDaily })}
       </p>
       <button
         type="button"
@@ -69,18 +70,18 @@ export function PaywallCard({ onClose, onManual }: { onClose: () => void; onManu
       </button>
       {!account && (
         <p className="field-hint smart-disclosure">
-          Sign in with Google first — your license gets saved to your account and restored on any device or reinstall.
+          {t('paywall.signInHint')}
         </p>
       )}
       {error && <p className="error-text">{error}</p>}
       <button type="button" className="btn btn-block" onClick={onManual}>
-        Enter manually instead
+        {t('smart.manualInstead')}
       </button>
       <button type="button" className="btn btn-block" onClick={onClose}>
-        Close
+        {t('close')}
       </button>
       <p className="field-hint smart-disclosure">
-        Free entries reset at midnight. Manual entry always works, with or without a license.
+        {t('paywall.resetMidnight')}
       </p>
     </div>
   );
