@@ -827,7 +827,7 @@ select.input {
 
 .float-label {
   position: absolute;
-  left: var(--pad-md);
+  inset-inline-start: var(--pad-md);
   top: 50%;
   transform: translateY(-50%);
   font-size: var(--fs-lg);
@@ -981,7 +981,7 @@ select.input {
 
 .budget-row-btn {
   width: 100%;
-  text-align: left;
+  text-align: start;
 }
 
 .budget-row-head {
@@ -1063,7 +1063,7 @@ select.input {
   align-items: center;
   gap: 12px;
   width: 100%;
-  text-align: left;
+  text-align: start;
   padding: var(--pad-sm) 0;
   border-bottom: 1px solid var(--border);
 }
@@ -1177,7 +1177,7 @@ select.input {
   display: flex;
   align-items: center;
   gap: 10px;
-  text-align: left;
+  text-align: start;
 }
 
 .kind-badge {

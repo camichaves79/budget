@@ -1125,7 +1125,7 @@ await (async () => {
 
 // ---- i18n (2026-09): catalogs, plurals, ordinals, amounts, seeds ----
 {
-  check('i18n available languages (branch 1)', availableLanguages(), ['en', 'es', 'fr', 'pt']);
+  check('i18n available languages (all ten)', availableLanguages(), ['ar', 'bn', 'en', 'es', 'fr', 'hi', 'pt', 'ru', 'ur', 'zh']);
   check('i18n rtl flags', [LANGS.ar.dir, LANGS.ur.dir], ['rtl', 'rtl']);
   for (const lang of availableLanguages()) {
     const missing = catalogKeys().filter((k) => catalogs[lang]?.[k] === undefined);
@@ -1175,6 +1175,20 @@ await (async () => {
   check('seed localized for new installs', defaultCategories()[0].name, 'Logement');
   setLanguage('en');
   check('seed english for new installs', defaultCategories()[0].name, 'Housing');
+  setLanguage('zh');
+  check('i18n zh plural always other', t('smart.addedBatch', { n: 3, amount: '$ 5' }), '已添加 3 笔交易 · $ 5');
+  check('money zh no-space prefix', formatMoney(123500), '$1,235');
+  setLanguage('ru');
+  check('i18n ru plural one', t('smart.addedBatch', { n: 1, amount: '5 $' }), 'Добавлена 1 транзакция · 5 $');
+  check('i18n ru plural few', t('smart.addedBatch', { n: 3, amount: '5 $' }), 'Добавлены 3 транзакции · 5 $');
+  check('money ru suffix', formatMoney(123500), '1\u00A0235\u00A0$');
+  setLanguage('ar');
+  check('i18n ar plural two', t('smart.addedBatch', { n: 2, amount: '5 $' }), 'أُضيفت معاملتان (2) · 5 $');
+  check('money ar suffix', formatMoney(123500), '1,235\u00A0$');
+  setLanguage('hi');
+  check('money hi indian grouping', formatMoney(12345600), '$1,23,456');
+  setLanguage('bn');
+  check('money bn bengali digits', formatMoney(12345600), '$১,২৩,৪৫৬');
   setLanguage('en');
 }
 
