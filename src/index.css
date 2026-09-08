@@ -283,6 +283,12 @@ select:focus-visible {
   grid-template-columns: repeat(3, 1fr);
   gap: var(--pad-sm);
   margin-bottom: var(--pad-sm);
+  /* One shared card around all three values — not three boxes that
+     read as input fields (2026-09 user direction). */
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: var(--pad-sm);
 }
 
 /* Narrow screens: Income and Expense side by side, Balance full-width below. */
@@ -296,10 +302,9 @@ select:focus-visible {
   }
 }
 
+/* Content column inside the shared summary card: no chrome of its own,
+   padding preserved so the value distribution stays as before. */
 .summary-card {
-  background: var(--surface);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
   padding: var(--pad-sm);
   display: flex;
   flex-direction: column;
@@ -315,6 +320,12 @@ select:focus-visible {
   font-weight: 700;
   font-size: var(--fs-amount);
   font-variant-numeric: tabular-nums;
+}
+
+/* Negative balance: the palette's reddish "over" accent (terracotta), not
+   the destructive --danger red (2026-09 user direction). */
+.summary-value.negative {
+  color: var(--terracotta);
 }
 
 .income {

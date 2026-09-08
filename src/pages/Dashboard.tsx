@@ -96,7 +96,7 @@ export function Dashboard({
           </div>
           <div className="summary-card balance">
             <span className="summary-label">Balance</span>
-            <span className={totals.net >= 0 ? 'summary-value income' : 'summary-value expense'}>
+            <span className={totals.net >= 0 ? 'summary-value income' : 'summary-value negative'}>
               {formatCOP(totals.net)}
             </span>
           </div>
