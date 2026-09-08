@@ -6,7 +6,7 @@ export function EmptyState({
 }: {
   emoji: string;
   title: string;
-  hint?: string;
+  hint?: React.ReactNode;
   action?: React.ReactNode;
 }) {
   return (

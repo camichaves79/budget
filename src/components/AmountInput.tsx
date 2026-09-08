@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { formatCOP, parseAmountToCents } from '../lib/money';
+import { parseAmountToCents } from '../lib/money';
 import { FloatField } from './FloatField';
 
 export function AmountInput({
@@ -56,12 +56,14 @@ export function AmountInput({
   );
 }
 
-/** Human hint for the current raw input, or null when empty. */
+/** Problem hint for the current raw input, or null when the input is fine. */
 export function amountHint(value: string): { text: string; error: boolean } | null {
   const trimmed = value.trim();
   if (trimmed === '') return null;
   const cents = parseAmountToCents(trimmed);
   if (cents === null) return { text: 'Not a valid amount', error: true };
   if (cents <= 0) return { text: 'Amount must be greater than zero', error: true };
-  return { text: `= ${formatCOP(cents)}`, error: false };
+  // Valid amounts get NO echo under the box — the typed value is already
+  // visible in it (2026-09 user direction).
+  return null;
 }

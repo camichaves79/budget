@@ -27,8 +27,8 @@ interface RecordedItem {
 }
 
 /**
- * AI-assisted transaction entry, rendered inside the "Tell me what's the
- * transaction" sheet.
+ * AI-assisted transaction entry, rendered inside the "Tell me what the
+ * transaction is:" sheet.
  *
  * Flow: natural-language text → Submit → parse microservice. One utterance
  * may describe SEVERAL transactions ("300 in bread, 2000 bus home, …").

@@ -523,6 +523,9 @@ select:focus-visible {
 .toast {
   position: fixed;
   left: 50%;
+  /* Centered on the element itself: the hold phase between the keyframe
+     animations runs with no animation, so the offset must live here. */
+  transform: translateX(-50%);
   bottom: calc(96px + env(safe-area-inset-bottom));
   z-index: 60;
   display: flex;
@@ -1205,6 +1208,12 @@ select.input {
 .empty-hint {
   font-size: var(--fs-md);
   margin: 0;
+}
+
+/* The "$" in "Tap $ to record…": bold, one step larger than the hint text. */
+.empty-hint-dollar {
+  font-weight: 700;
+  font-size: var(--fs-lg);
 }
 
 .empty-action {

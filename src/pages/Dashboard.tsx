@@ -110,7 +110,12 @@ export function Dashboard({
           <EmptyState
             emoji="🧾"
             title="No transactions in this period"
-            hint="Tap + to record income or an expense."
+            hint={
+              <>
+                Tap <span className="empty-hint-dollar">$</span> to record income or an
+                expense.
+              </>
+            }
           />
         ) : (
           <div className="tx-list" aria-label="Transactions">
@@ -155,7 +160,7 @@ export function Dashboard({
         )}
       </div>
 
-      <Sheet className="sheet-tight" open={smartOpen} onClose={onCloseSmart} title="Tell me what's the transaction">
+      <Sheet className="sheet-tight" open={smartOpen} onClose={onCloseSmart} title="Tell me what the transaction is:">
         <SmartEntry
           onClose={onCloseSmart}
           onToast={(kind, message) => setToast({ id: Date.now(), kind, message })}
@@ -164,7 +169,7 @@ export function Dashboard({
 
       {toast && <Toast key={toast.id} toast={toast} onDismiss={() => setToast(null)} />}
 
-      <Sheet className="sheet-tight" open={formOpen} onClose={closeForm} title={editing ? 'Edit transaction' : "Tell me what's the transaction"}>
+      <Sheet className="sheet-tight" open={formOpen} onClose={closeForm} title={editing ? 'Edit transaction' : 'Tell me what the transaction is:'}>
         <TransactionForm
           key={editing?.id ?? 'new'}
           initial={editing}
