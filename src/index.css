@@ -443,7 +443,8 @@ select:focus-visible {
 
 /* Global add button (2026-09): bold $ centered on the tab bar, its
    horizontal diameter aligned with the bar's upper side (top half floats
-   above the bar). */
+   above the bar). Coin look: green disc + thin white rim + thin outer ring
+   in the coin's own green. */
 .tab-bar-add {
   position: absolute;
   left: 50%;
@@ -453,6 +454,8 @@ select:focus-visible {
   height: 48px;
   border-radius: 50%;
   background: var(--primary);
+  border: 2px solid #fff;
+  outline: 2px solid var(--primary);
   color: #fff;
   display: flex;
   align-items: center;
