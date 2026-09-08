@@ -10,6 +10,7 @@ import { t, useI18n } from '../lib/i18n';
 import { formatDateShort, todayISO } from '../lib/dates';
 import { TransactionForm } from './TransactionForm';
 import { PaywallCard } from './PaywallCard';
+import { EmptyState } from './EmptyState';
 
 interface Props {
   onClose: () => void;
@@ -250,6 +251,19 @@ export function SmartEntry({ onClose, onToast }: Props) {
       ? t('smart.almostOne')
       : t('smart.almostMany', { pos: position, total });
   };
+
+  // Friendly guard (2026-09): with no active categories, neither smart entry
+  // nor the manual form can record anything — point the user at Categories.
+  if (data.categories.every((c) => c.archived) || data.categories.length === 0) {
+    return (
+      <>
+        <EmptyState emoji="🏷️" title={t('cats.emptyTitle')} hint={t('cats.emptyHint')} />
+        <button type="button" className="btn btn-primary btn-block" onClick={onClose}>
+          {t('close')}
+        </button>
+      </>
+    );
+  }
 
   // ---- Single-entry review: ambiguous or doubtful, nothing saved yet ----
   if (draft) {

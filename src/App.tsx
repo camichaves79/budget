@@ -14,7 +14,9 @@ export default function App() {
   const { data } = useStore();
   const { intl } = useI18n();
   const startDay = data.periodStartDay;
-  const [tab, setTab] = useState<TabKey>('dashboard');
+  // First run with no categories lands on the Categories tab
+  // (2026-09 user direction); otherwise Cash Flow as always.
+  const [tab, setTab] = useState<TabKey>(data.categories.length === 0 ? 'categories' : 'dashboard');
   const [period, setPeriod] = useState<Period>(() => currentPeriod(startDay, intl));
   // Smart-entry sheet, now owned here: the global tab-bar + opens it from
   // any section (the tab switches to Cash Flow first, where the sheet +

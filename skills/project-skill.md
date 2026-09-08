@@ -534,6 +534,10 @@ accountant CSV has the rows.
 - **Settings copy trimmed (`c4afbe3`):** Data / Budget period / About /
   Smart-entry rows summarized; safety confirmations and the paywall-ops
   error-map strings kept as-is.
+- **No seeded categories (`no-seeded-categories`):** new installs start with
+  zero categories and land on the Categories tab; the Categories page shows
+  an empty-state sign ("Start by adding some categories…"); smart entry shows
+  a friendly add-categories-first guard when none exist.
 - **Icon tweak (`ui-miscelaneous-0011`):** the banknote's rectangle
   border on the app icon is now white (dots + $5 stay engraving green); PNGs
   and favicon re-rendered from `tools/icon.svg`.

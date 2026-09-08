@@ -1,6 +1,5 @@
 import { formatCOP, formatMoney, parseAmountToCents } from '../src/lib/money';
 import { LANGS, availableLanguages, catalogKeys, catalogs, setLanguage, t, to } from '../src/lib/i18n';
-import { defaultCategories } from '../src/lib/seed';
 import { isValidISODate } from '../src/lib/dates';
 import { periodForDate, shiftPeriod } from '../src/lib/periods';
 import { isInPeriod } from '../src/lib/selectors';
@@ -24,6 +23,7 @@ import { ensureLicenseForOrder, saleRowForMerge } from '../api/_licenseops.js';
 import redeemHandler from '../api/license/redeem.js';
 import { createHmac, createSign, generateKeyPairSync } from 'node:crypto';
 import { FREE_DAILY_PARSES, nextQuota, remainingFreeToday } from '../src/lib/quota';
+import { initialData } from '../src/state/store';
 import { licenseIsActive, parseLicenseToken } from '../src/lib/license';
 import { decodeJwtParts, fromFields, setDocMerge, signJwt, toFields, verifyJwtSignature } from '../api/_firebase.js';
 import worker, { createNodeRes, hydrateEnv, toNodeReq } from '../worker.js';
@@ -1172,9 +1172,8 @@ await (async () => {
   check('money es locale format (grouping from 10k)', formatMoney(12345600), '$\u00A0123.456');
   check('money fr suffix no grouping', formatMoney(50000, 'fr'), '500\u00A0$');
   setLanguage('fr');
-  check('seed localized for new installs', defaultCategories()[0].name, 'Logement');
+  check('seed french removed — new installs start empty', initialData().categories.length, 0);
   setLanguage('en');
-  check('seed english for new installs', defaultCategories()[0].name, 'Housing');
   setLanguage('zh');
   check('i18n zh plural always other', t('smart.addedBatch', { n: 3, amount: '$ 5' }), '已添加 3 笔交易 · $ 5');
   check('money zh no-space prefix', formatMoney(123500), '$1,235');

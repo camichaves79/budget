@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useReducer } from 'react';
 import type { Dispatch, ReactNode } from 'react';
 import type { AppData, Budget, Category, Transaction } from '../lib/types';
 import { localStorageAdapter } from '../lib/storage';
-import { defaultCategories, PALETTE } from '../lib/seed';
+import { PALETTE } from '../lib/seed';
 import { clampStartDay, PERIOD_START_DAY } from '../lib/periods';
 import { newId } from '../lib/id';
 
@@ -21,7 +21,7 @@ export type Action =
 export function initialData(): AppData {
   return {
     transactions: [],
-    categories: defaultCategories(),
+    categories: [], // no seeded categories (2026-09 user direction)
     budgets: [] as Budget[],
     periodStartDay: PERIOD_START_DAY,
   };

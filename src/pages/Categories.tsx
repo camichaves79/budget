@@ -5,6 +5,7 @@ import type { Category, TxType } from '../lib/types';
 import { useStore } from '../state/store';
 import { Sheet } from '../components/Sheet';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { EmptyState } from '../components/EmptyState';
 
 /**
  * Categories tab (2026-09 redesign): category management moved out of
@@ -32,6 +33,9 @@ export function Categories() {
       </div>
 
       <div className="pinned-scroll">
+        {data.categories.length === 0 && (
+          <EmptyState emoji="🏷️" title={t('cats.emptyTitle')} hint={t('cats.emptyHint')} />
+        )}
         <div className="card">
           <CategoryGroup
             title={t('cats.expenses')}
