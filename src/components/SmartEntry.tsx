@@ -27,7 +27,8 @@ interface RecordedItem {
 }
 
 /**
- * AI-assisted transaction entry, rendered inside the "New transaction" sheet.
+ * AI-assisted transaction entry, rendered inside the "Tell me what's the
+ * transaction" sheet.
  *
  * Flow: natural-language text → Submit → parse microservice. One utterance
  * may describe SEVERAL transactions ("300 in bread, 2000 bus home, …").
@@ -45,7 +46,7 @@ interface RecordedItem {
  */
 export function SmartEntry({ onClose, onToast }: Props) {
   const { data, dispatch } = useStore();
-  const { dropLicense, freeDaily, licensedActive, licenseToken, recordParseUse, remaining } = useEntitlement();
+  const { dropLicense, licensedActive, licenseToken, recordParseUse, remaining } = useEntitlement();
   const [mode, setMode] = useState<'smart' | 'manual'>('smart');
   const [text, setText] = useState('');
   const [parsing, setParsing] = useState(false);
@@ -396,21 +397,17 @@ export function SmartEntry({ onClose, onToast }: Props) {
   return (
     <form onSubmit={submit}>
       <div className="field">
-        <label htmlFor="smart-text">What happened?</label>
         <textarea
           id="smart-text"
           ref={textRef}
           className="input smart-textarea"
           rows={3}
-          placeholder="Tell me what you spent…"
+          placeholder="Use your keyboard's microphone 🎤"
+          aria-label="Describe the transaction"
           value={text}
           autoFocus
           onChange={(e) => setText(e.target.value)}
         />
-        <p className="field-hint">
-          Type, or use your keyboard's microphone to dictate. Amounts are pesos. You can
-          list several transactions at once.
-        </p>
       </div>
 
       <button type="submit" className="btn btn-primary btn-block" disabled={parsing || text.trim() === ''}>
@@ -420,11 +417,6 @@ export function SmartEntry({ onClose, onToast }: Props) {
       <button type="button" className="btn btn-block" onClick={() => setMode('manual')}>
         Enter manually instead
       </button>
-
-      <p className="field-hint smart-disclosure">
-        Your text is sent to the app's parsing service. Budget data stays on this device.
-        {licensedActive ? ' Smart entry is unlimited with your license.' : ` ${remaining} of ${freeDaily} free entries left today.`}
-      </p>
     </form>
   );
 }

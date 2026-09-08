@@ -155,7 +155,7 @@ export function Dashboard({
         )}
       </div>
 
-      <Sheet className="sheet-tight" open={smartOpen} onClose={onCloseSmart} title="New transaction">
+      <Sheet className="sheet-tight" open={smartOpen} onClose={onCloseSmart} title="Tell me what's the transaction">
         <SmartEntry
           onClose={onCloseSmart}
           onToast={(kind, message) => setToast({ id: Date.now(), kind, message })}
@@ -164,7 +164,7 @@ export function Dashboard({
 
       {toast && <Toast key={toast.id} toast={toast} onDismiss={() => setToast(null)} />}
 
-      <Sheet className="sheet-tight" open={formOpen} onClose={closeForm} title={editing ? 'Edit transaction' : 'New transaction'}>
+      <Sheet className="sheet-tight" open={formOpen} onClose={closeForm} title={editing ? 'Edit transaction' : "Tell me what's the transaction"}>
         <TransactionForm
           key={editing?.id ?? 'new'}
           initial={editing}
