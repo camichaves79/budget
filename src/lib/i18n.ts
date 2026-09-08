@@ -426,7 +426,7 @@ const es: Dict = {
   'settings.sureTitle': '¿Estás totalmente seguro?',
   'settings.sureMsg': 'No hay vuelta atrás. Tus datos desaparecerán para siempre.',
   'settings.yesErase': 'Sí, borra todo',
-  'settings.ordinal': { other: '{n}º' },
+  'settings.ordinal': { other: '{n}' },
   'license.smartEntry': 'Entrada inteligente',
   'license.unlimited': 'Licencia ilimitada',
   'license.freePlan': 'Plan gratuito',

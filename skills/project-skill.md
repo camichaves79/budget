@@ -425,7 +425,7 @@ in those tight overrides.
 
 ## 10. Current state & next-session context
 
-Everything below is **shipped and live** (main ≈ `ebce377`, 2026-09-08):
+Everything below is **shipped and live** (main ≈ `72dc4aa`, 2026-09-08):
 
 - Smart entry end-to-end: PWA → Vercel microservice → Gemini 3.6 Flash → instant save
   with fading toasts; review form only for ambiguous parses. Full spec (revised):
@@ -534,7 +534,7 @@ accountant CSV has the rows.
 - **Settings copy trimmed (`c4afbe3`):** Data / Budget period / About /
   Smart-entry rows summarized; safety confirmations and the paywall-ops
   error-map strings kept as-is.
-- **No seeded categories (`no-seeded-categories`):** new installs start with
+- **No seeded categories (`no-seeded-categories`, iPhone-approved):** new installs start with
   zero categories and land on the Categories tab; the Categories page shows
   an empty-state sign ("Start by adding some categories…"); smart entry shows
   a friendly add-categories-first guard when none exist.

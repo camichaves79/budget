@@ -1,7 +1,7 @@
 # Architecture — $5 Budget App
 
 > **Living record** — updated whenever the app ships a meaningful change.
-> Last updated: **2026-09-08** (main ≈ `ebce377`; **Cloudflare migration
+> Last updated: **2026-09-08** (main ≈ `72dc4aa`; **Cloudflare migration
 > COMPLETE** — frontend on `5budget.app` (Cloudflare Pages, custom domain),
 > the six API functions on ONE Cloudflare Worker at `api.5budget.app`,
 > Vercel retired; Firebase OAuth JWT now signed with WebCrypto (workerd's
@@ -16,7 +16,10 @@
 > en/es/fr/pt (core) + zh/hi/bn/ru/ur/ar (scripts) — first-run auto-detect
 > + Settings → Language picker, locale-aware money/dates/period labels,
 > localized seeded categories for new installs, RTL layout for ar/ur, and
-> the parse service receives a whitelisted `language` hint (A16).)
+> the parse service receives a whitelisted `language` hint (A16).
+> **No-seed flow, iPhone-approved (2026-09):** new installs start with zero
+> categories and land on the Categories tab with an empty-state sign; smart
+> entry shows an add-categories-first guard when none exist.)
 > Read alongside `skills/project-skill.md` (conventions + current state) and
 > `skills/speech-entry.md` (smart-entry spec). Keep this file honest: if a
 > trade-off changes, update the table, not just the date.

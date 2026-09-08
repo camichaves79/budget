@@ -1163,7 +1163,7 @@ await (async () => {
   setLanguage('en');
   check('i18n en ordinal', [to(1), to(2), to(3), to(4)], ['1st', '2nd', '3rd', '4th']);
   setLanguage('es');
-  check('i18n es ordinal', to(3), '3º');
+  check('i18n es ordinal', to(3), '3');
   setLanguage('fr');
   check('i18n fr ordinal', [to(1), to(2)], ['1er', '2e']);
   setLanguage('en');
