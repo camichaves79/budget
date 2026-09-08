@@ -51,7 +51,9 @@ When the user taps the transaction button:
   home, 30000 in a hamburger, and yesterday 20000 in a pizza slice"). Each described
   transaction must be parsed and recorded separately.
 
-Suggested placeholder (2026-09 revision): *"Use your keyboard's microphone 🎤"*
+Suggested placeholder (2026-09 revision): *"Use your keyboard's microphone 🎤"* —
+localized per UI language (`smart.placeholder` in `src/lib/i18n.ts`; the mic
+emoji stays across languages).
 
 Use the existing design system and responsive behavior.
 

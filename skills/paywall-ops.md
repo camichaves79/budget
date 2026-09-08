@@ -121,6 +121,9 @@ Collections created at runtime (never touch them by hand): `licenses/{lic}`,
 ## 6. Verify after setup
 
 **Client error-code map (for debugging "Complete purchase" failures):**
+(i18n note 2026-09: these strings now render in the app's UI language via the
+`paywall.*`/`licensing.*` catalog keys — the English text below remains the
+canonical form for the map.)
 - "Couldn't reach the licensing service…" → function 500/network (check the Worker logs — Cloudflare → `budget-api` → Logs — for `firebase:` lines)
 - "The licensing service isn't fully set up yet…" → `not-configured` (FIREBASE_SERVICE_ACCOUNT missing/unparseable in the Worker variables, or the variable change wasn't Deployed)
 - "That purchase couldn't be completed…" → order not paid/found/refunded (test-mode or link-variable issue)

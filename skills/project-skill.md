@@ -110,7 +110,7 @@ and (except for smart entry) never leaves the device.
   the bundler to lose. Client dep: `firebase` (auth module only, modular
   imports) — the one deliberate dependency addition, justified by A13.
 - No router, no UI library, no icon library (inline stroke SVGs)
-- Lint: `oxlint` · Tests: hand-rolled smoke suite (`tests/smoke.ts`, 282 checks)
+- Lint: `oxlint` · Tests: hand-rolled smoke suite (`tests/smoke.ts`, 312 checks)
 - npm scripts: `dev` · `build` (tsc -b && vite build) · `lint` · `preview` ·
   `test` (bundles tests/smoke.ts via `vite.test.config.ts` into `.smoke/` and runs it)
 - **Local npm quirk:** the global npm cache in this environment has permission issues.
@@ -296,7 +296,7 @@ in those tight overrides.
   `validateParsedTransactions`, `needsReview`), **microservice helpers** (rate
   limiter, request sanitizer, Gemini array parser, retry policy, response cache),
   **license/paywall logic** (token sign/verify/meter, free-allowance quota, LS fee
-  math, order→ledger mapping, webhook signature, CSV export). 282 checks.
+  math, order→ledger mapping, webhook signature, CSV export). 312 checks.
 - `npm run build` + `npm run lint` before shipping. Lint has 5 known harmless
   warnings (react-refresh export rules in `store.tsx`/`entitlement.tsx`/
   `AmountInput.tsx` and one set-state-in-effect in `App.tsx`).
@@ -318,8 +318,9 @@ in those tight overrides.
 - **Version ritual (2026-09):** every shipped change bumps the visible version.
   `v0.1.N` with N = the commit count of `main` **after** the merge
   (`git rev-list --count main`) — the version always equals main's commit
-  count. Update BOTH `package.json` `version` (and the lockfile's) and the
-  Settings → About line (`Budget v0.1.N`). Ask the user to classify the change
+  count. Update ALL THREE version spots: `package.json` `version` (and the
+  lockfile's), `src/lib/version.ts` (`APP_VERSION`), and the Settings →
+  About line (`Budget v0.1.N`, driven by `APP_VERSION`). Ask the user to classify the change
   as **breaking / major / minor**; pre-1.0 everything rides the patch slot — a
   breaking or major change (storage schema, big rewrite) bumps minor/major
   instead.
@@ -424,7 +425,7 @@ in those tight overrides.
 
 ## 10. Current state & next-session context
 
-Everything below is **shipped and live** (main ≈ `c4afbe3`, 2026-09-08):
+Everything below is **shipped and live** (main ≈ `ebce377`, 2026-09-08):
 
 - Smart entry end-to-end: PWA → Vercel microservice → Gemini 3.6 Flash → instant save
   with fading toasts; review form only for ambiguous parses. Full spec (revised):
@@ -536,6 +537,17 @@ accountant CSV has the rows.
 - **Version ritual (`c4afbe3`):** every ship bumps `v0.1.N` (N = main's
   commit count) with a breaking/major/minor classification — `v0.1.94`,
   classified **Minor**. See §8.
+
+**Localization (2026-09, three ships, iPhone-approved):** ten UI languages
+behind `src/lib/i18n.ts` — `i18n-core` (`32350a9`, en/es/fr/pt, v0.1.96
+major), `i18n-review-fixes` (`b79b62e`, 22 wording corrections, v0.1.97
+minor), `i18n-scripts` (`ebce377`, zh/hi/bn/ru/ur/ar + RTL, v0.1.98 major).
+First-run auto-detect + Settings → Language picker (localStorage
+`budget.language`); locale money (`formatMoney`), dates, period labels;
+localized seeded categories for NEW installs only; RTL layout for ar/ur
+(logical CSS properties); the parse request carries a whitelisted `language`
+hint (`api/parse.js`). Two independent translation reviews applied (42 fixes
+total); catalogs model-authored.
 
 Candidate next steps (ask the user, don't assume):
 - Parked: console-clearing prod walkthrough of the ledger-by-construction fix;
