@@ -1,5 +1,8 @@
 import { formatCOP, formatMoney, parseAmountToCents } from '../src/lib/money';
 import { LANGS, availableLanguages, catalogKeys, catalogs, setLanguage, t, to } from '../src/lib/i18n';
+import {
+  INSTALL_TIP_DELAY_MS, INSTALL_TIP_STORAGE_KEY, decideInstallSignal, isStandalone, uaLooksIos,
+} from '../src/lib/installPrompt';
 import { isValidISODate } from '../src/lib/dates';
 import { periodForDate, shiftPeriod } from '../src/lib/periods';
 import { isInPeriod } from '../src/lib/selectors';
@@ -1189,6 +1192,23 @@ await (async () => {
   setLanguage('bn');
   check('money bn bengali digits', formatMoney(12345600), '$১,২৩,৪৫৬');
   setLanguage('en');
+
+  // ---- install nudge (install-app-signal) ----
+  check('install: never inside the installed app', decideInstallSignal({ standalone: true, dismissed: false, ios: true, canInstall: true }), null);
+  check('install: never after dismissal', decideInstallSignal({ standalone: false, dismissed: true, ios: true, canInstall: true }), null);
+  check('install: ios gets the share tip', decideInstallSignal({ standalone: false, dismissed: false, ios: true, canInstall: false }), { kind: 'ios-tip' });
+  check('install: ios tip wins over a captured prompt', decideInstallSignal({ standalone: false, dismissed: false, ios: true, canInstall: true }), { kind: 'ios-tip' });
+  check('install: chromium gets the install button', decideInstallSignal({ standalone: false, dismissed: false, ios: false, canInstall: true }), { kind: 'install-button' });
+  check('install: no nudge without a prompt off ios', decideInstallSignal({ standalone: false, dismissed: false, ios: false, canInstall: false }), null);
+  check('install: ua iphone', uaLooksIos('Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15', undefined), true);
+  check('install: ua ipad', uaLooksIos('Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X) AppleWebKit/605.1.15', undefined), true);
+  check('install: ua ipad masquerading as mac', uaLooksIos('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15', 5), true);
+  check('install: ua mac without touch is not ios', uaLooksIos('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15', undefined), false);
+  check('install: ua android is not ios', uaLooksIos('Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36', 5), false);
+  check('install: standalone detection in node', isStandalone(), false);
+  check('install: dismissal storage key', INSTALL_TIP_STORAGE_KEY, 'budget.installTipDismissed');
+  check('install: tip delay positive', INSTALL_TIP_DELAY_MS > 0, true);
+  check('i18n en install tip', t('install.iosTip'), 'Tap Share, then “Add to Home Screen”.');
 }
 
 if (failures > 0) {

@@ -472,6 +472,87 @@ select:focus-visible {
   line-height: 1;
 }
 
+/* ---------- PWA install banner (install-app-signal) ---------- */
+
+/* One-time nudge: fixed under the status area, centered like the toasts.
+   Engraving green like the app's buttons; dismissible ✕. Lives below the
+   sheets (z 40) and toasts (z 60); never rendered inside the installed app. */
+.install-banner {
+  position: fixed;
+  top: calc(var(--pad-sm) + env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 35;
+  display: flex;
+  align-items: center;
+  gap: var(--pad-sm);
+  width: min(calc(100% - 16px), 624px);
+  padding: 10px var(--pad-sm);
+  padding-inline-start: 12px;
+  background: var(--primary);
+  color: #fff;
+  border-radius: 12px;
+  box-shadow: 0 6px 20px rgba(27, 48, 34, 0.3);
+  font-size: var(--fs-sm);
+  line-height: 1.4;
+  animation: banner-in 0.24s ease-out;
+}
+
+.install-banner-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.install-banner-text {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+
+.install-banner-action {
+  flex-shrink: 0;
+  border: none;
+  background: #fff;
+  color: var(--primary);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 8px;
+  touch-action: manipulation;
+}
+
+.install-banner-close {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  padding: 4px;
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.8;
+  touch-action: manipulation;
+}
+
+/* The element itself carries translateX(-50%) for centering (like the
+   toasts), so the entrance animates opacity + the vertical offset only. */
+@keyframes banner-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -10px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
 /* ---------- Smart entry ---------- */
 
 .smart-textarea {

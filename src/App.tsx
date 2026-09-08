@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { applyDocumentLanguage, useI18n } from './lib/i18n';
+import { useInstallSignal } from './lib/installPrompt';
 import type { Period } from './lib/periods';
 import { currentPeriod, isCurrentPeriod, shiftPeriod } from './lib/periods';
 import { useStore } from './state/store';
 import { TabBar } from './components/TabBar';
+import { InstallBanner } from './components/InstallBanner';
 import type { TabKey } from './components/TabBar';
 import { Dashboard } from './pages/Dashboard';
 import { Budgets } from './pages/Budgets';
@@ -22,6 +24,8 @@ export default function App() {
   // any section (the tab switches to Cash Flow first, where the sheet +
   // toast live).
   const [smartOpen, setSmartOpen] = useState(false);
+  // One-time PWA install nudge (install-app-signal).
+  const install = useInstallSignal();
 
   // Keep <html lang/dir> in sync with the chosen language (RTL for ar/ur).
   useEffect(() => {
@@ -64,6 +68,11 @@ export default function App() {
         {tab === 'settings' && <Settings />}
       </main>
 
+      <InstallBanner
+        signal={install.signal}
+        onDismiss={install.dismiss}
+        onInstall={() => void install.promptInstall()}
+      />
       <TabBar active={tab} onChange={setTab} onAdd={openAdd} />
     </div>
   );
