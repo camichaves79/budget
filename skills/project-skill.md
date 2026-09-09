@@ -110,7 +110,7 @@ and (except for smart entry) never leaves the device.
   the bundler to lose. Client dep: `firebase` (auth module only, modular
   imports) — the one deliberate dependency addition, justified by A13.
 - No router, no UI library, no icon library (inline stroke SVGs)
-- Lint: `oxlint` · Tests: hand-rolled smoke suite (`tests/smoke.ts`, 312 checks)
+- Lint: `oxlint` · Tests: hand-rolled smoke suite (`tests/smoke.ts`, 333 checks)
 - npm scripts: `dev` · `build` (tsc -b && vite build) · `lint` · `preview` ·
   `test` (bundles tests/smoke.ts via `vite.test.config.ts` into `.smoke/` and runs it)
 - **Local npm quirk:** the global npm cache in this environment has permission issues.
@@ -158,6 +158,9 @@ src/
                     # sign-in, getRedirectResult, idToken provider
     checkout.ts    # Lemon Squeezy overlay loader (lemonsqueezy.js) + fallback
                     # to top-level redirect; builds embed URL from VITE_CHECKOUT_URL
+    installPrompt.ts # PWA install detection (install-app-signal): standalone/
+                    # iOS sniffing, beforeinstallprompt capture, one-time
+                    # localStorage dismissal, useInstallSignal hook
   state/store.tsx   # Context + useReducer, auto-saves to localStorage on every change
   state/entitlement.tsx # EntitlementProvider: license token, quota remaining,
                     # auth user; actions: recordParseUse, applyLicense,
@@ -170,7 +173,9 @@ src/
                     # through review, then a "Recorded ✓" summary),
                     # PaywallCard (allowance-exhausted card: copy + LS checkout
                     # button + manual-entry pointer),
-                    # FloatField (label-inside-box pattern), Toast (fading feedback)
+                    # FloatField (label-inside-box pattern), Toast (fading feedback),
+                    # InstallBanner (one-time PWA install nudge: iOS share tip +
+                    # Chromium install button)
   pages/            # Dashboard.tsx (Cash Flow + smart sheet + toast), Budgets.tsx,
                     # Categories.tsx (category management), Settings.tsx
 api/parse.js        # Vercel Function (route /api/parse): Gemini proxy. Plain JS with
@@ -203,7 +208,8 @@ tests/smoke.ts      # logic tests: money, periods, selectors, LLM validators,
                     # microservice helpers (rate limiter, sanitizer, Gemini array
                     # parser, retry policy, response cache), 237 checks
 public/             # favicon.svg (mint + banknote + "$5"), manifest.webmanifest
-                    # ("$5 Budget"), icon-192/512.png, apple-touch-icon.png
+                    # ("$5 Budget"), icon-192/512.png, apple-touch-icon.png,
+                    # sw.js (network-first, no pre-cache, prod-only registration)
 tools/              # icon.svg (icon source of truth) + render-icons.mjs (sharp)
 .github/workflows/deploy.yml  # GitHub Pages on push to main; bakes VITE_* repo secrets
 ```
@@ -296,7 +302,7 @@ in those tight overrides.
   `validateParsedTransactions`, `needsReview`), **microservice helpers** (rate
   limiter, request sanitizer, Gemini array parser, retry policy, response cache),
   **license/paywall logic** (token sign/verify/meter, free-allowance quota, LS fee
-  math, order→ledger mapping, webhook signature, CSV export). 312 checks.
+  math, order→ledger mapping, webhook signature, CSV export). 333 checks.
 - `npm run build` + `npm run lint` before shipping. Lint has 5 known harmless
   warnings (react-refresh export rules in `store.tsx`/`entitlement.tsx`/
   `AmountInput.tsx` and one set-state-in-effect in `App.tsx`).
@@ -311,7 +317,7 @@ in those tight overrides.
   `speech-entry`, `smart-entry-ux`, `ui-miscelaneous-0002…0007`, `ios-keyboard-fixes`,
   `floating-field-labels`, `select-chevron-fix`, `icon-color`, `parse-resilience`,
   `multi-transaction-entry`, `paid-key-fallback`, `four-sections`,
-  `plus-sing-relocation`).
+  `plus-sing-relocation`, `install-app-signal`).
 - **Only commit/push when the user explicitly says so.**
 - **"ship"** = commit → push branch → fast-forward merge into `main` → push → delete
   branch locally and remotely → verify deploys. History stays linear (no merge commits).
@@ -400,6 +406,11 @@ in those tight overrides.
   function's own per-IP limiter (40/10min). Logs carry model/status/`retryDelay`
   metadata only. RPD resets at midnight Pacific.
 - Dates are local-only ISO strings (`YYYY-MM-DD`); no timezone math.
+- **Service worker (install-app-signal):** registered ONLY in prod builds
+  (`import.meta.env.PROD` in `main.tsx`) — local dev is unaffected.
+  Network-first with NO pre-cache: a new deploy is picked up on the next
+  load, so a stale shell never outlives a ship. Same-origin GETs only; the
+  API/Firebase/LS traffic (other origins) passes through untouched.
 - Installing sharp or other temp tools: use the `npm_config_cache` workaround,
   `--no-save`, and check `package-lock.json` is untouched afterwards.
 - **Lemon Squeezy**: link variables use square brackets (`[order_id]`,
@@ -425,7 +436,8 @@ in those tight overrides.
 
 ## 10. Current state & next-session context
 
-Everything below is **shipped and live** (main ≈ `72dc4aa`, 2026-09-08):
+Everything below is **shipped and live** (main ≈ `0db4679`, v0.1.103,
+2026-09-08):
 
 - Smart entry end-to-end: PWA → Vercel microservice → Gemini 3.6 Flash → instant save
   with fading toasts; review form only for ambiguous parses. Full spec (revised):
@@ -555,6 +567,18 @@ localized seeded categories for NEW installs only; RTL layout for ar/ur
 (logical CSS properties); the parse request carries a whitelisted `language`
 hint (`api/parse.js`). Two independent translation reviews applied (42 fixes
 total); catalogs model-authored.
+
+**PWA install nudge (`install-app-signal`, `0db4679`, v0.1.103 minor,
+iPhone-approved):** one-time install banner (fixed under the status area,
+4s delay, dismiss ✕) — iOS Safari gets a Share → "Add to Home Screen" tip
+(`install.iosTip` in all ten catalogs) and Chromium gets an Install button
+wired to a captured `beforeinstallprompt`; never shows inside the
+installed app (`navigator.standalone` + `display-mode: standalone`) or
+after dismissal (localStorage `budget.installTipDismissed`). Shipped with
+a minimal network-first service worker (`public/sw.js`, no pre-cache,
+prod-only) that unlocks Chromium installability + offline reloads of
+visited pages (A17). Pure decision logic in `src/lib/installPrompt.ts`,
+smoke-tested (suite now 333 checks).
 
 Candidate next steps (ask the user, don't assume):
 - Parked: console-clearing prod walkthrough of the ledger-by-construction fix;

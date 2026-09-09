@@ -1,25 +1,31 @@
 # Architecture — $5 Budget App
 
 > **Living record** — updated whenever the app ships a meaningful change.
-> Last updated: **2026-09-08** (main ≈ `72dc4aa`; **Cloudflare migration
-> COMPLETE** — frontend on `5budget.app` (Cloudflare Pages, custom domain),
-> the six API functions on ONE Cloudflare Worker at `api.5budget.app`,
-> Vercel retired; Firebase OAuth JWT now signed with WebCrypto (workerd's
-> nodejs_compat lacks `createSign`); sales ledger written complete by
-> construction on every license mint/restore. **UI polish batch,
-> user-approved on the iPhone (2026-09):** Cash Flow summary as ONE shared
-> card with a terracotta negative balance, coin-style bold `$` add button,
-> smart-entry sheet copy refresh, amount echo hidden, toasts centered,
-> Settings copy trimmed. **Version ritual:** every ship bumps `v0.1.N` with
-> N = main's commit count — see `skills/project-skill.md` §8. **i18n
-> COMPLETE and iPhone-approved (2026-09):** the UI ships in ten languages —
-> en/es/fr/pt (core) + zh/hi/bn/ru/ur/ar (scripts) — first-run auto-detect
-> + Settings → Language picker, locale-aware money/dates/period labels,
-> localized seeded categories for new installs, RTL layout for ar/ur, and
-> the parse service receives a whitelisted `language` hint (A16).
-> **No-seed flow, iPhone-approved (2026-09):** new installs start with zero
-> categories and land on the Categories tab with an empty-state sign; smart
-> entry shows an add-categories-first guard when none exist.)
+> Last updated: **2026-09-08** (main ≈ `0db4679`, v0.1.103 + docs ritual
+> v0.1.104; **Cloudflare migration COMPLETE** — frontend on `5budget.app`
+> (Cloudflare Pages, custom domain), the six API functions on ONE Cloudflare
+> Worker at `api.5budget.app`, Vercel retired; Firebase OAuth JWT now signed
+> with WebCrypto (workerd's nodejs_compat lacks `createSign`); sales ledger
+> written complete by construction on every license mint/restore.
+> **PWA install nudge, iPhone-approved (2026-09-08, A17):** a one-time
+> install banner — an iOS Share → "Add to Home Screen" tip and a Chromium
+> Install button driven by a captured `beforeinstallprompt` — plus a
+> minimal network-first service worker (no pre-cache) that unlocks
+> Chromium installability and offline reloads of visited pages.
+> **UI polish batch, user-approved on the iPhone (2026-09):** Cash Flow
+> summary as ONE shared card with a terracotta negative balance,
+> coin-style bold `$` add button, smart-entry sheet copy refresh, amount
+> echo hidden, toasts centered, Settings copy trimmed. **Version ritual:**
+> every ship bumps `v0.1.N` with N = main's commit count — see
+> `skills/project-skill.md` §8. **i18n COMPLETE and iPhone-approved
+> (2026-09):** the UI ships in ten languages — en/es/fr/pt (core) +
+> zh/hi/bn/ru/ur/ar (scripts) — first-run auto-detect + Settings →
+> Language picker, locale-aware money/dates/period labels, localized
+> seeded categories for new installs, RTL layout for ar/ur, and the parse
+> service receives a whitelisted `language` hint (A16). **No-seed flow,
+> iPhone-approved (2026-09):** new installs start with zero categories and
+> land on the Categories tab with an empty-state sign; smart entry shows
+> an add-categories-first guard when none exist.)
 > Read alongside `skills/project-skill.md` (conventions + current state) and
 > `skills/speech-entry.md` (smart-entry spec). Keep this file honest: if a
 > trade-off changes, update the table, not just the date.
@@ -45,6 +51,9 @@ iPhone PWA ──HTTPS──▶ Cloudflare Pages (static, CDN, `5budget.app`)   
 
 - **Client:** React 19 + TS 6 + Vite 8 PWA, `base: './'`, no router/UI/framework.
   All budget data lives in `localStorage` behind a `StorageAdapter` interface.
+  A minimal network-first service worker (`public/sw.js`, prod-only, no
+  pre-cache) provides offline reloads of visited pages and makes Chromium
+  treat the site as installable (A17).
 - **Backend:** ONE Cloudflare Worker (`worker.js` + `wrangler.toml`, the six
   Vercel-era `api/` handlers unmodified behind a Node→Web shim; Vercel is
   RETIRED — A15). No database of our own: Firestore holds entitlement +
@@ -84,6 +93,7 @@ iPhone PWA ──HTTPS──▶ Cloudflare Pages (static, CDN, `5budget.app`)   
 | A14 | Licensed tier runs on a **paid Gemini key** with `gemini-3.5-flash-lite` primary and `gemini-3.6-flash` fallback (inverted from the free tier), and a cache-friendly system prompt ready for context-caching savings. **Safety floor (2026-09-06):** when the paid key is rejected with a config-type error (400/401/403/404 — invalid key, permissions, billing, unknown model), the parse retries with the free key so a broken paid key never bricks licensed parses; quota/transient failures stay on the paid key | Free-tier quotas can't back a paid product; Lite ≈25% cheaper per parse and is already the proven fallback; paid tier also opts out of training use; the fallback keeps paying users working through key-rotation/billing mishaps (validated in prod) | Accepted |
 | A15 | Hosting migration to **Cloudflare**: static frontend → **Cloudflare Pages**, the six API functions → **Cloudflare Workers** (Node→Web handler shim + `nodejs_compat`, still zero runtime dependencies) | GitHub Pages' ToS forbids primarily-commercial sites and Vercel Hobby is non-commercial — the paywall (A12) makes this app commercial, so both current homes were non-compliant. Phased for reversibility: Pages first, Worker port with dual-run cutover second, Vercel retired last | **Shipped 2026-09-08** — `5budget.app` (Pages, custom domain) + `api.5budget.app` (Worker, Smart Placement near Gemini); Vercel + GitHub Pages fully retired; gotchas fixed along the way: Worker env bindings are non-enumerable getters (explicit-key hydration), and workerd lacks `crypto.createSign` (WebCrypto `signJwt`). Ops: `skills/hosting-migration.md` |
 | A16 | **Localization (2026-09):** all UI strings moved into a typed message catalog (`src/lib/i18n.ts`; en source of truth, ~210 keys, zero-dependency engine — `Intl.PluralRules` plurals/ordinals, per-locale money grouping with `$` prefix/suffix, locale dates via `Intl`); ten languages shipped in two branches (`i18n-core` en/es/fr/pt, `i18n-scripts` zh/hi/bn/ru/ur/ar); first run follows the device language, then a Settings → Language picker (localStorage `budget.language`); `<html dir>` flips for ar/ur with logical CSS properties; seeded categories localize for NEW installs only (existing data untouched); `/api/parse` accepts a whitelisted `language` hint for the Gemini prompt | One user, ten possible languages; no i18n library (zero-dep rule); catalogs are model-authored and independently reviewed (two review passes, 42 fixes); branch staging keeps each ship verifiable | Accepted |
+| A17 | **PWA installability (2026-09):** a one-time install nudge — iOS gets a Share → "Add to Home Screen" tip (iOS has no install API) and Chromium gets an Install button wired to a captured `beforeinstallprompt` — plus a minimal **network-first service worker with no pre-cache** (`public/sw.js`, registered only in prod builds). "Running as installed" is detected via `navigator.standalone` + the `display-mode: standalone` media query; dismissal is a one-time localStorage flag | The manifest alone doesn't satisfy Chromium's installability criteria (a worker with a fetch handler is required); a no-pre-cache worker gives offline reloads of visited pages without ever pinning a stale build; iOS can only be nudged, so the tip is the accepted pattern there | Accepted |
 
 ## 3. The "-ilities" — where we stand
 
@@ -96,7 +106,7 @@ iPhone PWA ──HTTPS──▶ Cloudflare Pages (static, CDN, `5budget.app`)   
 | **Privacy** | Strong | Transaction history never leaves the device; only utterance + category list are sent; logs carry metadata only (status/model/retryDelay). The cloud now stores identity, entitlement and purchase metadata (A13) — budget data still never leaves the device. Free-tier Gemini data-use caveat remains; the licensed tier uses a paid key (the opt-out). |
 | **Maintainability** | Good | ~2k LOC app + one 600-line function; pure logic modules; UI copy centralized in `src/lib/i18n.ts`; docs in `skills/`; conventions in `project-skill.md`. |
 | **Observability** | Weakest link | Worker logs (Cloudflare → `budget-api` → Logs) are metadata-only and ad-hoc; no metrics, no alerting, no error budget. The sales ledger + per-license usage meters improve visibility; diagnosis still = user report + log grep. |
-| **Testability** | Solid for logic, thin for UI | 312 smoke checks cover money/periods/validators/microservice helpers/license+paywall logic (incl. the paid-key fallback) plus i18n catalog completeness, placeholder parity, plurals and per-locale money; no UI test framework; handler smoke-testable via fetch stubbing. |
+| **Testability** | Solid for logic, thin for UI | 333 smoke checks cover money/periods/validators/microservice helpers/license+paywall logic (incl. the paid-key fallback), the install-nudge decision core, plus i18n catalog completeness, placeholder parity, plurals and per-locale money; no UI test framework; handler smoke-testable via fetch stubbing. |
 | **Cost efficiency** | $5/yr license, ~40–70% ROI | Infra stays free at current scale; operating cost is almost entirely Gemini usage. The free tier's cross-subsidy is the scale risk (A12, §5) — free users' Gemini ≈ $0.14/user/yr vs $4.25 net per payer. |
 | **Portability** | Medium | Provider swap is one function + one client module; storage adapter swappable; backend pinned to the Node-style `handler(req, res)` contract behind `worker.js`'s Web-Request shim. |
 
@@ -113,8 +123,9 @@ iPhone PWA ──HTTPS──▶ Cloudflare Pages (static, CDN, `5budget.app`)   
 4. **Per-IP rate limiter is best-effort**: instances are ephemeral, so counters reset;
    it damps abuse, it does not guarantee anything.
 5. **Single deployment path**: main = production for both Pages and the Worker; no
-   staging, no preview gate beyond local testing. Rollback = revert commit + PWA
-   refresh (the service worker caches the old build).
+   staging, no preview gate beyond local testing. Rollback = revert commit; the
+   network-first service worker carries no pre-cache, so the next load picks up
+   the reverted deploy (A17).
 6. **No observability/alerting**: we learn about problems from the user.
 7. **No data sync**: each device is its own island (JSON export/import is the bridge).
 8. **Lemon Squeezy dependency**: checkout, orders API and webhooks are external.
