@@ -18,7 +18,7 @@ import { handleCors, readBodyText, send } from '../_http.js';
 import { verifyWebhookSignature, webhookToLedger } from '../_license.js';
 import { db, getUserByEmailSafe } from '../_firebase.js';
 import { generateOrderInvoice } from '../_ls.js';
-import { ensureLicenseForOrder } from '../_licenseops.js';
+import { ensureLicenseForOrder, saleRowForMerge } from '../_licenseops.js';
 
 /**
  * @param {import('node:http').IncomingMessage} req
@@ -92,7 +92,9 @@ export default async function handler(req, res) {
       .set({ status: 'refunded', refundedAt: typeof attributes.refunded_at === 'string' ? attributes.refunded_at : null }, { merge: true });
   }
 
-  await salesRef.set({ ...mapped.ledger, updatedAt: new Date().toISOString() }, { merge: true });
+  // Merge through saleRowForMerge: the raw orderToLedger carries
+  // invoice_url: null, which would clobber a URL a redeem wrote earlier.
+  await salesRef.set({ ...saleRowForMerge(mapped.ledger, existing), updatedAt: new Date().toISOString() }, { merge: true });
 
   if (eventName === 'order_created' && status === 'paid') {
     // Bind to a known user by buyer email; mint when the webhook beats the

@@ -19,7 +19,7 @@ import { checkIpRateLimit, createIpRateLimiter, handleCors, hasSharedSecret, rea
 import { db, verifyIdTokenSafe } from '../_firebase.js';
 import { fetchOrderById, findOrderByNumber, generateOrderInvoice, validateLicenseKey } from '../_ls.js';
 import { emailsMatch, orderToLedger } from '../_license.js';
-import { ensureLicenseForOrder } from '../_licenseops.js';
+import { ensureLicenseForOrder, saleRowForMerge } from '../_licenseops.js';
 
 /** Dampens order-id enumeration (defense-in-depth under the email check). */
 const rateLimiter = createIpRateLimiter();
@@ -125,8 +125,10 @@ async function redeem(req, res, cors) {
   if (fire && ledger.order_id) {
     const salesRef = fire.collection('sales').doc(ledger.order_id);
     const existing = await salesRef.get();
-    await salesRef.set({ ...ledger, updatedAt: new Date().toISOString() }, { merge: true });
     const existingData = existing.exists ? /** @type {Record<string, unknown>} */ (existing.data() ?? {}) : {};
+    // Merge through saleRowForMerge: the raw ledger carries invoice_url:
+    // null, which would clobber a URL a webhook wrote earlier.
+    await salesRef.set({ ...saleRowForMerge(ledger, existingData), updatedAt: new Date().toISOString() }, { merge: true });
     if (!existingData.invoice_url) {
       const invoiceUrl = await generateOrderInvoice(ledger.order_id);
       if (invoiceUrl) await salesRef.set({ invoice_url: invoiceUrl }, { merge: true });

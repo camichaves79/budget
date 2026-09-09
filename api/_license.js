@@ -204,17 +204,31 @@ export function verifyWebhookSignature(rawBody, signatureHeader, secret) {
  * subscription +0.5% surcharges may apply), so the ledger's fee/net columns
  * are ESTIMATES; payout reports are the source of truth for reconciliation
  * (skills/paywall-ops.md).
+ *
+ * The fixed $0.50 component is converted into the order currency when the
+ * order carries a `currency_rate` (USD per 1 unit of the order currency —
+ * LS includes it on non-USD orders); without a rate the USD baseline is
+ * kept, so a missing rate never silently drops the fixed fee.
  * @param {number} subtotalCents
+ * @param {string} [currency]
+ * @param {unknown} [currencyRate]
  * @returns {number}
  */
-export function estimateLsFeeCents(subtotalCents) {
+export function estimateLsFeeCents(subtotalCents, currency = 'USD', currencyRate = null) {
   if (!Number.isFinite(subtotalCents) || subtotalCents <= 0) return 0;
-  return Math.round(subtotalCents * 0.05) + 50;
+  const rate = Number(currencyRate);
+  const fixed = currency !== 'USD' && Number.isFinite(rate) && rate > 0 ? Math.round(50 / rate) : 50;
+  return Math.round(subtotalCents * 0.05) + fixed;
 }
 
-/** @param {number} subtotalCents @returns {number} */
-export function estimateNetCents(subtotalCents) {
-  return subtotalCents - estimateLsFeeCents(subtotalCents);
+/**
+ * @param {number} subtotalCents
+ * @param {string} [currency]
+ * @param {unknown} [currencyRate]
+ * @returns {number}
+ */
+export function estimateNetCents(subtotalCents, currency = 'USD', currencyRate = null) {
+  return subtotalCents - estimateLsFeeCents(subtotalCents, currency, currencyRate);
 }
 
 /* ---------- LS order → sales-ledger mapping ---------- */
@@ -237,8 +251,8 @@ export function orderToLedger(attributes) {
     gross: subtotal,
     tax: Number.isFinite(a.tax) ? /** @type {number} */ (a.tax) : 0,
     total: Number.isFinite(a.total) ? /** @type {number} */ (a.total) : 0,
-    fees: estimateLsFeeCents(subtotal),
-    net: estimateNetCents(subtotal),
+    fees_estimate: estimateLsFeeCents(subtotal, typeof a.currency === 'string' ? a.currency : 'USD', a.currency_rate),
+    net_estimate: estimateNetCents(subtotal, typeof a.currency === 'string' ? a.currency : 'USD', a.currency_rate),
     currency: typeof a.currency === 'string' ? a.currency : 'USD',
     buyer_email: typeof a.user_email === 'string' ? a.user_email : '',
     receipt_url: typeof urls.receipt === 'string' ? urls.receipt : null,
@@ -292,13 +306,27 @@ function csvEscape(value) {
 }
 
 /**
+ * Legacy doc keys: rows written before 2026-09 stored the fee columns as
+ * `fees`/`net`; the CSV contract (paywall-ops) is `fees_estimate`/
+ * `net_estimate`. Read the canonical key with the legacy fallback so old
+ * sales docs still render their values.
+ * @type {Record<string, string>}
+ */
+const CSV_FIELD_ALIASES = { fees_estimate: 'fees', net_estimate: 'net' };
+
+/**
  * @param {Array<Record<string, unknown>>} rows
  * @returns {string} CSV text (CRLF, \uFEFF BOM for spreadsheet apps)
  */
 export function ledgerToCsv(rows) {
   const lines = [LEDGER_CSV_COLUMNS.join(',')];
   for (const row of rows) {
-    lines.push(LEDGER_CSV_COLUMNS.map((col) => csvEscape(row[col])).join(','));
+    lines.push(
+      LEDGER_CSV_COLUMNS.map((col) => {
+        const legacy = CSV_FIELD_ALIASES[col];
+        return csvEscape(row[col] ?? (legacy !== undefined ? row[legacy] : undefined));
+      }).join(','),
+    );
   }
   return `\uFEFF${lines.join('\r\n')}`;
 }

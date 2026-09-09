@@ -27,6 +27,7 @@ import {
 import { checkIpRateLimit, createIpRateLimiter, isAllowedOrigin } from '../api/_http.js';
 import { ensureLicenseForOrder, saleRowForMerge } from '../api/_licenseops.js';
 import redeemHandler from '../api/license/redeem.js';
+import webhookHandler from '../api/webhooks/ls.js';
 import { createHmac, createSign, generateKeyPairSync } from 'node:crypto';
 import { FREE_DAILY_PARSES, nextQuota, remainingFreeToday } from '../src/lib/quota';
 import { initialData } from '../src/state/store';
@@ -525,6 +526,9 @@ check('ls fee estimate on $5', estimateLsFeeCents(500), 75);
 check('ls net estimate on $5', estimateNetCents(500), 425);
 check('ls fee estimate on $36', estimateLsFeeCents(3600), 230);
 check('ls fee estimate guards bad input', estimateLsFeeCents(NaN), 0);
+check('ls fee estimate converts the fixed fee for COP', estimateLsFeeCents(1750125, 'COP', 0.00032112), 243211);
+check('ls net estimate converts for COP', estimateNetCents(1750125, 'COP', 0.00032112), 1506914);
+check('ls fee estimate keeps the USD baseline without a rate', estimateLsFeeCents(500, 'COP', 0), 75);
 
 // ---- paywall: order → sales-ledger mapping ----
 const orderAttrs = {
@@ -544,8 +548,8 @@ const orderAttrs = {
 const ledgerRow = orderToLedger(orderAttrs);
 check('ledger maps order id', ledgerRow.order_id, 'uuid-1');
 check('ledger maps gross', ledgerRow.gross, 500);
-check('ledger maps fee estimate', ledgerRow.fees, 75);
-check('ledger maps net estimate', ledgerRow.net, 425);
+check('ledger maps fee estimate', ledgerRow.fees_estimate, 75);
+check('ledger maps net estimate', ledgerRow.net_estimate, 425);
 check('ledger maps buyer email', ledgerRow.buyer_email, 'buyer@example.com');
 check('ledger maps receipt url', ledgerRow.receipt_url, 'https://receipt');
 check('webhook maps order_created', webhookToLedger('order_created', orderAttrs) !== null, true);
@@ -573,6 +577,14 @@ const csv = ledgerToCsv([
 check('csv starts with BOM + header', csv.startsWith('\uFEFFdate,order_number'), true);
 check('csv escapes quotes', csv.includes('"a,""b"",c"'), true);
 check('csv has header + two rows', csv.split('\r\n').length, 3);
+check('csv renders fee/net estimate columns', csv.includes('500,0,500,75,425,USD'), true);
+check(
+  'csv falls back to legacy fees/net doc keys',
+  ledgerToCsv([
+    { date: 'd', order_number: 1, status: 'paid', gross: 1, tax: 0, total: 1, fees: 111, net: 222, currency: 'USD' },
+  ]).includes('0,1,111,222,USD'),
+  true,
+);
 
 // ---- firebase REST helpers (service-account JWT + field codecs) ----
 const fieldsRound = { s: 'hola', n: 42, b: true, z: null };
@@ -1127,6 +1139,117 @@ await (async () => {
   else process.env.BUDGET_PARSE_SECRET = prevSecret;
   if (prevLicenseSecret === undefined) delete process.env.BUDGET_LICENSE_SECRET;
   else process.env.BUDGET_LICENSE_SECRET = prevLicenseSecret;
+})();
+
+// ---- webhook regression (2026-09): an order_created merge must never
+//      clobber a stored invoice_url with null (the redeem-generated URL was
+//      lost exactly this way on the first live sale) ----
+await (async () => {
+  const saJson = JSON.stringify({ client_email: 'svc@test-project.iam.gserviceaccount.com', project_id: 'test-project', private_key: privPem });
+  const prevSa = process.env.FIREBASE_SERVICE_ACCOUNT;
+  process.env.FIREBASE_SERVICE_ACCOUNT = saJson;
+  const prevWhSecret = process.env.LEMONSQUEEZY_WEBHOOK_SECRET;
+  process.env.LEMONSQUEEZY_WEBHOOK_SECRET = 'wh-test';
+  const prevLicenseSecret = process.env.BUDGET_LICENSE_SECRET;
+  process.env.BUDGET_LICENSE_SECRET = 'testlicense';
+  const prevStore = process.env.LEMONSQUEEZY_STORE_ID;
+  delete process.env.LEMONSQUEEZY_STORE_ID;
+  const prevLsKey = process.env.LEMONSQUEEZY_API_KEY;
+  process.env.LEMONSQUEEZY_API_KEY = 'test-ls';
+
+  const sv = (v: string) => ({ stringValue: v });
+  const existingDoc = {
+    fields: { order_id: sv('order-clobber'), invoice_url: sv('https://invoice.test'), receipt_url: sv('https://receipt.test') },
+  };
+  const commits: Array<{ name: string; fields: Record<string, unknown> }> = [];
+  let invoiceCalls = 0;
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: string | URL, opts: { method?: string; body?: string } = {}) => {
+    const u = String(url);
+    if (u.includes('oauth2.googleapis.com/token')) {
+      return new Response(JSON.stringify({ access_token: 'fake', expires_in: 3600 }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (u.includes('generate-invoice')) {
+      invoiceCalls += 1;
+      return new Response(JSON.stringify({ meta: { urls: { download_invoice: 'https://invoice.new' } } }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (u.includes('accounts:lookup')) {
+      return new Response(JSON.stringify({ error: { code: 404, status: 'NOT_FOUND' } }), { status: 404, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (u.includes('documents:commit')) {
+      const body = JSON.parse(opts.body ?? '{}') as { writes?: Array<Record<string, unknown>> };
+      const write = (body.writes ?? [])[0] ?? {};
+      const update = (write.update ?? {}) as { name?: string; fields?: Record<string, unknown> };
+      commits.push({ name: String(update.name ?? ''), fields: update.fields ?? {} });
+      return new Response(JSON.stringify({ writeResults: [{}] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    const get = /\/documents\/sales\/([^/?]+)$/.exec(u);
+    if (get && get[1] === 'order-clobber') {
+      return new Response(JSON.stringify(existingDoc), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    return new Response(JSON.stringify({ error: { code: 404, status: 'NOT_FOUND' } }), { status: 404, headers: { 'Content-Type': 'application/json' } });
+  }) as typeof fetch;
+
+  const attrs = {
+    identifier: 'order-clobber',
+    order_number: 42,
+    created_at: '2026-09-05T10:00:00Z',
+    status: 'paid',
+    subtotal: 500,
+    tax: 0,
+    total: 500,
+    currency: 'USD',
+    user_email: 'buyer@example.com',
+    urls: { receipt: 'https://receipt.test' },
+    test_mode: true,
+    refunded: false,
+  };
+  const rawBody = JSON.stringify({ meta: { event_name: 'order_created' }, data: { attributes: attrs } });
+  const signature = createHmac('sha256', 'wh-test').update(rawBody).digest('hex');
+
+  const req = {
+    method: 'POST',
+    headers: { origin: 'https://5budget.app', 'x-signature': signature },
+    async *[Symbol.asyncIterator]() {
+      yield Buffer.from(rawBody);
+    },
+  } as unknown as import('node:http').IncomingMessage;
+  const res = {
+    statusCode: 0,
+    headers: {} as Record<string, string>,
+    body: '',
+    setHeader(k: string, v: string) {
+      res.headers[k] = v;
+    },
+    end(text: string) {
+      res.body = text ?? '';
+    },
+  } as unknown as import('node:http').ServerResponse;
+  await webhookHandler(req, res);
+
+  const salesWrites = commits.filter((c) => c.name.endsWith('/sales/order-clobber'));
+  const nullInvoice = salesWrites.some(
+    (c) => (c.fields.invoice_url as { nullValue?: unknown } | undefined)?.nullValue === null,
+  );
+  check('webhook answers 200 to a valid order_created', res.statusCode, 200);
+  check('webhook merge never writes invoice_url null over a stored url', nullInvoice, false);
+  check('webhook skips invoice generation when the url exists', invoiceCalls, 0);
+
+  globalThis.fetch = originalFetch;
+  if (prevSa === undefined) delete process.env.FIREBASE_SERVICE_ACCOUNT;
+  else process.env.FIREBASE_SERVICE_ACCOUNT = prevSa;
+  if (prevWhSecret === undefined) delete process.env.LEMONSQUEEZY_WEBHOOK_SECRET;
+  else process.env.LEMONSQUEEZY_WEBHOOK_SECRET = prevWhSecret;
+  if (prevLicenseSecret === undefined) delete process.env.BUDGET_LICENSE_SECRET;
+  else process.env.BUDGET_LICENSE_SECRET = prevLicenseSecret;
+  if (prevStore === undefined) delete process.env.LEMONSQUEEZY_STORE_ID;
+  else process.env.LEMONSQUEEZY_STORE_ID = prevStore;
+  if (prevLsKey === undefined) delete process.env.LEMONSQUEEZY_API_KEY;
+  else process.env.LEMONSQUEEZY_API_KEY = prevLsKey;
 })();
 
 // ---- i18n (2026-09): catalogs, plurals, ordinals, amounts, seeds ----
