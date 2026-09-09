@@ -116,7 +116,7 @@ const ALLOWED_ORIGINS = ['https://camichaves79.github.io', 'https://5budget.app'
 
 const MAX_BODY_BYTES = 10_000;
 const MAX_UTTERANCE_CHARS = 500;
-const PARSE_LANGUAGES = ['en', 'es', 'fr', 'pt', 'zh', 'hi', 'bn', 'ru', 'ur', 'ar'];
+const PARSE_LANGUAGES = ['en', 'es', 'fr', 'pt', 'de', 'zh', 'hi', 'bn', 'ru', 'ur', 'ar'];
 
 const MAX_CATEGORIES = 50;
 const MAX_ID_CHARS = 64;

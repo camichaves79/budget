@@ -1131,7 +1131,7 @@ await (async () => {
 
 // ---- i18n (2026-09): catalogs, plurals, ordinals, amounts, seeds ----
 {
-  check('i18n available languages (all ten)', availableLanguages(), ['ar', 'bn', 'en', 'es', 'fr', 'hi', 'pt', 'ru', 'ur', 'zh']);
+  check('i18n available languages (all eleven)', availableLanguages(), ['ar', 'bn', 'de', 'en', 'es', 'fr', 'hi', 'pt', 'ru', 'ur', 'zh']);
   check('i18n rtl flags', [LANGS.ar.dir, LANGS.ur.dir], ['rtl', 'rtl']);
   for (const lang of availableLanguages()) {
     const missing = catalogKeys().filter((k) => catalogs[lang]?.[k] === undefined);
@@ -1194,6 +1194,12 @@ await (async () => {
   check('money hi indian grouping', formatMoney(12345600), '$1,23,456');
   setLanguage('bn');
   check('money bn bengali digits', formatMoney(12345600), '$১,২৩,৪৫৬');
+  setLanguage('de');
+  check('i18n de plural one', t('smart.addedBatch', { n: 1, amount: '5 $' }), '1 Transaktion hinzugefügt · 5 $');
+  check('i18n de plural many', t('smart.addedBatch', { n: 3, amount: '5 $' }), '3 Transaktionen hinzugefügt · 5 $');
+  check('i18n de welcome title', t('welcome.title'), 'Willkommen bei $5 Budget');
+  check('money de suffix grouping', formatMoney(12345600), '123.456\u00A0$');
+  check('i18n de ordinal', [to(1), to(2)], ['1.', '2.']);
   setLanguage('en');
 
   // ---- install nudge (install-app-signal) ----
