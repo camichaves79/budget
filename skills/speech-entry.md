@@ -279,6 +279,8 @@ unnecessary cloud/database infrastructure.
       meters (100/day) per parse (2026-09)
 - [x] Purchase redirect → server-side redeem → license auto-stored; Settings
       fallback (sign-in restore + paste-key) never the main path (2026-09)
+- [x] Voice auto-send: 2.5s of input quiet → countdown + cancel → submit;
+      3-char minimum gates both paths (2026-09, §16)
 
 ## 15. Paywall gating (2026-09)
 
@@ -301,6 +303,27 @@ requests attach the token. The purchase path is automatic — redirect → redee
 account (restored on any device/reinstall). License management lives in Settings →
 License (status, sign in/out, paste-key recovery fallback — never the main path).
 Details: `ARCHITECTURE.md` A12–A14; ops checklist: `skills/paywall-ops.md`.
+
+## 16. Voice auto-send (2026-09, iPhone-approved)
+
+Dictation gives the app **no signal** (no mic-tap / speaking / speech-ended
+events; the Web Speech API stays off-limits), so "the user has finished" is
+inferred from input silence:
+
+- Every `input` event on the smart-entry textarea restarts a quiet-pause
+  timer (`AUTO_SEND_PAUSE_MS` = **2500 ms** in `SmartEntry.tsx`). When it
+  fires, the existing submit path runs automatically.
+- While waiting, the sheet shows **"Sending in 2s… / 1s…"** with a **Cancel**
+  link (`smart.autoSendIn` in all ten catalogs); any new input restarts the
+  timer, any view transition (review queue, summary, manual mode, submit in
+  flight, sheet close) cancels it, and timers die on unmount.
+- **Minimum length:** both the auto-send and the Submit button require
+  **3 trimmed characters** (`MIN_SEND_LENGTH`) — accidental one-tap /
+  stray-character entries can't send (or burn quota).
+- **No error loop:** after a failed parse the text is kept for retry and the
+  auto-send never re-arms for the same string; editing the text re-arms it.
+- Submitting still works instantly at any time; auto-send is a convenience
+  on top, never a replacement.
 
 ## Definition of Done
 

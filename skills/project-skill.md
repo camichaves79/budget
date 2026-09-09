@@ -110,7 +110,7 @@ and (except for smart entry) never leaves the device.
   the bundler to lose. Client dep: `firebase` (auth module only, modular
   imports) — the one deliberate dependency addition, justified by A13.
 - No router, no UI library, no icon library (inline stroke SVGs)
-- Lint: `oxlint` · Tests: hand-rolled smoke suite (`tests/smoke.ts`, 333 checks)
+- Lint: `oxlint` · Tests: hand-rolled smoke suite (`tests/smoke.ts`, 342 checks)
 - npm scripts: `dev` · `build` (tsc -b && vite build) · `lint` · `preview` ·
   `test` (bundles tests/smoke.ts via `vite.test.config.ts` into `.smoke/` and runs it)
 - **Local npm quirk:** the global npm cache in this environment has permission issues.
@@ -134,6 +134,7 @@ src/
   lib/
     types.ts        # TxType, Transaction, Category, Budget, AppData
     money.ts        # formatCOP (integer pesos, NBSP), parseAmountToCents
+    emoji.ts        # firstGrapheme: category emojis capped to ONE glyph cluster
     dates.ts        # toISODate, todayISO, isValidISODate, parseISODate, formatDate*
     periods.ts      # configurable start-day periods (1–28), majority-month labels
     storage.ts      # StorageAdapter interface + localStorageAdapter (schema v1)
@@ -302,7 +303,8 @@ in those tight overrides.
   `validateParsedTransactions`, `needsReview`), **microservice helpers** (rate
   limiter, request sanitizer, Gemini array parser, retry policy, response cache),
   **license/paywall logic** (token sign/verify/meter, free-allowance quota, LS fee
-  math, order→ledger mapping, webhook signature, CSV export). 333 checks.
+  math, order→ledger mapping, webhook signature, CSV export) plus the
+  install-nudge decision core and the emoji grapheme cap. 342 checks.
 - `npm run build` + `npm run lint` before shipping. Lint has 5 known harmless
   warnings (react-refresh export rules in `store.tsx`/`entitlement.tsx`/
   `AmountInput.tsx` and one set-state-in-effect in `App.tsx`).
@@ -317,7 +319,8 @@ in those tight overrides.
   `speech-entry`, `smart-entry-ux`, `ui-miscelaneous-0002…0007`, `ios-keyboard-fixes`,
   `floating-field-labels`, `select-chevron-fix`, `icon-color`, `parse-resilience`,
   `multi-transaction-entry`, `paid-key-fallback`, `four-sections`,
-  `plus-sing-relocation`, `install-app-signal`).
+  `plus-sing-relocation`, `install-app-signal`, `budgets-no-categories-guard`,
+  `category-emoji-field`, `default-emoji-moneybag`).
 - **Only commit/push when the user explicitly says so.**
 - **"ship"** = commit → push branch → fast-forward merge into `main` → push → delete
   branch locally and remotely → verify deploys. History stays linear (no merge commits).
@@ -411,6 +414,9 @@ in those tight overrides.
   Network-first with NO pre-cache: a new deploy is picked up on the next
   load, so a stale shell never outlives a ship. Same-origin GETs only; the
   API/Firebase/LS traffic (other origins) passes through untouched.
+- **Category emojis are ONE glyph cluster** (`firstGrapheme` in
+  `src/lib/emoji.ts`, `Intl.Segmenter`): ZWJ families (👨‍👩‍👧) count as one;
+  every rendering surface is a small circle sized for a single glyph.
 - Installing sharp or other temp tools: use the `npm_config_cache` workaround,
   `--no-save`, and check `package-lock.json` is untouched afterwards.
 - **Lemon Squeezy**: link variables use square brackets (`[order_id]`,
@@ -436,7 +442,7 @@ in those tight overrides.
 
 ## 10. Current state & next-session context
 
-Everything below is **shipped and live** (main ≈ `0db4679`, v0.1.103,
+Everything below is **shipped and live** (main ≈ `1e7550c`, v0.1.108,
 2026-09-08):
 
 - Smart entry end-to-end: PWA → Vercel microservice → Gemini 3.6 Flash → instant save
@@ -578,7 +584,32 @@ after dismissal (localStorage `budget.installTipDismissed`). Shipped with
 a minimal network-first service worker (`public/sw.js`, no pre-cache,
 prod-only) that unlocks Chromium installability + offline reloads of
 visited pages (A17). Pure decision logic in `src/lib/installPrompt.ts`,
-smoke-tested (suite now 333 checks).
+smoke-tested (suite now 342 checks).
+
+**UX batch (`ui-miscelaneous-0012` + follow-ups, v0.1.105–v0.1.108 minor,
+iPhone-approved 2026-09-08):**
+- **Voice auto-send (v0.1.105):** the smart-entry textarea auto-submits
+  2.5s after the last input event (dictation or typing goes quiet) — a
+  "Sending in 2s…/1s…" countdown with a Cancel link shows while waiting;
+  any edit resets it, transitions cancel it, and it never re-arms for the
+  same text after a failed parse. Minimum utterance length **3 chars**
+  gates both auto-send and the Submit button (accidental short entries).
+  Constants `AUTO_SEND_PAUSE_MS` / `MIN_SEND_LENGTH` in `SmartEntry.tsx`
+  (see `skills/speech-entry.md` §16).
+- **Categories guard (v0.1.105):** the smart-entry "no categories" guard's
+  button now closes the sheet and switches to the Categories tab
+  (`cats.goToCategories`).
+- **Bolder icon border (v0.1.105):** banknote stroke 11 → 18 on the 512
+  canvas (favicon 2.2 → 3.5); all four public icons re-rendered.
+- **Settings select chevron (v0.1.105):** the legacy two-triangle chevron
+  collided with the day text; now the single SVG chevron at 10px with
+  32px end padding (RTL mirrored).
+- **Budgets guard (v0.1.106):** rewritten copy — "No categories to budget
+  yet" + a hint that budgets apply to expense categories while income is
+  tracked in Cash Flow — plus the same Go-to-Categories action.
+- **Category emoji field (v0.1.107):** compact 64px one-glyph box capped
+  to the first grapheme cluster (`src/lib/emoji.ts`, 6 smoke checks).
+- **Default emoji (v0.1.108):** new categories pre-fill with 💰.
 
 Candidate next steps (ask the user, don't assume):
 - Parked: console-clearing prod walkthrough of the ledger-by-construction fix;
