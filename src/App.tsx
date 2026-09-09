@@ -25,6 +25,9 @@ export default function App() {
   // any section (the tab switches to Cash Flow first, where the sheet +
   // toast live).
   const [smartOpen, setSmartOpen] = useState(false);
+  // The Categories add-category sheet is owned here (controlled) so the
+  // smart-entry "no categories" guard can open it right after switching tabs.
+  const [catsAdding, setCatsAdding] = useState(false);
   // One-time PWA install nudge (install-app-signal).
   const install = useInstallSignal();
 
@@ -46,9 +49,15 @@ export default function App() {
     setSmartOpen(true);
   };
   // The smart-entry "no categories" guard sends the user here: close the
-  // sheet and land on the Categories tab where they can add some.
-  const goToCategories = () => {
+  // sheet, land on the Categories tab, and open the add-category form
+  // immediately (2026-09: the guard's button IS the add-category action).
+  const goToAddCategory = () => {
     setSmartOpen(false);
+    setTab('categories');
+    setCatsAdding(true);
+  };
+  // Budgets' own "no categories to budget" guard navigates without the form.
+  const goToCategories = () => {
     setTab('categories');
   };
 
@@ -66,7 +75,7 @@ export default function App() {
             isToday={isCurrentPeriod(period, startDay)}
             smartOpen={smartOpen}
             onCloseSmart={() => setSmartOpen(false)}
-            onGoToCategories={goToCategories}
+            onGoToCategories={goToAddCategory}
           />
         )}
         {tab === 'budgets' && (
@@ -78,7 +87,7 @@ export default function App() {
             onGoToCategories={goToCategories}
           />
         )}
-        {tab === 'categories' && <Categories />}
+        {tab === 'categories' && <Categories adding={catsAdding} onAddingChange={setCatsAdding} />}
         {tab === 'settings' && <Settings />}
       </main>
 

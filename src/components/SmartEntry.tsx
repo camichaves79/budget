@@ -333,14 +333,14 @@ export function SmartEntry({ onClose, onGoToCategories, onToast }: Props) {
   };
 
   // Friendly guard (2026-09): with no active categories, neither smart entry
-  // nor the manual form can record anything — point the user at Categories
-  // and take them there (the button closes the sheet and switches tabs).
+  // nor the manual form can record anything — the button IS the add-category
+  // action (closes the sheet, switches to Categories, opens the add form).
   if (data.categories.every((c) => c.archived) || data.categories.length === 0) {
     return (
       <>
         <EmptyState emoji="🏷️" title={t('cats.emptyTitle')} hint={t('cats.emptyHint')} />
         <button type="button" className="btn btn-primary btn-block" onClick={onGoToCategories}>
-          {t('cats.goToCategories')}
+          {t('cats.addCategory')}
         </button>
       </>
     );

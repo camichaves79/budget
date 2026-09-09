@@ -12,12 +12,18 @@ import { EmptyState } from '../components/EmptyState';
  * Categories tab (2026-09 redesign): category management moved out of
  * Settings into its own first-class tab — add / rename / delete the expense
  * and income categories smart entry and budgets use. Pinned-header layout,
- * matching Cash Flow and Budgets.
+ * matching Cash Flow and Budgets. The add-category sheet is controlled by
+ * App so the smart-entry guard can open it immediately after switching tabs.
  */
-export function Categories() {
+export function Categories({
+  adding,
+  onAddingChange,
+}: {
+  adding: boolean;
+  onAddingChange: (next: boolean) => void;
+}) {
   const { data, dispatch } = useStore();
 
-  const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<Category | null>(null);
   const [deleting, setDeleting] = useState<Category | null>(null);
 
@@ -50,18 +56,18 @@ export function Categories() {
             onEdit={(c) => setEditing(c)}
             onDelete={(c) => setDeleting(c)}
           />
-          <button type="button" className="btn btn-block" onClick={() => setAdding(true)}>
+          <button type="button" className="btn btn-block" onClick={() => onAddingChange(true)}>
             {t('cats.addCategory')}
           </button>
         </div>
       </div>
 
-      <Sheet className="sheet-tight" open={adding} onClose={() => setAdding(false)} title={t('cats.newCategory')}>
+      <Sheet className="sheet-tight" open={adding} onClose={() => onAddingChange(false)} title={t('cats.newCategory')}>
         <CategoryForm
-          onClose={() => setAdding(false)}
+          onClose={() => onAddingChange(false)}
           onSave={(cat) => {
             dispatch({ type: 'addCategory', cat: { ...cat, archived: false } });
-            setAdding(false);
+            onAddingChange(false);
           }}
         />
       </Sheet>
