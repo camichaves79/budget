@@ -553,6 +553,142 @@ select:focus-visible {
   }
 }
 
+/* ---------- First-open welcome modal (first-open-welcome) ---------- */
+
+/* One-time greeting on a deep-mint card (--accent #2d6a4f) with white text:
+   green = growth / calm / "go", and it's the brand already — the welcome
+   feels like the app. The ONLY white block on the card is the CTA, so the
+   tap target is unmistakable. Contrast: white on #2d6a4f ≈ 7:1 (AA), hints
+   at 85% white stay ≥ 4.5:1. Above sheets (z 40), below toasts (z 60). */
+.welcome-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(16, 33, 43, 0.55);
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--pad-lg);
+  animation: fade 0.15s ease-out;
+}
+
+.welcome-card {
+  background: var(--accent);
+  color: #fff;
+  width: 100%;
+  max-width: 360px;
+  max-height: 100%;
+  overflow-y: auto;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  padding: var(--pad-lg) var(--pad-md);
+  text-align: center;
+  box-shadow: 0 12px 40px rgba(27, 48, 34, 0.35);
+  animation: welcome-pop 0.24s ease-out;
+}
+
+@keyframes welcome-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Inverted coin: a white disc with a bold green $5 and a soft white halo
+   (the mirror of the tab-bar coin, readable on the mint card). */
+.welcome-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: #fff;
+  color: var(--primary);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.22);
+  margin-bottom: 12px;
+}
+
+.welcome-title {
+  margin: 0 0 6px;
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  color: #fff;
+}
+
+.welcome-intro {
+  margin: 0 0 var(--pad-md);
+  font-size: var(--fs-md);
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.welcome-steps {
+  list-style: none;
+  margin: 0 0 var(--pad-md);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  text-align: start;
+}
+
+.welcome-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.welcome-step-num {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 2px;
+}
+
+.welcome-step-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.welcome-step-text strong {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: #fff;
+}
+
+.welcome-step-text span {
+  font-size: var(--fs-sm);
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+/* The one white block on the card: the inverted CTA, engraving-green text. */
+.welcome-cta {
+  background: #fff;
+  border-color: #fff;
+  color: var(--primary);
+  margin-top: 0;
+  touch-action: manipulation;
+}
+
 /* ---------- Smart entry ---------- */
 
 .smart-textarea {

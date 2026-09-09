@@ -6,6 +6,7 @@ import { currentPeriod, isCurrentPeriod, shiftPeriod } from './lib/periods';
 import { useStore } from './state/store';
 import { TabBar } from './components/TabBar';
 import { InstallBanner } from './components/InstallBanner';
+import { WelcomeModal } from './components/WelcomeModal';
 import type { TabKey } from './components/TabBar';
 import { Dashboard } from './pages/Dashboard';
 import { Budgets } from './pages/Budgets';
@@ -81,6 +82,9 @@ export default function App() {
         {tab === 'settings' && <Settings />}
       </main>
 
+      {/* One-time first-open welcome (first-open-welcome): shown once, before
+          any nudge — it's the "what is this + where to start" moment. */}
+      <WelcomeModal />
       <InstallBanner
         signal={install.signal}
         onDismiss={install.dismiss}

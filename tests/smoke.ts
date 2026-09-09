@@ -3,6 +3,7 @@ import { LANGS, availableLanguages, catalogKeys, catalogs, setLanguage, t, to } 
 import {
   INSTALL_TIP_DELAY_MS, INSTALL_TIP_STORAGE_KEY, decideInstallSignal, isStandalone, uaLooksIos,
 } from '../src/lib/installPrompt';
+import { WELCOME_DELAY_MS, WELCOME_SEEN_KEY, shouldShowWelcome } from '../src/lib/welcome';
 import { AUTO_SEND_PAUSE_MS, MIN_SEND_LENGTH } from '../src/components/SmartEntry';
 import { firstGrapheme } from '../src/lib/emoji';
 import { isValidISODate } from '../src/lib/dates';
@@ -1211,6 +1212,13 @@ await (async () => {
   check('install: dismissal storage key', INSTALL_TIP_STORAGE_KEY, 'budget.installTipDismissed');
   check('install: tip delay positive', INSTALL_TIP_DELAY_MS > 0, true);
   check('i18n en install tip', t('install.iosTip'), 'Tap Share, then “Add to Home Screen”.');
+
+  // ---- first-open welcome modal (first-open-welcome) ----
+  check('welcome: shows when never seen', shouldShowWelcome(false), true);
+  check('welcome: hidden once seen', shouldShowWelcome(true), false);
+  check('welcome: storage key', WELCOME_SEEN_KEY, 'budget.welcomeSeen');
+  check('welcome: delay lets the first paint land', WELCOME_DELAY_MS > 0 && WELCOME_DELAY_MS < INSTALL_TIP_DELAY_MS, true);
+  check('i18n en welcome title', t('welcome.title'), 'Welcome to $5 Budget');
 
   // ---- voice auto-send guardrails (ui-miscelaneous-0012) ----
   check('smart: min send length blocks stray entries', MIN_SEND_LENGTH, 3);
