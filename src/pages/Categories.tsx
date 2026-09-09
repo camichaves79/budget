@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { t } from '../lib/i18n';
+import { firstGrapheme } from '../lib/emoji';
 import type { FormEvent } from 'react';
 import type { Category, TxType } from '../lib/types';
 import { useStore } from '../state/store';
@@ -183,9 +184,9 @@ function CategoryForm({
         <input
           id="cat-emoji"
           type="text"
-          className="input"
+          className="input cat-emoji-input"
           value={emoji}
-          onChange={(e) => setEmoji(e.target.value)}
+          onChange={(e) => setEmoji(firstGrapheme(e.target.value.trim()))}
           aria-label={t('cats.emoji')}
         />
       </div>

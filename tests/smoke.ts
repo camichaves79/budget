@@ -4,6 +4,7 @@ import {
   INSTALL_TIP_DELAY_MS, INSTALL_TIP_STORAGE_KEY, decideInstallSignal, isStandalone, uaLooksIos,
 } from '../src/lib/installPrompt';
 import { AUTO_SEND_PAUSE_MS, MIN_SEND_LENGTH } from '../src/components/SmartEntry';
+import { firstGrapheme } from '../src/lib/emoji';
 import { isValidISODate } from '../src/lib/dates';
 import { periodForDate, shiftPeriod } from '../src/lib/periods';
 import { isInPeriod } from '../src/lib/selectors';
@@ -1215,6 +1216,14 @@ await (async () => {
   check('smart: min send length blocks stray entries', MIN_SEND_LENGTH, 3);
   check('smart: auto-send pause between 1 and 5 seconds', AUTO_SEND_PAUSE_MS >= 1000 && AUTO_SEND_PAUSE_MS <= 5000, true);
   check('i18n en auto-send countdown', t('smart.autoSendIn', { sec: 2 }), 'Sending in 2s…');
+
+  // ---- category emoji field (category-emoji-field) ----
+  check('emoji: single emoji stays', firstGrapheme('🏠'), '🏠');
+  check('emoji: several emojis trim to one', firstGrapheme('🏠🔥💧'), '🏠');
+  check('emoji: zwj family counts as one cluster', firstGrapheme('👨‍👩‍👧👍'), '👨‍👩‍👧');
+  check('emoji: plain text keeps first char', firstGrapheme('abc'), 'a');
+  check('emoji: empty stays empty', firstGrapheme(''), '');
+  check('emoji: leading whitespace is trimmed at the call site', firstGrapheme('  🏠'.trim()), '🏠');
 }
 
 if (failures > 0) {
