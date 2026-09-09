@@ -17,11 +17,13 @@ export function Budgets({
   onShiftPeriod,
   onToday,
   isToday,
+  onGoToCategories,
 }: {
   period: Period;
   onShiftPeriod: (delta: number) => void;
   onToday: () => void;
   isToday?: boolean;
+  onGoToCategories: () => void;
 }) {
   const { data, dispatch } = useStore();
   const spent = spentByCategory(data, period);
@@ -64,7 +66,12 @@ export function Budgets({
 
       <div className="pinned-scroll">
         {cats.length === 0 ? (
-          <EmptyState emoji="🎯" title={t('budgets.noExpCats')} hint={t('budgets.noExpCatsHint')} />
+          <>
+            <EmptyState emoji="🎯" title={t('budgets.noExpCats')} hint={t('budgets.noExpCatsHint')} />
+            <button type="button" className="btn btn-primary btn-block" onClick={onGoToCategories}>
+              {t('cats.goToCategories')}
+            </button>
+          </>
         ) : (
           <>
 

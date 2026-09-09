@@ -69,7 +69,13 @@ export default function App() {
           />
         )}
         {tab === 'budgets' && (
-          <Budgets period={period} onShiftPeriod={shift} onToday={jumpToToday} isToday={isCurrentPeriod(period, startDay)} />
+          <Budgets
+            period={period}
+            onShiftPeriod={shift}
+            onToday={jumpToToday}
+            isToday={isCurrentPeriod(period, startDay)}
+            onGoToCategories={goToCategories}
+          />
         )}
         {tab === 'categories' && <Categories />}
         {tab === 'settings' && <Settings />}
