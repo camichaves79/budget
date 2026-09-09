@@ -1,8 +1,9 @@
 # Architecture — $5 Budget App
 
 > **Living record** — updated whenever the app ships a meaningful change.
-> Last updated: **2026-09-08** (main ≈ `78bb1df`, v0.1.114 + docs ritual
-> v0.1.115; **Cloudflare migration COMPLETE** — frontend on `5budget.app`
+> Last updated: **2026-09-09** (main ≈ `0cc5912`, v0.1.115; **Lemon Squeezy
+> store APPROVED — the paywall verification chain is the next session's
+> work**; **Cloudflare migration COMPLETE** — frontend on `5budget.app`
 > (Cloudflare Pages, custom domain), the six API functions on ONE Cloudflare
 > Worker at `api.5budget.app`, Vercel retired; Firebase OAuth JWT now signed
 > with WebCrypto (workerd's nodejs_compat lacks `createSign`); sales ledger

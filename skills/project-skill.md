@@ -447,8 +447,8 @@ in those tight overrides.
 
 ## 10. Current state & next-session context
 
-Everything below is **shipped and live** (main ≈ `78bb1df`, v0.1.114,
-2026-09-08):
+Everything below is **shipped and live** (main ≈ `0cc5912`, v0.1.115,
+2026-09-09):
 
 - Smart entry end-to-end: PWA → Vercel microservice → Gemini 3.6 Flash → instant save
   with fading toasts; review form only for ambiguous parses. Full spec (revised):
@@ -651,9 +651,16 @@ WhatsApp caches previews per URL; the Facebook Sharing Debugger can force a
 re-scrape.
 
 Candidate next steps (ask the user, don't assume):
-- Parked: console-clearing prod walkthrough of the ledger-by-construction fix;
-  LS webhook flip verification (test-mode purchase → watch Firestore) — the
-  webhook URL/secret now live at `api.5budget.app`; enable the Lemon Squeezy
-  storefront (still 403) before any real non-test-mode purchase.
-- Anything else the user raises; always read `skills/speech-entry.md` for the
-  feature spec and this file for conventions before coding.
+- **LEMON SQUEEZY STORE APPROVED (2026-09-09) — the gate is open.** Attack in
+  order: (1) enable the storefront before any real non-test purchase;
+  (2) verify the LS webhook end-to-end now that it lives at `api.5budget.app`
+  (test-mode purchase → watch Firestore — the paywall-ops §6 non-negotiable
+  console check); (3) re-check `GEMINI_PAID_API_KEY` against a licensed parse
+  (re-pasted 2026-09-08, still unverified — mint a test license locally with
+  `BUDGET_LICENSE_SECRET` from `.dev.vars` and run a licensed parse);
+  (4) the console-clearing ledger walkthrough (ledger-by-construction code is
+  live; walkthrough + old-test-row cleanup needs the user's Firebase console).
+- Parked: anything else the user raises; any translation nits found while
+  using the app (catalogs are model-authored — flag anything off).
+- Always read `skills/speech-entry.md` for the feature spec and this file for
+  conventions before coding.
