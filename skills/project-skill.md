@@ -66,7 +66,8 @@ and (except for smart entry) never leaves the device.
   account (restored on any device or reinstall). Server-side sales ledger +
   accountant CSV/JSON export. See `ARCHITECTURE.md` A12–A14 and
   `skills/paywall-ops.md`.
-- COP currency, English UI, single user, offline-first (except smart entry)
+- COP currency, eleven-language UI (English default), single user,
+  offline-first (except smart entry)
 
 **Confirmed decisions:**
 - Budget period start day is **user-configurable (1–28, default 25)** via Settings →
@@ -110,7 +111,7 @@ and (except for smart entry) never leaves the device.
   the bundler to lose. Client dep: `firebase` (auth module only, modular
   imports) — the one deliberate dependency addition, justified by A13.
 - No router, no UI library, no icon library (inline stroke SVGs)
-- Lint: `oxlint` · Tests: hand-rolled smoke suite (`tests/smoke.ts`, 347 checks)
+- Lint: `oxlint` · Tests: hand-rolled smoke suite (`tests/smoke.ts`, 353 checks)
 - npm scripts: `dev` · `build` (tsc -b && vite build) · `lint` · `preview` ·
   `test` (bundles tests/smoke.ts via `vite.test.config.ts` into `.smoke/` and runs it)
 - **Local npm quirk:** the global npm cache in this environment has permission issues.
@@ -213,7 +214,8 @@ tests/smoke.ts      # logic tests: money, periods, selectors, LLM validators,
 public/             # favicon.svg (mint + banknote + "$5"), manifest.webmanifest
                     # ("$5 Budget"), icon-192/512.png, apple-touch-icon.png,
                     # sw.js (network-first, no pre-cache, prod-only registration)
-tools/              # icon.svg (icon source of truth) + render-icons.mjs (sharp)
+tools/              # icon.svg (icon source of truth) + og.svg (share-card
+                    # source) + render-icons.mjs (sharp: icons + public/og.png)
 .github/workflows/deploy.yml  # GitHub Pages on push to main; bakes VITE_* repo secrets
 ```
 
@@ -306,7 +308,7 @@ in those tight overrides.
   limiter, request sanitizer, Gemini array parser, retry policy, response cache),
   **license/paywall logic** (token sign/verify/meter, free-allowance quota, LS fee
   math, order→ledger mapping, webhook signature, CSV export) plus the
-  install-nudge decision core and the emoji grapheme cap. 347 checks.
+  install-nudge decision core and the emoji grapheme cap. 353 checks.
 - `npm run build` + `npm run lint` before shipping. Lint has 5 known harmless
   warnings (react-refresh export rules in `store.tsx`/`entitlement.tsx`/
   `AmountInput.tsx` and one set-state-in-effect in `App.tsx`).
@@ -322,7 +324,8 @@ in those tight overrides.
   `floating-field-labels`, `select-chevron-fix`, `icon-color`, `parse-resilience`,
   `multi-transaction-entry`, `paid-key-fallback`, `four-sections`,
   `plus-sing-relocation`, `install-app-signal`, `budgets-no-categories-guard`,
-  `category-emoji-field`, `default-emoji-moneybag`, `first-open-welcome`).
+  `category-emoji-field`, `default-emoji-moneybag`, `first-open-welcome`,
+  `smart-submit-lock`, `i18n-german`, `og-share-preview`).
 - **Only commit/push when the user explicitly says so.**
 - **"ship"** = commit → push branch → fast-forward merge into `main` → push → delete
   branch locally and remotely → verify deploys. History stays linear (no merge commits).
@@ -444,7 +447,7 @@ in those tight overrides.
 
 ## 10. Current state & next-session context
 
-Everything below is **shipped and live** (main ≈ `bd9e324`, v0.1.110,
+Everything below is **shipped and live** (main ≈ `78bb1df`, v0.1.114,
 2026-09-08):
 
 - Smart entry end-to-end: PWA → Vercel microservice → Gemini 3.6 Flash → instant save
@@ -565,10 +568,11 @@ accountant CSV has the rows.
   commit count) with a breaking/major/minor classification — `v0.1.94`,
   classified **Minor**. See §8.
 
-**Localization (2026-09, three ships, iPhone-approved):** ten UI languages
+**Localization (2026-09, four ships, iPhone-approved):** eleven UI languages
 behind `src/lib/i18n.ts` — `i18n-core` (`32350a9`, en/es/fr/pt, v0.1.96
 major), `i18n-review-fixes` (`b79b62e`, 22 wording corrections, v0.1.97
-minor), `i18n-scripts` (`ebce377`, zh/hi/bn/ru/ur/ar + RTL, v0.1.98 major).
+minor), `i18n-scripts` (`ebce377`, zh/hi/bn/ru/ur/ar + RTL, v0.1.98 major),
+`i18n-german` (`51b902b`, de, v0.1.113 major).
 First-run auto-detect + Settings → Language picker (localStorage
 `budget.language`); locale money (`formatMoney`), dates, period labels;
 localized seeded categories for NEW installs only; RTL layout for ar/ur
@@ -579,14 +583,14 @@ total); catalogs model-authored.
 **PWA install nudge (`install-app-signal`, `0db4679`, v0.1.103 minor,
 iPhone-approved):** one-time install banner (fixed under the status area,
 4s delay, dismiss ✕) — iOS Safari gets a Share → "Add to Home Screen" tip
-(`install.iosTip` in all ten catalogs) and Chromium gets an Install button
+(`install.iosTip` in all eleven catalogs) and Chromium gets an Install button
 wired to a captured `beforeinstallprompt`; never shows inside the
 installed app (`navigator.standalone` + `display-mode: standalone`) or
 after dismissal (localStorage `budget.installTipDismissed`). Shipped with
 a minimal network-first service worker (`public/sw.js`, no pre-cache,
 prod-only) that unlocks Chromium installability + offline reloads of
 visited pages (A17). Pure decision logic in `src/lib/installPrompt.ts`,
-smoke-tested (suite now 347 checks).
+smoke-tested (suite now 353 checks).
 
 **UX batch (`ui-miscelaneous-0012` + follow-ups, v0.1.105–v0.1.108 minor,
 iPhone-approved 2026-09-08):**
@@ -620,8 +624,31 @@ the three essential first moves (add categories → tap $ to record → set
 monthly budgets). Deep-mint card (`--accent` #2d6a4f) with white text
 (AA contrast), white inverted "Get started" CTA, white coin badge; any
 dismissal path (button / backdrop / Escape) marks it seen
-(localStorage `budget.welcomeSeen`); all ten languages + RTL; decision
-core in `src/lib/welcome.ts`, smoke-tested (suite now 347 checks).
+(localStorage `budget.welcomeSeen`); all eleven languages + RTL; decision
+core in `src/lib/welcome.ts`, smoke-tested (suite now 353 checks).
+
+**Smart-entry submit lock (`smart-submit-lock`, `6af5573`, v0.1.112 minor,
+iPhone-approved 2026-09-08):** while a parse is in flight, the smart-entry
+textarea and the "Enter manually instead" switch are disabled (the field
+fades to 55%) — mid-parse edits can no longer be lost by the closing sheet
+or mismatch a failed parse. A failed parse refocuses the textarea with the
+text kept for retry (keyboard returns). CSS: `.input:disabled`.
+
+**German locale (`i18n-german`, `51b902b`, v0.1.113 major, iPhone-approved
+2026-09-08):** the eleventh catalog — full 215 keys in informal "du" tone,
+one/other plurals ("1/3 Transaktionen"), suffix money ("123.456 $"),
+ordinals ("1.", "2."); `de` added to the parse language-hint whitelist
+(`api/parse.js`); first-run auto-detect + picker pick it up automatically.
+Suite now 353 checks.
+
+**Open Graph share previews (`og-share-preview`, `78bb1df`, v0.1.114 minor,
+iPhone-approved 2026-09-08):** a 1200×630 deep-mint share card
+(`public/og.png`, source `tools/og.svg`, rendered by `render-icons.mjs`)
+plus `og:*` + `twitter:*` tags in `index.html` with the ABSOLUTE image URL
+`https://5budget.app/og.png` — WhatsApp/Telegram/iMessage/LinkedIn previews
+show the card, "$5 Budget" title and a friendly description. Note:
+WhatsApp caches previews per URL; the Facebook Sharing Debugger can force a
+re-scrape.
 
 Candidate next steps (ask the user, don't assume):
 - Parked: console-clearing prod walkthrough of the ledger-by-construction fix;

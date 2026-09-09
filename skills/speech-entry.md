@@ -314,7 +314,7 @@ inferred from input silence:
   timer (`AUTO_SEND_PAUSE_MS` = **2500 ms** in `SmartEntry.tsx`). When it
   fires, the existing submit path runs automatically.
 - While waiting, the sheet shows **"Sending in 2s… / 1s…"** with a **Cancel**
-  link (`smart.autoSendIn` in all ten catalogs); any new input restarts the
+  link (`smart.autoSendIn` in all eleven catalogs); any new input restarts the
   timer, any view transition (review queue, summary, manual mode, submit in
   flight, sheet close) cancels it, and timers die on unmount.
 - **Minimum length:** both the auto-send and the Submit button require
@@ -322,6 +322,10 @@ inferred from input silence:
   stray-character entries can't send (or burn quota).
 - **No error loop:** after a failed parse the text is kept for retry and the
   auto-send never re-arms for the same string; editing the text re-arms it.
+- **Submit lock (v0.1.112):** while a parse is in flight the textarea and
+  the "Enter manually instead" switch are disabled (faded), so mid-parse
+  edits can't be lost or mismatch a failure; a failed parse refocuses the
+  textarea with the text kept.
 - Submitting still works instantly at any time; auto-send is a convenience
   on top, never a replacement.
 
