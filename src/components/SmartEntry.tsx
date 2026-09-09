@@ -217,6 +217,10 @@ export function SmartEntry({ onClose, onGoToCategories, onToast }: Props) {
       // allowance (and the paywall) takes over cleanly.
       if (result.error.kind === 'license') dropLicense();
       onToast('error', result.error.message);
+      // The field is disabled during the flight; bring the keyboard back so
+      // the kept text can be edited/dictated again right away. The timeout
+      // lets React re-enable the textarea before focus is requested.
+      setTimeout(() => textRef.current?.focus(), 0);
       return;
     }
 
@@ -494,6 +498,7 @@ export function SmartEntry({ onClose, onGoToCategories, onToast }: Props) {
           aria-label={t('smart.describe')}
           value={text}
           autoFocus
+          disabled={parsing}
           onChange={(e) => {
             const value = e.target.value;
             setText(value);
@@ -515,7 +520,12 @@ export function SmartEntry({ onClose, onGoToCategories, onToast }: Props) {
         {parsing ? (retrying ? t('smart.retrying') : t('smart.submitting')) : t('smart.submit')}
       </button>
 
-      <button type="button" className="btn btn-block" onClick={() => { clearAutoSend(); setMode('manual'); }}>
+      <button
+        type="button"
+        className="btn btn-block"
+        disabled={parsing}
+        onClick={() => { clearAutoSend(); setMode('manual'); }}
+      >
         {t('smart.manualInstead')}
       </button>
     </form>
