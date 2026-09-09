@@ -111,7 +111,7 @@ and (except for smart entry) never leaves the device.
   the bundler to lose. Client dep: `firebase` (auth module only, modular
   imports) — the one deliberate dependency addition, justified by A13.
 - No router, no UI library, no icon library (inline stroke SVGs)
-- Lint: `oxlint` · Tests: hand-rolled smoke suite (`tests/smoke.ts`, 353 checks)
+- Lint: `oxlint` · Tests: hand-rolled smoke suite (`tests/smoke.ts`, 361 checks)
 - npm scripts: `dev` · `build` (tsc -b && vite build) · `lint` · `preview` ·
   `test` (bundles tests/smoke.ts via `vite.test.config.ts` into `.smoke/` and runs it)
 - **Local npm quirk:** the global npm cache in this environment has permission issues.
@@ -308,7 +308,7 @@ in those tight overrides.
   limiter, request sanitizer, Gemini array parser, retry policy, response cache),
   **license/paywall logic** (token sign/verify/meter, free-allowance quota, LS fee
   math, order→ledger mapping, webhook signature, CSV export) plus the
-  install-nudge decision core and the emoji grapheme cap. 353 checks.
+  install-nudge decision core and the emoji grapheme cap. 361 checks.
 - `npm run build` + `npm run lint` before shipping. Lint has 5 known harmless
   warnings (react-refresh export rules in `store.tsx`/`entitlement.tsx`/
   `AmountInput.tsx` and one set-state-in-effect in `App.tsx`).
@@ -325,7 +325,7 @@ in those tight overrides.
   `multi-transaction-entry`, `paid-key-fallback`, `four-sections`,
   `plus-sing-relocation`, `install-app-signal`, `budgets-no-categories-guard`,
   `category-emoji-field`, `default-emoji-moneybag`, `first-open-welcome`,
-  `smart-submit-lock`, `i18n-german`, `og-share-preview`).
+  `smart-submit-lock`, `i18n-german`, `og-share-preview`, `ledger-csv-invoice-fix`).
 - **Only commit/push when the user explicitly says so.**
 - **"ship"** = commit → push branch → fast-forward merge into `main` → push → delete
   branch locally and remotely → verify deploys. History stays linear (no merge commits).
@@ -447,7 +447,7 @@ in those tight overrides.
 
 ## 10. Current state & next-session context
 
-Everything below is **shipped and live** (main ≈ `0cc5912`, v0.1.115,
+Everything below is **shipped and live** (main ≈ `74c99d4`, v0.1.117,
 2026-09-09):
 
 - Smart entry end-to-end: PWA → Vercel microservice → Gemini 3.6 Flash → instant save
@@ -651,16 +651,37 @@ WhatsApp caches previews per URL; the Facebook Sharing Debugger can force a
 re-scrape.
 
 Candidate next steps (ask the user, don't assume):
-- **LEMON SQUEEZY STORE APPROVED (2026-09-09) — the gate is open.** Attack in
-  order: (1) enable the storefront before any real non-test purchase;
-  (2) verify the LS webhook end-to-end now that it lives at `api.5budget.app`
-  (test-mode purchase → watch Firestore — the paywall-ops §6 non-negotiable
-  console check); (3) re-check `GEMINI_PAID_API_KEY` against a licensed parse
-  (re-pasted 2026-09-08, still unverified — mint a test license locally with
-  `BUDGET_LICENSE_SECRET` from `.dev.vars` and run a licensed parse);
-  (4) the console-clearing ledger walkthrough (ledger-by-construction code is
-  live; walkthrough + old-test-row cleanup needs the user's Firebase console).
-- Parked: anything else the user raises; any translation nits found while
-  using the app (catalogs are model-authored — flag anything off).
+- **LS STORE APPROVED + FIRST LIVE SALE VERIFIED (2026-09-09):** the whole
+  post-approval chain is proven end-to-end — live checkout → phone redeem
+  ("License active ✓") → Firestore (sales/licenses/entitlements, the
+  paywall-ops §6 non-negotiable check) → LS webhook 200 → accountant CSV;
+  `GEMINI_PAID_API_KEY` verified against licensed parses (local mint +
+  prod parse with zero `paid key rejected` log lines). The live product:
+  **"$5 Budget — Smart Entry (1 year)"** — **COP 17,500/year SUBSCRIPTION**
+  (auto-renew), license keys enabled with unlimited activations, checkout
+  UUID `37a51134-…` (old: `3ea610ea-…`); `VITE_CHECKOUT_URL` updated in
+  Pages (Production) + local `.env`. The Worker now holds **LIVE LS
+  credentials**: API key, a fresh webhook signing secret (the 401s came
+  from a test-side secret), and store id `468123` — note LS splits
+  test/live keys, webhooks AND products per side; a test-mode toggle on a
+  live product does NOT produce a test order. First sale: order `9426883`
+  (order_number `4681231`, COP 17,501.25, license `03ec4a76-…`, renews
+  2027-09-09). Firestore was reset to this one clean row (old test rows
+  gone with the pre-approval test store's data).
+- **Ledger fixes (`ledger-csv-invoice-fix`, `74c99d4`, v0.1.117 minor):**
+  the accountant CSV's `fees_estimate`/`net_estimate` columns rendered
+  EMPTY since ship (doc keys were `fees`/`net`) — now canonical + legacy
+  fallback; the +$0.50 fee baseline converts via the order's
+  `currency_rate` for non-USD orders; webhook/redeem merges route through
+  `saleRowForMerge` so they can no longer null out a stored `invoice_url`
+  (that's how the first sale lost its invoice link). Suite now 361 checks.
+- **One cosmetic loose end:** the live row's `invoice_url` fills on ONE
+  `order_created` resend in LS (the new Worker code regenerates it); the
+  CSV already shows everything else.
+- **Parked:** the "$5/year" copy in all eleven catalogs now that the
+  product is COP 17,500/yr (i18n ship); LS housekeeping (delete the
+  test-side webhook, revoke the test API key); Preview env vars on Pages
+  (only NODE_VERSION there — harmless, branch previews unused); any
+  translation nits found while using the app.
 - Always read `skills/speech-entry.md` for the feature spec and this file for
   conventions before coding.

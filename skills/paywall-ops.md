@@ -34,14 +34,22 @@
 - **Sales ledger** in Firestore (webhook-fed), exported for the accountant at
   `GET /api/ledger/export?format=csv` (header `x-budget-admin`).
 
-## 2. Pricing (approved)
+## 2. Pricing (approved, amended 2026-09-09)
 
-- **$5/year**, one-time product, manual renewal (v1). Brand-aligned; expected
-  earnings at 50 paying users ≈ $55–100/yr (see the session cost model).
+- **COP 17,500/year, SUBSCRIPTION with auto-renew** — the live product since
+  the store's approval (first real sale 2026-09-09: order `9426883`, ≈ US$5.62
+  at LS's `currency_rate` 0.00032112, renews 2027-09-09). The original
+  $5-one-time/manual-renewal plan was superseded at product creation (user's
+  call, 2026-09-09); license keys are enabled with UNLIMITED activations.
+  Brand-aligned; expected earnings at 50 paying users ≈ $55–100/yr (see the
+  session cost model).
 - Cost math: Gemini ≈ $0.00036–0.00048/parse (Lite→Flash, paid key); LS fee
-  5% + $0.50 per sale (**+1.5% international-card / PayPal, +0.5% subscription**
-  surcharges may apply — the ledger's fee/net columns are ESTIMATES; payout
-  reports are the reconciliation truth); chargebacks: **$15 dispute fee**.
+  5% + $0.50 per sale (**+1.5% international-card / PayPal, +0.5% subscription
+  now applies**); the ledger's fee/net columns are ESTIMATES (currency-aware
+  since v0.1.117: the $0.50 baseline converts via the order's
+  `currency_rate`); payout reports are the reconciliation truth);
+  chargebacks: **$15 dispute fee**. Store currency is COP — expect COP
+  payout reports.
 - Scale knobs (documented, not implemented): conversion %, free-allowance size,
   Gemini context caching, price. See `ARCHITECTURE.md` §5.
 
@@ -161,6 +169,14 @@ write path is failing silently — stop and diagnose per §9 before treating the
 feature as working (restore alone is NOT proof: it self-heals from the LS
 orders API without Firestore).
 
+**Live-side credentials (2026-09-09):** LS splits test/live across API keys,
+webhooks AND products — a key only works on its own side, webhooks must be
+added per side, and the checkout's test-mode toggle does NOT turn a live
+product's order into a test order. The Worker now holds LIVE values: API key,
+a fresh signing secret (the post-approval 401s were a test-side secret), and
+store id `468123`. The accountant CSV renders `fees_estimate`/`net_estimate`
+correctly since v0.1.117 (legacy `fees`/`net` doc keys fall back).
+
 ## 7. Operations
 
 - **Accountant export:** `curl -H "x-budget-admin: <secret>"
@@ -239,3 +255,19 @@ auth boundary: `OAuthProvider('apple.com')` + a Service ID + private key.)
   2026-09-08 on the Worker):** all
   three collections populated for the test orders and the accountant CSV
   export has the rows.
+- **Test/live split (2026-09-09, the post-approval surprise):** once a store is
+  activated, test mode is a SEPARATE environment with its own products, API
+  keys and webhooks. Pre-approval credentials silently stop working on live
+  orders (redeem 404s; webhooks 401 or never arrive); the checkout's test-mode
+  toggle alone does not produce test orders for a live product. To test
+  post-approval, either flip the whole admin panel to Test mode and recreate
+  the product/webhook/key there, or — the chosen path at 1 user — make the
+  first sale REAL and verify against the live webhook deliveries + Firestore.
+- **Ledger CSV/invoice regressions (fixed `74c99d4`, v0.1.117):** the CSV's
+  fee/net columns rendered empty since ship (doc keys `fees`/`net` vs the
+  `fees_estimate`/`net_estimate` contract — now canonical with legacy
+  fallback), the +$0.50 fee baseline was USD-only (now converts via
+  `currency_rate`), and webhook/redeem merge-sets wrote `invoice_url: null`
+  over stored URLs (now routed through `saleRowForMerge`). If a sales row is
+  ever missing its `invoice_url`, re-send the LS `order_created` webhook —
+  the handler regenerates it.
