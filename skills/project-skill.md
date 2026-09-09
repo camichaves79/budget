@@ -110,7 +110,7 @@ and (except for smart entry) never leaves the device.
   the bundler to lose. Client dep: `firebase` (auth module only, modular
   imports) — the one deliberate dependency addition, justified by A13.
 - No router, no UI library, no icon library (inline stroke SVGs)
-- Lint: `oxlint` · Tests: hand-rolled smoke suite (`tests/smoke.ts`, 342 checks)
+- Lint: `oxlint` · Tests: hand-rolled smoke suite (`tests/smoke.ts`, 347 checks)
 - npm scripts: `dev` · `build` (tsc -b && vite build) · `lint` · `preview` ·
   `test` (bundles tests/smoke.ts via `vite.test.config.ts` into `.smoke/` and runs it)
 - **Local npm quirk:** the global npm cache in this environment has permission issues.
@@ -162,6 +162,7 @@ src/
     installPrompt.ts # PWA install detection (install-app-signal): standalone/
                     # iOS sniffing, beforeinstallprompt capture, one-time
                     # localStorage dismissal, useInstallSignal hook
+    welcome.ts      # first-open welcome decision core (storage flag + delay)
   state/store.tsx   # Context + useReducer, auto-saves to localStorage on every change
   state/entitlement.tsx # EntitlementProvider: license token, quota remaining,
                     # auth user; actions: recordParseUse, applyLicense,
@@ -176,7 +177,8 @@ src/
                     # button + manual-entry pointer),
                     # FloatField (label-inside-box pattern), Toast (fading feedback),
                     # InstallBanner (one-time PWA install nudge: iOS share tip +
-                    # Chromium install button)
+                    # Chromium install button), WelcomeModal (one-time first-open
+                    # welcome: what the app is + the 3 essential first steps)
   pages/            # Dashboard.tsx (Cash Flow + smart sheet + toast), Budgets.tsx,
                     # Categories.tsx (category management), Settings.tsx
 api/parse.js        # Vercel Function (route /api/parse): Gemini proxy. Plain JS with
@@ -304,7 +306,7 @@ in those tight overrides.
   limiter, request sanitizer, Gemini array parser, retry policy, response cache),
   **license/paywall logic** (token sign/verify/meter, free-allowance quota, LS fee
   math, order→ledger mapping, webhook signature, CSV export) plus the
-  install-nudge decision core and the emoji grapheme cap. 342 checks.
+  install-nudge decision core and the emoji grapheme cap. 347 checks.
 - `npm run build` + `npm run lint` before shipping. Lint has 5 known harmless
   warnings (react-refresh export rules in `store.tsx`/`entitlement.tsx`/
   `AmountInput.tsx` and one set-state-in-effect in `App.tsx`).
@@ -320,7 +322,7 @@ in those tight overrides.
   `floating-field-labels`, `select-chevron-fix`, `icon-color`, `parse-resilience`,
   `multi-transaction-entry`, `paid-key-fallback`, `four-sections`,
   `plus-sing-relocation`, `install-app-signal`, `budgets-no-categories-guard`,
-  `category-emoji-field`, `default-emoji-moneybag`).
+  `category-emoji-field`, `default-emoji-moneybag`, `first-open-welcome`).
 - **Only commit/push when the user explicitly says so.**
 - **"ship"** = commit → push branch → fast-forward merge into `main` → push → delete
   branch locally and remotely → verify deploys. History stays linear (no merge commits).
@@ -442,7 +444,7 @@ in those tight overrides.
 
 ## 10. Current state & next-session context
 
-Everything below is **shipped and live** (main ≈ `1e7550c`, v0.1.108,
+Everything below is **shipped and live** (main ≈ `bd9e324`, v0.1.110,
 2026-09-08):
 
 - Smart entry end-to-end: PWA → Vercel microservice → Gemini 3.6 Flash → instant save
@@ -584,7 +586,7 @@ after dismissal (localStorage `budget.installTipDismissed`). Shipped with
 a minimal network-first service worker (`public/sw.js`, no pre-cache,
 prod-only) that unlocks Chromium installability + offline reloads of
 visited pages (A17). Pure decision logic in `src/lib/installPrompt.ts`,
-smoke-tested (suite now 342 checks).
+smoke-tested (suite now 347 checks).
 
 **UX batch (`ui-miscelaneous-0012` + follow-ups, v0.1.105–v0.1.108 minor,
 iPhone-approved 2026-09-08):**
@@ -610,6 +612,16 @@ iPhone-approved 2026-09-08):**
 - **Category emoji field (v0.1.107):** compact 64px one-glyph box capped
   to the first grapheme cluster (`src/lib/emoji.ts`, 6 smoke checks).
 - **Default emoji (v0.1.108):** new categories pre-fill with 💰.
+
+**First-open welcome (`first-open-welcome`, `bd9e324`, v0.1.110 minor,
+iPhone-approved 2026-09-08):** a one-time welcome modal 500ms after first
+open — "Welcome to $5 Budget", one sentence on what the app is for, and
+the three essential first moves (add categories → tap $ to record → set
+monthly budgets). Deep-mint card (`--accent` #2d6a4f) with white text
+(AA contrast), white inverted "Get started" CTA, white coin badge; any
+dismissal path (button / backdrop / Escape) marks it seen
+(localStorage `budget.welcomeSeen`); all ten languages + RTL; decision
+core in `src/lib/welcome.ts`, smoke-tested (suite now 347 checks).
 
 Candidate next steps (ask the user, don't assume):
 - Parked: console-clearing prod walkthrough of the ledger-by-construction fix;

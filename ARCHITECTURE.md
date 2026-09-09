@@ -1,8 +1,8 @@
 # Architecture — $5 Budget App
 
 > **Living record** — updated whenever the app ships a meaningful change.
-> Last updated: **2026-09-08** (main ≈ `1e7550c`, v0.1.108 + docs ritual
-> v0.1.109; **Cloudflare migration COMPLETE** — frontend on `5budget.app`
+> Last updated: **2026-09-08** (main ≈ `bd9e324`, v0.1.110 + docs ritual
+> v0.1.111; **Cloudflare migration COMPLETE** — frontend on `5budget.app`
 > (Cloudflare Pages, custom domain), the six API functions on ONE Cloudflare
 > Worker at `api.5budget.app`, Vercel retired; Firebase OAuth JWT now signed
 > with WebCrypto (workerd's nodejs_compat lacks `createSign`); sales ledger
@@ -20,6 +20,13 @@
 > the category emoji field is a compact one-glyph box (first-grapheme cap,
 > money-bag default); the Settings select chevron no longer collides with
 > the day text.
+> **First-open welcome, iPhone-approved (2026-09-08, v0.1.110):** a
+> one-time welcome modal shortly after first open — one sentence on what
+> the app is for plus the three essential first moves (add categories →
+> tap $ to record → set monthly budgets) — on a deep-mint card with white
+> text and a white inverted CTA; any dismissal path (button, backdrop,
+> Escape) marks it seen (localStorage `budget.welcomeSeen`); all ten
+> languages + RTL; decision core in `src/lib/welcome.ts`, smoke-tested.
 > **UI polish batch, user-approved on the iPhone (2026-09):** Cash Flow
 > summary as ONE shared card with a terracotta negative balance,
 > coin-style bold `$` add button, smart-entry sheet copy refresh, amount
@@ -114,7 +121,7 @@ iPhone PWA ──HTTPS──▶ Cloudflare Pages (static, CDN, `5budget.app`)   
 | **Privacy** | Strong | Transaction history never leaves the device; only utterance + category list are sent; logs carry metadata only (status/model/retryDelay). The cloud now stores identity, entitlement and purchase metadata (A13) — budget data still never leaves the device. Free-tier Gemini data-use caveat remains; the licensed tier uses a paid key (the opt-out). |
 | **Maintainability** | Good | ~2k LOC app + one 600-line function; pure logic modules; UI copy centralized in `src/lib/i18n.ts`; docs in `skills/`; conventions in `project-skill.md`. |
 | **Observability** | Weakest link | Worker logs (Cloudflare → `budget-api` → Logs) are metadata-only and ad-hoc; no metrics, no alerting, no error budget. The sales ledger + per-license usage meters improve visibility; diagnosis still = user report + log grep. |
-| **Testability** | Solid for logic, thin for UI | 342 smoke checks cover money/periods/validators/microservice helpers/license+paywall logic (incl. the paid-key fallback), the install-nudge decision core, the emoji grapheme cap, plus i18n catalog completeness, placeholder parity, plurals and per-locale money; no UI test framework; handler smoke-testable via fetch stubbing. |
+| **Testability** | Solid for logic, thin for UI | 347 smoke checks cover money/periods/validators/microservice helpers/license+paywall logic (incl. the paid-key fallback), the install-nudge decision core, the emoji grapheme cap, plus i18n catalog completeness, placeholder parity, plurals and per-locale money; no UI test framework; handler smoke-testable via fetch stubbing. |
 | **Cost efficiency** | $5/yr license, ~40–70% ROI | Infra stays free at current scale; operating cost is almost entirely Gemini usage. The free tier's cross-subsidy is the scale risk (A12, §5) — free users' Gemini ≈ $0.14/user/yr vs $4.25 net per payer. |
 | **Portability** | Medium | Provider swap is one function + one client module; storage adapter swappable; backend pinned to the Node-style `handler(req, res)` contract behind `worker.js`'s Web-Request shim. |
 
