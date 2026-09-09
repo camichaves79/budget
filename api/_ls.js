@@ -53,8 +53,11 @@ export async function fetchOrderById(orderId) {
 
 /**
  * Fetch the first order matching an order_number (GET /v1/orders?filter[order_number]=N).
+ * Returns the NUMERIC order id alongside the attributes — the id is what the
+ * LS order endpoints (e.g. generate-invoice) accept, while the attributes'
+ * `identifier` is the UUID used for Firestore doc keys.
  * @param {string} orderNumber
- * @returns {Promise<Record<string, unknown> | null>}
+ * @returns {Promise<{ id: string, attributes: Record<string, unknown> } | null>}
  */
 export async function findOrderByNumber(orderNumber) {
   const key = apiKey();
@@ -71,8 +74,10 @@ export async function findOrderByNumber(orderNumber) {
     if (!Array.isArray(list) || list.length === 0) return null;
     const first = list[0];
     if (!first || typeof first !== 'object') return null;
-    const attrs = /** @type {Record<string, unknown>} */ (first).attributes;
-    return attrs && typeof attrs === 'object' ? /** @type {Record<string, unknown>} */ (attrs) : null;
+    const attrs = /** @type {Record<string, unknown>} */ ((/** @type {Record<string, unknown>} */ (first)).attributes);
+    const id = /** @type {Record<string, unknown>} */ (first).id;
+    if (!attrs || typeof attrs !== 'object') return null;
+    return { id: typeof id === 'string' ? id : String(id ?? ''), attributes: attrs };
   } catch {
     return null;
   }

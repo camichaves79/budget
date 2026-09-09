@@ -84,20 +84,32 @@ async function redeem(req, res, cors) {
 
   // Resolve the reference to order attributes. The key path goes through the
   // License API's validate endpoint (no activation consumed), which yields
-  // meta.order_id.
+  // meta.order_id. `numericId` tracks the NUMERIC LS order id — the one the
+  // order endpoints (generate-invoice) accept — separately from the
+  // attributes' UUID `identifier` (the Firestore doc key).
   let attributes = null;
+  let numericId = '';
   if (key) {
     const validated = await validateLicenseKey(key);
     const metaOrderId = validated.valid && validated.meta ? validated.meta.order_id : null;
     if (typeof metaOrderId === 'number' || (typeof metaOrderId === 'string' && metaOrderId !== '')) {
-      const byId = await fetchOrderById(String(metaOrderId));
+      numericId = String(metaOrderId);
+      const byId = await fetchOrderById(numericId);
       attributes = byId.attributes;
     }
   }
   if (!attributes && orderId) {
     const byId = await fetchOrderById(orderId);
-    if (byId.attributes) attributes = byId.attributes;
-    else if (/^\d+$/.test(orderId)) attributes = await findOrderByNumber(orderId);
+    if (byId.attributes) {
+      attributes = byId.attributes;
+      numericId = orderId;
+    } else if (/^\d+$/.test(orderId)) {
+      const byNumber = await findOrderByNumber(orderId);
+      if (byNumber) {
+        attributes = byNumber.attributes;
+        numericId = byNumber.id;
+      }
+    }
   }
   if (!attributes) {
     send(res, 404, { ok: false, code: 'purchase-not-found' }, cors);
@@ -129,8 +141,8 @@ async function redeem(req, res, cors) {
     // Merge through saleRowForMerge: the raw ledger carries invoice_url:
     // null, which would clobber a URL a webhook wrote earlier.
     await salesRef.set({ ...saleRowForMerge(ledger, existingData), updatedAt: new Date().toISOString() }, { merge: true });
-    if (!existingData.invoice_url) {
-      const invoiceUrl = await generateOrderInvoice(ledger.order_id);
+    if (!existingData.invoice_url && numericId !== '') {
+      const invoiceUrl = await generateOrderInvoice(numericId);
       if (invoiceUrl) await salesRef.set({ invoice_url: invoiceUrl }, { merge: true });
     }
   }

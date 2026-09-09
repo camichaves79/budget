@@ -74,6 +74,9 @@ export default async function handler(req, res) {
   }
 
   const orderId = typeof attributes.identifier === 'string' ? attributes.identifier : '';
+  // NUMERIC LS order id (payload data.id) — the generate-invoice endpoint
+  // rejects the UUID identifier with a 404, so the two ids stay separate.
+  const numericId = typeof data.id === 'string' ? data.id : typeof data.id === 'number' ? String(data.id) : '';
   const fire = db();
   if (!fire || !orderId) {
     send(res, 200, { ok: true, stored: false }, cors);
@@ -106,8 +109,8 @@ export default async function handler(req, res) {
       if (byEmail) uid = byEmail.uid;
     }
     await ensureLicenseForOrder(attributes, uid);
-    if (!existing.invoice_url) {
-      const invoiceUrl = await generateOrderInvoice(orderId);
+    if (!existing.invoice_url && numericId !== '') {
+      const invoiceUrl = await generateOrderInvoice(numericId);
       if (invoiceUrl) await salesRef.set({ invoice_url: invoiceUrl }, { merge: true });
     }
   }

@@ -1058,12 +1058,15 @@ await (async () => {
   process.env.BUDGET_LICENSE_SECRET = 'testlicense';
 
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async (url: string | URL) => {
+  const invoiceCalls: string[] = [];
+  const commits: Array<{ name: string; fields: Record<string, unknown> }> = [];
+  globalThis.fetch = (async (url: string | URL, opts: { method?: string; body?: string } = {}) => {
     const u = String(url);
     if (u.includes('service_accounts/v1/jwk')) {
       return new Response(JSON.stringify({ keys: [jwkPub] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
     if (u.includes('api.lemonsqueezy.com/v1/orders/424242/generate-invoice')) {
+      invoiceCalls.push(u);
       return new Response(JSON.stringify({ meta: { urls: { download_invoice: 'https://invoice.test' } } }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -1082,6 +1085,10 @@ await (async () => {
       });
     }
     if (u.includes('firestore.googleapis.com') && u.includes(':commit')) {
+      const body = JSON.parse(opts.body ?? '{}') as { writes?: Array<Record<string, unknown>> };
+      const write = (body.writes ?? [])[0] ?? {};
+      const update = (write.update ?? {}) as { name?: string; fields?: Record<string, unknown> };
+      commits.push({ name: String(update.name ?? ''), fields: update.fields ?? {} });
       return new Response(JSON.stringify({ writeResults: [{}] }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -1129,6 +1136,22 @@ await (async () => {
     const parsed = JSON.parse(r.body) as { ok?: boolean; license?: string };
     check('redeem succeeds for the buyer email', [r.statusCode, parsed.ok === true, typeof parsed.license === 'string' && parsed.license.length > 20], [200, true, true]);
   }
+  // Invoice regression (2026-09): generate-invoice takes the NUMERIC order
+  // id — the identifier UUID answers 404 and the invoice was silently lost.
+  check(
+    'redeem generates the invoice via the numeric order id',
+    invoiceCalls.length === 1 && invoiceCalls[0].endsWith('/orders/424242/generate-invoice'),
+    true,
+  );
+  check(
+    'redeem writes the generated invoice url',
+    commits.some(
+      (c) =>
+        c.name.endsWith('/sales/order-424242') &&
+        (c.fields.invoice_url as { stringValue?: unknown } | undefined)?.stringValue === 'https://invoice.test',
+    ),
+    true,
+  );
 
   globalThis.fetch = originalFetch;
   if (prevSa === undefined) delete process.env.FIREBASE_SERVICE_ACCOUNT;
@@ -1161,8 +1184,9 @@ await (async () => {
   const existingDoc = {
     fields: { order_id: sv('order-clobber'), invoice_url: sv('https://invoice.test'), receipt_url: sv('https://receipt.test') },
   };
+  const noInvoiceDoc = { fields: { order_id: sv('order-noid') } };
   const commits: Array<{ name: string; fields: Record<string, unknown> }> = [];
-  let invoiceCalls = 0;
+  const invoiceCalls: string[] = [];
 
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (url: string | URL, opts: { method?: string; body?: string } = {}) => {
@@ -1171,7 +1195,7 @@ await (async () => {
       return new Response(JSON.stringify({ access_token: 'fake', expires_in: 3600 }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
     if (u.includes('generate-invoice')) {
-      invoiceCalls += 1;
+      invoiceCalls.push(u);
       return new Response(JSON.stringify({ meta: { urls: { download_invoice: 'https://invoice.new' } } }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -1190,6 +1214,9 @@ await (async () => {
     const get = /\/documents\/sales\/([^/?]+)$/.exec(u);
     if (get && get[1] === 'order-clobber') {
       return new Response(JSON.stringify(existingDoc), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (get && get[1] === 'order-noid') {
+      return new Response(JSON.stringify(noInvoiceDoc), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
     return new Response(JSON.stringify({ error: { code: 404, status: 'NOT_FOUND' } }), { status: 404, headers: { 'Content-Type': 'application/json' } });
   }) as typeof fetch;
@@ -1237,7 +1264,49 @@ await (async () => {
   );
   check('webhook answers 200 to a valid order_created', res.statusCode, 200);
   check('webhook merge never writes invoice_url null over a stored url', nullInvoice, false);
-  check('webhook skips invoice generation when the url exists', invoiceCalls, 0);
+  check('webhook skips invoice generation when the url exists', invoiceCalls.length, 0);
+
+  // Invoice regression (2026-09): a doc WITHOUT a stored url gets its invoice
+  // generated via the NUMERIC order id (data.id), never the UUID identifier.
+  {
+    const attrs2 = { ...attrs, identifier: 'order-noid' };
+    const rawBody2 = JSON.stringify({ meta: { event_name: 'order_created' }, data: { id: '98765', attributes: attrs2 } });
+    const sig2 = createHmac('sha256', 'wh-test').update(rawBody2).digest('hex');
+    const req2 = {
+      method: 'POST',
+      headers: { origin: 'https://5budget.app', 'x-signature': sig2 },
+      async *[Symbol.asyncIterator]() {
+        yield Buffer.from(rawBody2);
+      },
+    } as unknown as import('node:http').IncomingMessage;
+    const res2 = {
+      statusCode: 0,
+      headers: {} as Record<string, string>,
+      body: '',
+      setHeader(k: string, v: string) {
+        res2.headers[k] = v;
+      },
+      end(text: string) {
+        res2.body = text ?? '';
+      },
+    } as unknown as import('node:http').ServerResponse;
+    await webhookHandler(req2, res2);
+    check('webhook answers 200 for the no-invoice order', res2.statusCode, 200);
+    check(
+      'webhook generates the invoice via the numeric order id',
+      invoiceCalls.length === 1 && invoiceCalls[0].endsWith('/orders/98765/generate-invoice'),
+      true,
+    );
+    check(
+      'webhook writes the generated invoice url',
+      commits.some(
+        (c) =>
+          c.name.endsWith('/sales/order-noid') &&
+          (c.fields.invoice_url as { stringValue?: unknown } | undefined)?.stringValue === 'https://invoice.new',
+      ),
+      true,
+    );
+  }
 
   globalThis.fetch = originalFetch;
   if (prevSa === undefined) delete process.env.FIREBASE_SERVICE_ACCOUNT;
