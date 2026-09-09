@@ -38,6 +38,9 @@ export function Dashboard({
   const { intl } = useI18n();
   const txs = periodTransactions(data, period);
   const totals = totalsFor(data, period);
+  // The smart sheet drops its "Tell me what the transaction is:" title in the
+  // no-categories guard state — the guard copy speaks for itself (2026-09).
+  const hasActiveCategories = data.categories.some((c) => !c.archived);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Transaction | null>(null);
@@ -165,7 +168,7 @@ export function Dashboard({
         )}
       </div>
 
-      <Sheet className="sheet-tight" open={smartOpen} onClose={onCloseSmart} title={t('dashboard.tellMe')}>
+      <Sheet className="sheet-tight" open={smartOpen} onClose={onCloseSmart} title={hasActiveCategories ? t('dashboard.tellMe') : ''}>
         <SmartEntry
           onClose={onCloseSmart}
           onGoToCategories={onGoToCategories}

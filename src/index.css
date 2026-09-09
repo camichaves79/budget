@@ -874,6 +874,11 @@ html.kb-open .sheet {
   color: var(--primary);
 }
 
+/* Title-less sheets (e.g. the no-categories guard) keep the ✕ on the right. */
+.sheet-head.no-title .icon-btn {
+  margin-left: auto;
+}
+
 @keyframes fade {
   from {
     opacity: 0;

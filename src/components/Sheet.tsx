@@ -56,12 +56,12 @@ export function Sheet({
         className={className ? `sheet ${className}` : 'sheet'}
         role="dialog"
         aria-modal="true"
-        aria-label={title}
+        aria-label={title !== '' ? title : undefined}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="sheet-grabber" />
-        <div className="sheet-head">
-          <h2>{title}</h2>
+        <div className={title !== '' ? 'sheet-head' : 'sheet-head no-title'}>
+          {title !== '' && <h2>{title}</h2>}
           <button type="button" className="icon-btn" onClick={onClose} aria-label={t('close')}>
             ✕
           </button>
