@@ -3,6 +3,7 @@ import { LANGS, availableLanguages, catalogKeys, catalogs, setLanguage, t, to } 
 import {
   INSTALL_TIP_DELAY_MS, INSTALL_TIP_STORAGE_KEY, decideInstallSignal, isStandalone, uaLooksIos,
 } from '../src/lib/installPrompt';
+import { AUTO_SEND_PAUSE_MS, MIN_SEND_LENGTH } from '../src/components/SmartEntry';
 import { isValidISODate } from '../src/lib/dates';
 import { periodForDate, shiftPeriod } from '../src/lib/periods';
 import { isInPeriod } from '../src/lib/selectors';
@@ -1209,6 +1210,11 @@ await (async () => {
   check('install: dismissal storage key', INSTALL_TIP_STORAGE_KEY, 'budget.installTipDismissed');
   check('install: tip delay positive', INSTALL_TIP_DELAY_MS > 0, true);
   check('i18n en install tip', t('install.iosTip'), 'Tap Share, then “Add to Home Screen”.');
+
+  // ---- voice auto-send guardrails (ui-miscelaneous-0012) ----
+  check('smart: min send length blocks stray entries', MIN_SEND_LENGTH, 3);
+  check('smart: auto-send pause between 1 and 5 seconds', AUTO_SEND_PAUSE_MS >= 1000 && AUTO_SEND_PAUSE_MS <= 5000, true);
+  check('i18n en auto-send countdown', t('smart.autoSendIn', { sec: 2 }), 'Sending in 2s…');
 }
 
 if (failures > 0) {

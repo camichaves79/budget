@@ -44,6 +44,12 @@ export default function App() {
     setTab('dashboard');
     setSmartOpen(true);
   };
+  // The smart-entry "no categories" guard sends the user here: close the
+  // sheet and land on the Categories tab where they can add some.
+  const goToCategories = () => {
+    setSmartOpen(false);
+    setTab('categories');
+  };
 
   return (
     <div className="app">
@@ -59,6 +65,7 @@ export default function App() {
             isToday={isCurrentPeriod(period, startDay)}
             smartOpen={smartOpen}
             onCloseSmart={() => setSmartOpen(false)}
+            onGoToCategories={goToCategories}
           />
         )}
         {tab === 'budgets' && (

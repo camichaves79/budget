@@ -23,6 +23,7 @@ export function Dashboard({
   isToday,
   smartOpen,
   onCloseSmart,
+  onGoToCategories,
 }: {
   period: Period;
   onShiftPeriod: (delta: number) => void;
@@ -30,6 +31,7 @@ export function Dashboard({
   isToday?: boolean;
   smartOpen: boolean;
   onCloseSmart: () => void;
+  onGoToCategories: () => void;
 }) {
   const { data, dispatch } = useStore();
   const { lastEvent } = useEntitlement();
@@ -166,6 +168,7 @@ export function Dashboard({
       <Sheet className="sheet-tight" open={smartOpen} onClose={onCloseSmart} title={t('dashboard.tellMe')}>
         <SmartEntry
           onClose={onCloseSmart}
+          onGoToCategories={onGoToCategories}
           onToast={(kind, message) => setToast({ id: Date.now(), kind, message })}
         />
       </Sheet>

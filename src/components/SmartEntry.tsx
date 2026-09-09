@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { Transaction, TxType } from '../lib/types';
 import { useStore } from '../state/store';
@@ -14,6 +14,7 @@ import { EmptyState } from './EmptyState';
 
 interface Props {
   onClose: () => void;
+  onGoToCategories: () => void;
   onToast: (kind: 'success' | 'error', message: string) => void;
 }
 
@@ -27,6 +28,13 @@ interface RecordedItem {
   name: string;
   emoji: string;
 }
+
+/** Voice auto-send: how long the text must stay quiet before submitting. */
+export const AUTO_SEND_PAUSE_MS = 2500;
+
+/** Minimum trimmed utterance length before a send is allowed — blocks
+ *  accidental one-tap / stray-character entries (2026-09). */
+export const MIN_SEND_LENGTH = 3;
 
 /**
  * AI-assisted transaction entry, rendered inside the "Tell me what the
@@ -46,7 +54,7 @@ interface RecordedItem {
  *
  * Errors surface as friendly fading messages and the text is kept for retry.
  */
-export function SmartEntry({ onClose, onToast }: Props) {
+export function SmartEntry({ onClose, onGoToCategories, onToast }: Props) {
   const { data, dispatch } = useStore();
   const { dropLicense, licensedActive, licenseToken, recordParseUse, remaining } = useEntitlement();
   const { intl } = useI18n();
@@ -64,6 +72,16 @@ export function SmartEntry({ onClose, onToast }: Props) {
   const [queueSaved, setQueueSaved] = useState<RecordedItem[]>([]);
   const [queueCount, setQueueCount] = useState(0);
   const textRef = useRef<HTMLTextAreaElement>(null);
+  // Voice auto-send countdown: armed when the text has been quiet; two
+  // ticks (2s → 1s) then submit. Any edit resets it; the hint row lets
+  // the user cancel before it fires.
+  const autoTickRef = useRef<number | null>(null);
+  const autoFireRef = useRef<number | null>(null);
+  const lastAutoTextRef = useRef('');
+  const [autoSendLeft, setAutoSendLeft] = useState(0);
+  // The timer's submit entry point, kept fresh every render (the timer
+  // fires long after the render that armed it).
+  const runSubmitRef = useRef<(utterance: string) => void>(() => {});
 
   // Focus the dictation field whenever the text view is showing so the native
   // keyboard opens. The user activates its microphone button themselves.
@@ -72,6 +90,46 @@ export function SmartEntry({ onClose, onToast }: Props) {
     const timer = setTimeout(() => textRef.current?.focus(), 60);
     return () => clearTimeout(timer);
   }, [mode, draft, recorded, queue]);
+
+  const clearAutoTimers = useCallback(() => {
+    if (autoTickRef.current !== null) {
+      clearTimeout(autoTickRef.current);
+      autoTickRef.current = null;
+    }
+    if (autoFireRef.current !== null) {
+      clearTimeout(autoFireRef.current);
+      autoFireRef.current = null;
+    }
+  }, []);
+
+  /** Cancel a pending auto-send and hide the countdown (handlers only). */
+  const clearAutoSend = useCallback(() => {
+    clearAutoTimers();
+    setAutoSendLeft(0);
+  }, [clearAutoTimers]);
+
+  // Voice auto-send arming (2026-09): runs from the textarea's onChange,
+  // so every input event restarts the quiet-pause timer. A pause of
+  // AUTO_SEND_PAUSE_MS arms the visible countdown ("Sending in 2s…" +
+  // cancel), then submits — long enough not to cut natural dictation
+  // pauses, short enough not to leave the user staring at the screen.
+  const armAutoSend = (value: string) => {
+    const trimmed = value.trim();
+    const canArm = mode === 'smart' && !draft && !recorded && !queue && !parsing;
+    clearAutoSend(); // restart any pending countdown
+    if (!canArm || trimmed.length < MIN_SEND_LENGTH || value === lastAutoTextRef.current) return;
+    setAutoSendLeft(2);
+    autoTickRef.current = window.setTimeout(() => setAutoSendLeft(1), 1000);
+    autoFireRef.current = window.setTimeout(() => {
+      autoFireRef.current = null;
+      setAutoSendLeft(0);
+      runSubmitRef.current(trimmed);
+    }, AUTO_SEND_PAUSE_MS);
+  };
+
+  // Unmount only: cancel any pending auto-send timers. View transitions
+  // cancel through the handlers that cause them (no setState in effects).
+  useEffect(() => clearAutoTimers, [clearAutoTimers]);
 
   const itemFromTx = (tx: Omit<Transaction, 'id'>): RecordedItem => {
     const cat = data.categories.find((c) => c.id === tx.categoryId);
@@ -134,14 +192,13 @@ export function SmartEntry({ onClose, onToast }: Props) {
     setQueueSaved(savedNow);
   };
 
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
+  const runSubmit = async (utterance: string) => {
     if (parsing) return;
-    const utterance = text.trim();
-    if (!utterance) {
-      onToast('error', t('smart.errEmpty'));
-      return;
-    }
+    if (utterance.length < MIN_SEND_LENGTH) return;
+    clearAutoSend();
+    // The auto-send timer must not re-fire for the same text (e.g. after a
+    // failed parse that keeps the text for a manual retry).
+    lastAutoTextRef.current = utterance;
     setParsing(true);
     setRetrying(false);
     // One allowance unit per submission (the automatic retry doesn't count
@@ -193,6 +250,21 @@ export function SmartEntry({ onClose, onToast }: Props) {
     startBatch(drafts);
   };
 
+  /** Manual submit: the form's onSubmit entry point. */
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    runSubmitRef.current(text.trim());
+  };
+
+  // Keep the timer's entry point fresh without re-arming the timer itself
+  // (no deps = refresh every render; the timer fires long after the render
+  // that armed it). Declared after runSubmit so the closure always sees it.
+  useEffect(() => {
+    runSubmitRef.current = (utterance) => {
+      void runSubmit(utterance);
+    };
+  });
+
   const save = (tx: Omit<Transaction, 'id'>) => {
     dispatch({ type: 'addTransaction', tx });
     onToast('success', t('smart.addedSimple', { amount: formatMoney(tx.amountCents) }));
@@ -201,6 +273,7 @@ export function SmartEntry({ onClose, onToast }: Props) {
 
   const saveQueued = (tx: Omit<Transaction, 'id'>) => {
     if (!queue || queue.length === 0) return;
+    clearAutoSend();
     dispatch({ type: 'addTransaction', tx });
     const updated = [...queueSaved, itemFromTx(tx)];
     setQueueSaved(updated);
@@ -216,6 +289,7 @@ export function SmartEntry({ onClose, onToast }: Props) {
 
   const skipQueued = () => {
     if (!queue) return;
+    clearAutoSend();
     const rest = queue.slice(1);
     setQueueCount((n) => n + 1);
     if (rest.length === 0) {
@@ -229,11 +303,13 @@ export function SmartEntry({ onClose, onToast }: Props) {
   };
 
   const backToText = () => {
+    clearAutoSend();
     setQueue(null);
     setQueueSaved([]);
   };
 
   const recordMore = () => {
+    clearAutoSend();
     setRecorded(null);
     setQueue(null);
     setQueueSaved([]);
@@ -253,13 +329,14 @@ export function SmartEntry({ onClose, onToast }: Props) {
   };
 
   // Friendly guard (2026-09): with no active categories, neither smart entry
-  // nor the manual form can record anything — point the user at Categories.
+  // nor the manual form can record anything — point the user at Categories
+  // and take them there (the button closes the sheet and switches tabs).
   if (data.categories.every((c) => c.archived) || data.categories.length === 0) {
     return (
       <>
         <EmptyState emoji="🏷️" title={t('cats.emptyTitle')} hint={t('cats.emptyHint')} />
-        <button type="button" className="btn btn-primary btn-block" onClick={onClose}>
-          {t('close')}
+        <button type="button" className="btn btn-primary btn-block" onClick={onGoToCategories}>
+          {t('cats.goToCategories')}
         </button>
       </>
     );
@@ -392,7 +469,7 @@ export function SmartEntry({ onClose, onToast }: Props) {
     return (
       <>
         <TransactionForm key="manual" initial={null} onSave={save} />
-        <button type="button" className="btn btn-block" onClick={() => setMode('smart')}>
+        <button type="button" className="btn btn-block" onClick={() => { clearAutoSend(); setMode('smart'); }}>
           {t('smart.smartInstead')}
         </button>
       </>
@@ -417,15 +494,28 @@ export function SmartEntry({ onClose, onToast }: Props) {
           aria-label={t('smart.describe')}
           value={text}
           autoFocus
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            const value = e.target.value;
+            setText(value);
+            armAutoSend(value);
+          }}
         />
       </div>
 
-      <button type="submit" className="btn btn-primary btn-block" disabled={parsing || text.trim() === ''}>
+      {autoSendLeft > 0 && (
+        <div className="autosend-hint">
+          <span aria-live="polite">{t('smart.autoSendIn', { sec: autoSendLeft })}</span>
+          <button type="button" className="autosend-cancel" onClick={clearAutoSend}>
+            {t('smart.cancel')}
+          </button>
+        </div>
+      )}
+
+      <button type="submit" className="btn btn-primary btn-block" disabled={parsing || text.trim().length < MIN_SEND_LENGTH}>
         {parsing ? (retrying ? t('smart.retrying') : t('smart.submitting')) : t('smart.submit')}
       </button>
 
-      <button type="button" className="btn btn-block" onClick={() => setMode('manual')}>
+      <button type="button" className="btn btn-block" onClick={() => { clearAutoSend(); setMode('manual'); }}>
         {t('smart.manualInstead')}
       </button>
     </form>

@@ -576,6 +576,28 @@ select:focus-visible {
   overflow-wrap: anywhere;
 }
 
+/* Voice auto-send countdown (2026-09): the "text went quiet" hint + cancel. */
+.autosend-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pad-sm);
+  margin: -4px 0 10px;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
+.autosend-cancel {
+  border: none;
+  background: none;
+  padding: 4px 0;
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--primary);
+  touch-action: manipulation;
+}
+
 .smart-disclosure {
   margin-top: var(--pad-sm);
 }
@@ -836,12 +858,14 @@ html.kb-open .sheet {
 }
 
 select.input {
-  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%),
-    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
-  background-position: calc(100% - 20px) 50%, calc(100% - 15px) 50%;
-  background-size: 5px 5px, 5px 5px;
+  /* Single clean chevron (muted), matching the float-box selects. */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-position: right 10px center;
+  background-size: 12px 12px;
   background-repeat: no-repeat;
-  padding-right: var(--pad-lg);
+  /* The chevron occupies 10-22px from the edge; stop the text 10px clear of
+     it (the old 24px padding let "25th" collide with the triangles). */
+  padding-right: 32px;
 }
 
 .amount-input {
@@ -1365,11 +1389,11 @@ select.input {
   min-width: 0;
 }
 
-/* RTL (ar/ur, 2026-09 i18n): flip the select chevrons and their padding. */
+/* RTL (ar/ur, 2026-09 i18n): flip the select chevron and its padding. */
 [dir='rtl'] select.input {
-  background-position: calc(0% + 20px) 50%, calc(0% + 15px) 50%;
+  background-position: left 10px center;
   padding-right: var(--pad-md);
-  padding-left: var(--pad-lg);
+  padding-left: 32px;
 }
 
 [dir='rtl'] .float-select {
