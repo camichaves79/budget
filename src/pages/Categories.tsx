@@ -148,7 +148,7 @@ function CategoryForm({
   onSave: (cat: { name: string; emoji: string; kind: TxType; archived: boolean }) => void;
 }) {
   const [name, setName] = useState(initial?.name ?? '');
-  const [emoji, setEmoji] = useState(initial?.emoji ?? '📦');
+  const [emoji, setEmoji] = useState(initial?.emoji ?? '💰');
   const [kind, setKind] = useState<TxType>(initial?.kind ?? 'expense');
   const [error, setError] = useState('');
 
