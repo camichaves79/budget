@@ -69,7 +69,7 @@ export function Budgets({
           <>
             <EmptyState emoji="🎯" title={t('budgets.noExpCats')} hint={t('budgets.noExpCatsHint')} />
             <button type="button" className="btn btn-primary btn-block" onClick={onGoToCategories}>
-              {t('cats.goToCategories')}
+              {t('cats.addCategory')}
             </button>
           </>
         ) : (

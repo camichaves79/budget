@@ -48,17 +48,14 @@ export default function App() {
     setTab('dashboard');
     setSmartOpen(true);
   };
-  // The smart-entry "no categories" guard sends the user here: close the
-  // sheet, land on the Categories tab, and open the add-category form
-  // immediately (2026-09: the guard's button IS the add-category action).
+  // The "no categories" guards (smart entry + Budgets) send the user here:
+  // close the smart sheet, land on the Categories tab, and open the
+  // add-category form immediately (2026-09: the guard buttons ARE the
+  // add-category action).
   const goToAddCategory = () => {
     setSmartOpen(false);
     setTab('categories');
     setCatsAdding(true);
-  };
-  // Budgets' own "no categories to budget" guard navigates without the form.
-  const goToCategories = () => {
-    setTab('categories');
   };
 
   return (
@@ -84,7 +81,7 @@ export default function App() {
             onShiftPeriod={shift}
             onToday={jumpToToday}
             isToday={isCurrentPeriod(period, startDay)}
-            onGoToCategories={goToCategories}
+            onGoToCategories={goToAddCategory}
           />
         )}
         {tab === 'categories' && <Categories adding={catsAdding} onAddingChange={setCatsAdding} />}

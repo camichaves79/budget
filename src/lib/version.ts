@@ -5,4 +5,4 @@
  * `v0.1.N` with N = main's commit count after the merge. Bump this constant
  * together with `package.json` `version` (+ lockfile) on every ship.
  */
-export const APP_VERSION = '0.1.120';
+export const APP_VERSION = '0.1.121';
