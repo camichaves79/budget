@@ -1,12 +1,14 @@
 /**
- * Render the app icons from tools/icon.svg (the single source of truth).
+ * Render the app icons from tools/icon.svg and the share card from
+ * tools/og.svg (each the single source of truth).
  *
  *   npm_config_cache="$PWD/.npm-cache" npm install sharp --no-save
  *   node tools/render-icons.mjs
  *   npm uninstall --no-save sharp   # confirm package-lock.json stays clean
  *
  * Outputs: public/icon-512.png, public/icon-192.png, public/apple-touch-icon.png,
- * and public/favicon.svg (a small standalone SVG for browsers).
+ * public/og.png (1200×630 social share card), and public/favicon.svg (a small
+ * standalone SVG for browsers).
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import sharp from 'sharp';
@@ -16,6 +18,10 @@ const svg = readFileSync(new URL('./icon.svg', import.meta.url));
 await sharp(svg).resize(512, 512).png().toFile('public/icon-512.png');
 await sharp(svg).resize(192, 192).png().toFile('public/icon-192.png');
 await sharp(svg).resize(180, 180).png().toFile('public/apple-touch-icon.png');
+
+// Open Graph share card (WhatsApp/Twitter/LinkedIn previews), 1200×630.
+const og = readFileSync(new URL('./og.svg', import.meta.url));
+await sharp(og).resize(1200, 630).png().toFile('public/og.png');
 
 // Favicon: browsers rasterize SVG themselves (system fonts), so keep it
 // self-contained and visually matching.

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630">
+  <!-- Open Graph share card (2026-09, og-share-preview). Deep-mint canvas
+       matching the first-open welcome card; white banknote mark + white
+       title + tagline. Text renders via fontconfig (DejaVu fallback) in
+       sharp. Render PNG with tools/render-icons.mjs. -->
+  <rect width="1200" height="630" fill="#2d6a4f"/>
+  <rect x="390" y="70" width="420" height="220" rx="14" fill="none" stroke="#ffffff" stroke-width="18"/>
+  <circle cx="505" cy="180" r="11" fill="#ffffff"/>
+  <circle cx="695" cy="180" r="11" fill="#ffffff"/>
+  <text x="600" y="218" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="130" font-weight="bold" text-anchor="middle" fill="#ffffff">$5</text>
+  <text x="600" y="430" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="110" font-weight="bold" text-anchor="middle" fill="#ffffff">$5 Budget</text>
+  <text x="600" y="496" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="44" text-anchor="middle" fill="#ffffff" fill-opacity="0.85">Your simple budget tracker</text>
+</svg>
