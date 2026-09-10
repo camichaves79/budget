@@ -14,6 +14,7 @@ export function LicenseSection() {
     activatePastedKey,
     authConfigured,
     buy,
+    buyPlay,
     checkoutReady,
     completePendingPurchase,
     freeDaily,
@@ -21,6 +22,7 @@ export function LicenseSection() {
     licenseExpiryLabel,
     licensedActive,
     pendingOrder,
+    playBuild,
     redeemError,
     remaining,
     restoreLicense,
@@ -31,6 +33,7 @@ export function LicenseSection() {
   const [keyInput, setKeyInput] = useState('');
   const [note, setNote] = useState<{ text: string; kind: 'error' | 'success' } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [subscribing, setSubscribing] = useState(false);
 
   // The one-shot license events ("License active ✓") normally surface as the
   // dashboard toast, but a purchase completed HERE fires while the dashboard
@@ -73,6 +76,21 @@ export function LicenseSection() {
       return;
     }
     await buy();
+  };
+
+  const subscribePlay = async () => {
+    setNote(null);
+    // Same sign-in-first rule as the web path: identity before Play checkout.
+    if (!account) {
+      await signIn();
+      return;
+    }
+    setSubscribing(true);
+    const outcome = await buyPlay();
+    setSubscribing(false);
+    if (outcome === 'unavailable') setNote({ text: t('paywall.playUnavailable'), kind: 'error' });
+    else if (outcome === 'error')
+      setNote({ text: redeemError ?? t('paywall.unreachable'), kind: 'error' });
   };
 
   const doSignIn = async () => {
@@ -128,6 +146,14 @@ export function LicenseSection() {
           </div>
           {licensedActive ? (
             <span className="license-pill">{t('license.active')}</span>
+          ) : playBuild ? (
+            <button type="button" className="btn" onClick={subscribePlay} disabled={subscribing || busy}>
+              {subscribing
+                ? t('paywall.playOpening')
+                : account
+                  ? t('paywall.playSubscribe')
+                  : t('license.signInUnlock')}
+            </button>
           ) : (
             <button type="button" className="btn" onClick={unlock} disabled={!checkoutReady || busy}>
               {busy ? t('license.working') : account ? t('license.unlockYear') : t('license.signInUnlock')}
@@ -135,7 +161,7 @@ export function LicenseSection() {
           )}
         </div>
 
-        {pendingOrder && !licensedActive && (
+        {pendingOrder && !licensedActive && !playBuild && (
           <div className="setting-row">
             <div>
               <div className="setting-name">{t('license.purchaseWaiting')}</div>
@@ -179,7 +205,7 @@ export function LicenseSection() {
           </div>
         )}
 
-        {!licensedActive && (
+        {!licensedActive && !playBuild && (
           <form onSubmit={activateKey} className="key-form">
             <div className="setting-name">{t('license.haveKey')}</div>
             <div className="setting-desc">{t('license.keyFallback')}</div>

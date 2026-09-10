@@ -120,6 +120,48 @@ export async function redeemLicense(reference: string, idToken?: string): Promis
   return { ok: false, code: 'network', message: t('licensing.unreachable') };
 }
 
+/**
+ * Exchange a Google Play purchase token for a signed license (Android /
+ * Play Billing path). The server verifies the purchase with the Play
+ * Developer API, checks the purchaser matches the signed-in account, then
+ * acknowledges and mints — same license shape as the Lemon Squeezy path.
+ */
+export async function redeemPlay(purchaseToken: string, productId: string, idToken: string): Promise<LicenseResult> {
+  const { status, payload } = await postLicense('/api/license/redeem-play', {
+    purchaseToken,
+    productId,
+    idToken,
+  });
+  if (payload && payload.ok === true && typeof payload.license === 'string') {
+    const parsed = parseLicenseToken(payload.license);
+    if (parsed) return { ok: true, license: payload.license, payload: parsed };
+    return { ok: false, code: 'unexpected', message: t('licensing.unexpected') };
+  }
+  const code = typeof payload?.code === 'string' ? payload.code : '';
+  if (code === 'email-mismatch' || code === 'play-email-mismatch') {
+    return { ok: false, code: 'email-mismatch', message: t('licensing.emailMismatch') };
+  }
+  if (code === 'play-not-paid' || code === 'purchase-not-paid') {
+    return { ok: false, code: 'play-not-paid', message: t('licensing.notPaid') };
+  }
+  if (code === 'play-purchase-not-found' || code === 'purchase-not-found' || status === 404) {
+    return { ok: false, code: 'play-purchase-not-found', message: t('licensing.notFound') };
+  }
+  if (code === 'rate-limited') {
+    return { ok: false, code: 'rate-limited', message: t('licensing.rateLimited') };
+  }
+  if (status === 401 || status === 403) {
+    return { ok: false, code: 'unauthorized', message: t('licensing.unauthorized') };
+  }
+  if (code === 'not-configured' || status === 503) {
+    return { ok: false, code: 'not-configured', message: t('licensing.notConfigured') };
+  }
+  if (code === 'internal' && typeof payload?.reason === 'string' && payload.reason !== '') {
+    return { ok: false, code: 'internal', message: t('licensing.serverError', { reason: payload.reason.slice(0, 160) }) };
+  }
+  return { ok: false, code: 'network', message: t('licensing.unreachable') };
+}
+
 /** Restore the license bound to the signed-in account (new device/reinstall). */
 export async function lookupLicense(idToken: string): Promise<LookupResult> {
   const { status, payload } = await postLicense('/api/license/lookup', { idToken });

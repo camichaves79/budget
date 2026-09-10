@@ -72,6 +72,17 @@
 > iPhone-approved (2026-09):** new installs start with zero categories and
 > land on the Categories tab with an empty-state sign; smart entry shows
 > an add-categories-first guard when none exist.)
+> **Play Store + Play Billing (A18, 2026-09 — implemented on
+> `play-billing-logic`, NOT yet shipped):** the PWA is packaged as a Google
+> Play app via Bubblewrap (Trusted Web Activity, `app.fivebudget`, `?src=play`
+> start URL) with the `playBilling` feature + the Digital Goods API
+> client-side; Google is the Android merchant (Play Billing subscription) and
+> Lemon Squeezy stays the web/iOS merchant. Both mints mint the SAME HMAC
+> license into the SAME Firestore ledger (plus a `playTokens` token→license
+> map), the accountant CSV gains a `source` column, Play verification /
+> acknowledgement is server-side (Play Developer API), and renewals/refunds
+> arrive via a Cloud Pub/Sub push webhook (`/api/webhooks/play`). Play fee =
+> 15% vs LS 5% + $0.50 (paywall-ops §2).
 > Read alongside `skills/project-skill.md` (conventions + current state) and
 > `skills/speech-entry.md` (smart-entry spec). Keep this file honest: if a
 > trade-off changes, update the table, not just the date.
@@ -79,20 +90,25 @@
 ## 1. System context (today)
 
 ```
-iPhone PWA ──HTTPS──▶ Cloudflare Pages (static, CDN, `5budget.app`)      [free]
-   │  smart entry text + categories (+ signed license when licensed)
+iPhone PWA / Android TWA ──HTTPS──▶ Cloudflare Pages (static, CDN,        [free]
+   │  smart entry text + categories (+ signed license when licensed)   `5budget.app`)
    ├───────────────▶ Cloudflare Worker (`api.5budget.app`, one script,     [free]
    │                 Smart Placement keeps it near Gemini) 
    │                    /api/parse          Gemini proxy (licensed path: paid key,
    │                                        Lite→Flash; free path: A6 resilience)
    │                    /api/license/*      redeem / lookup / check (HMAC licenses)
    │                    /api/webhooks/ls    Lemon Squeezy webhooks → sales ledger
-   │                    /api/ledger/export  accountant CSV/JSON
+   │                    /api/license/redeem-play  Play purchase → license (A18)
+   │                    /api/webhooks/play  Play Pub/Sub (OIDC) → extend/revoke
+   │                    /api/ledger/export  accountant CSV/JSON (source: ls|play)
    ├───────────────▶ Firebase Auth (Google sign-in only)              [Spark, free]
    │                    + Firestore (entitlements + sales ledger; REST writes
    │                    via service-account OAuth, client never touches Firestore)
    └───────────────▶ Lemon Squeezy checkout overlay (Merchant of Record)
                         orders API verifies purchases; webhooks feed the ledger
+   └───────────────▶ Google Play (Merchant of Record — Android, A18):
+                        Digital Goods API (TWA) → Play Developer API (verify +
+                        acknowledge) + Cloud Pub/Sub push (renewals/refunds)
 ```
 
 - **Client:** React 19 + TS 6 + Vite 8 PWA, `base: './'`, no router/UI/framework.
@@ -100,7 +116,7 @@ iPhone PWA ──HTTPS──▶ Cloudflare Pages (static, CDN, `5budget.app`)   
   A minimal network-first service worker (`public/sw.js`, prod-only, no
   pre-cache) provides offline reloads of visited pages and makes Chromium
   treat the site as installable (A17).
-- **Backend:** ONE Cloudflare Worker (`worker.js` + `wrangler.toml`, the six
+- **Backend:** ONE Cloudflare Worker (`worker.js` + `wrangler.toml`, the eight
   Vercel-era `api/` handlers unmodified behind a Node→Web shim; Vercel is
   RETIRED — A15). No database of our own: Firestore holds entitlement +
   sales-ledger documents only (identity/entitlement/purchase metadata — budget
@@ -109,6 +125,14 @@ iPhone PWA ──HTTPS──▶ Cloudflare Pages (static, CDN, `5budget.app`)   
   JWKS token verification); the service-account JWT is signed with WebCrypto
   (`crypto.subtle`), because workerd's `nodejs_compat` does not implement
   `node:crypto` `createSign`.
+- **Android (Play, A18):** the same app runs inside a Trusted Web Activity
+  (`app.fivebudget`) installed from Google Play; the `?src=play` start URL
+  marks the build (`src/lib/playBuild.ts`), the client buys via the Digital
+  Goods API (`src/lib/playBilling.ts`), and the Worker adds two Play routes:
+  `/api/license/redeem-play` (verify → email-authorize → acknowledge → mint)
+  and `/api/webhooks/play` (Cloud Pub/Sub push, OIDC-verified → extend/revoke).
+  Server-side Play access is a service account (`GOOGLE_PLAY_SERVICE_ACCOUNT`)
+  with the `androidpublisher` scope, signed with the same WebCrypto `signJwt`.
 - **AI:** free tier — Gemini `gemini-3.6-flash` primary + `gemini-3.5-flash-lite`
   fallback (A6); licensed tier — paid key, Lite primary + Flash fallback (A14).
   Structured JSON **array** out (1 element per transaction, cap 20, each with a
@@ -140,6 +164,7 @@ iPhone PWA ──HTTPS──▶ Cloudflare Pages (static, CDN, `5budget.app`)   
 | A15 | Hosting migration to **Cloudflare**: static frontend → **Cloudflare Pages**, the six API functions → **Cloudflare Workers** (Node→Web handler shim + `nodejs_compat`, still zero runtime dependencies) | GitHub Pages' ToS forbids primarily-commercial sites and Vercel Hobby is non-commercial — the paywall (A12) makes this app commercial, so both current homes were non-compliant. Phased for reversibility: Pages first, Worker port with dual-run cutover second, Vercel retired last | **Shipped 2026-09-08** — `5budget.app` (Pages, custom domain) + `api.5budget.app` (Worker, Smart Placement near Gemini); Vercel + GitHub Pages fully retired; gotchas fixed along the way: Worker env bindings are non-enumerable getters (explicit-key hydration), and workerd lacks `crypto.createSign` (WebCrypto `signJwt`). Ops: `skills/hosting-migration.md` |
 | A16 | **Localization (2026-09):** all UI strings moved into a typed message catalog (`src/lib/i18n.ts`; en source of truth, ~215 keys, zero-dependency engine — `Intl.PluralRules` plurals/ordinals, per-locale money grouping with `$` prefix/suffix, locale dates via `Intl`); eleven languages shipped in three branches (`i18n-core` en/es/fr/pt, `i18n-scripts` zh/hi/bn/ru/ur/ar, `i18n-german` de); first run follows the device language, then a Settings → Language picker (localStorage `budget.language`); `<html dir>` flips for ar/ur with logical CSS properties; seeded categories localize for NEW installs only (existing data untouched); `/api/parse` accepts a whitelisted `language` hint for the Gemini prompt | One user, eleven possible languages; no i18n library (zero-dep rule); catalogs are model-authored and independently reviewed (two review passes, 42 fixes); branch staging keeps each ship verifiable | Accepted |
 | A17 | **PWA installability (2026-09):** a one-time install nudge — iOS gets a Share → "Add to Home Screen" tip (iOS has no install API) and Chromium gets an Install button wired to a captured `beforeinstallprompt` — plus a minimal **network-first service worker with no pre-cache** (`public/sw.js`, registered only in prod builds). "Running as installed" is detected via `navigator.standalone` + the `display-mode: standalone` media query; dismissal is a one-time localStorage flag | The manifest alone doesn't satisfy Chromium's installability criteria (a worker with a fetch handler is required); a no-pre-cache worker gives offline reloads of visited pages without ever pinning a stale build; iOS can only be nudged, so the tip is the accepted pattern there | Accepted |
+| A18 | **Play Store distribution + Play Billing (2026-09, "Google as the Android merchant"):** the PWA is packaged for Google Play via Bubblewrap (Trusted Web Activity, `app.fivebudget`, `?src=play` start URL) with the `playBilling` feature + `alphaDependencies` enabled; the client uses the Digital Goods API + Payment Request API to buy a **$5/year Play subscription** (`VITE_PLAY_SUBSCRIPTION_ID`), then POSTs the purchase token to `/api/license/redeem-play`, which verifies it against the Play Developer API, email-authors it against the signed-in Google account, acknowledges, and mints the **SAME HMAC license** into the SAME `licenses`/`entitlements`/`sales` ledger (plus a `playTokens` token→license map) as Lemon Squeezy. Renewals/refunds arrive via a **Cloud Pub/Sub push webhook** (`/api/webhooks/play`, OIDC-verified against Google's OAuth2 certs) that extends or revokes the same license; the accountant CSV gains a `source` column (`ls`/`play`). The Android build hides the LS checkout (Play policy: no external payment), while sign-in + restore keep working. Play fee is **15%** vs LS 5% + $0.50 | Play-distributed apps must use Play Billing for digital goods, so Google becomes the Android MoR while LS stays the web/iOS MoR; one account-bound license + one ledger + one CSV across both merchants keeps the accountant/entitlement story single; a token→license map bridges a webhook that carries a `purchaseToken` but no uid | Implemented on `play-billing-logic` (NOT yet shipped — Play Console setup, Bubblewrap build, and on-device approval pending) |
 
 ## 3. The "-ilities" — where we stand
 
@@ -198,6 +223,16 @@ iPhone PWA ──HTTPS──▶ Cloudflare Pages (static, CDN, `5budget.app`)   
     display (legacy key fallback); v0.1.122 switched `generate-invoice` to the
     NUMERIC LS order id (the identifier UUID answers 404 — the first live sale
     lost its invoice link this way, healed by one webhook resend).
+14. **Google Play dependency (A18, not yet shipped)**: the Android build's purchase
+    path (Digital Goods API → Play Developer API → Pub/Sub) is external; if the
+    Play service account, merchant account or Pub/Sub subscription is mis-set,
+    Android purchases fail while web/iOS (LS) keep working. Play policy forbids
+    the Android build from offering the LS checkout (external payment), so the
+    Play build hides it — sign-in + restore stay available.
+15. **Dual-webhook reconciliation (A18)**: two webhooks now feed ONE ledger — LS
+    (`/api/webhooks/ls`, HMAC) and Play (`/api/webhooks/play`, Pub/Sub OIDC). The
+    CSV `source` column splits them; the accountant reconciles LS rows against LS
+    payout reports and Play rows against Play earnings reports.
 
 ## 5. Where we might go next (as the user base grows)
 

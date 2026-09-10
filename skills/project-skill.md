@@ -32,6 +32,13 @@ and (except for smart entry) never leaves the device.
   Firestore hold identity, entitlement and the sales ledger (server-side REST
   writes, client never touches Firestore). Lemon Squeezy is the merchant of
   record. Ops checklist: `skills/paywall-ops.md`.
+- **Google Play (Android, A18 — in progress on `play-billing-logic`, NOT yet
+  shipped):** the PWA is packaged as a Bubblewrap Trusted Web Activity
+  (`app.fivebudget`); Google is the Android merchant (Play Billing
+  subscriptions) while Lemon Squeezy stays the web/iOS merchant. Play
+  purchases mint the SAME HMAC license into the SAME ledger
+  (`/api/license/redeem-play` + `/api/webhooks/play` + a `playTokens` map),
+  and the accountant CSV gains a `source` column (ls|play).
 
 ## 2. Product scope & confirmed decisions
 
@@ -163,6 +170,8 @@ src/
     installPrompt.ts # PWA install detection (install-app-signal): standalone/
                     # iOS sniffing, beforeinstallprompt capture, one-time
                     # localStorage dismissal, useInstallSignal hook
+    playBuild.ts    # Play Store build detection (?src=play, idempotent) — A18
+    playBilling.ts  # Digital Goods API purchase flow (TWA, Payment Request)
     welcome.ts      # first-open welcome decision core (storage flag + delay)
   state/store.tsx   # Context + useReducer, auto-saves to localStorage on every change
   state/entitlement.tsx # EntitlementProvider: license token, quota remaining,
@@ -208,6 +217,12 @@ api/_firebase.js    # zero-dependency Firebase REST client: FIREBASE_SERVICE_ACC
                     # (JSON) → RS256 JWT → OAuth token (cached) → Firestore REST
                     # (get/merge-set/list) + securetoken JWKS id-token verify +
                     # accounts:lookup (email → uid)
+api/_play.js        # Play Developer API (OAuth + purchases.subscriptions get/
+                    # acknowledge) + Pub/Sub push parse/classify + OIDC verify — A18
+api/license/redeem-play.js # POST /api/license/redeem-play: Play purchase →
+                    # verify → email-authorize → acknowledge → mint license
+api/webhooks/play.js # POST /api/webhooks/play: Cloud Pub/Sub push (OIDC) →
+                    # grant/loss/risk → extend/revoke the SAME license
 tests/smoke.ts      # logic tests: money, periods, selectors, LLM validators,
                     # microservice helpers (rate limiter, sanitizer, Gemini array
                     # parser, retry policy, response cache), 237 checks
@@ -368,6 +383,11 @@ in those tight overrides.
   `VITE_FIREBASE_API_KEY` / `VITE_FIREBASE_AUTH_DOMAIN` /
   `VITE_FIREBASE_PROJECT_ID` / `VITE_FIREBASE_APP_ID`, `VITE_CHECKOUT_URL`
   (LS buy link). Same names in the Cloudflare Pages env vars for the build.
+  Play (Android, A18): `VITE_PLAY_SUBSCRIPTION_ID` (client, build-time); server
+  Secret vars `GOOGLE_PLAY_SERVICE_ACCOUNT` / `GOOGLE_PLAY_PACKAGE_NAME` /
+  `GOOGLE_PLAY_SUBSCRIPTION_ID` / `GOOGLE_PLAY_PUBSUB_AUDIENCE` (optional) /
+  `GOOGLE_PLAY_PUBSUB_EMAIL` (optional) — the Worker now carries 16 Secret
+  vars (was 11).
 - Local Worker dev: `npx wrangler dev --port 8787` reads `.dev.vars`
   (gitignored; same 11 names, dummy values fine for guard-path testing).
   Wrangler is installed `--no-save` — check `package-lock.json` stays clean.
@@ -452,6 +472,25 @@ in those tight overrides.
   expect "I'll approve" flow; keep deploys verified and report bundle/branch state.
 
 ## 10. Current state & next-session context
+
+**IN PROGRESS — Play Store + Play Billing (A18, branch `play-billing-logic`,
+NOT yet shipped, NOT yet committed):** the full Play Billing integration is
+implemented across four phases on one branch. (1) Pure logic + tests:
+`estimatePlayFeeCents` (15%) / `playPurchaseToLedger` / a `source` CSV column
++ default in `api/_license.js`, RTDN parse/classify in `api/_play.js`,
+`?src=play` detection in `src/lib/playBuild.ts`. (2) Client: Digital Goods
+purchase (`src/lib/playBilling.ts`), `playBuild` + `buyPlay` in
+`entitlement.tsx`, `redeemPlay` in `licenseService.ts`, Play branches in
+`PaywallCard`/`LicenseSection`, 3 new i18n keys ×11 languages, client var
+`VITE_PLAY_SUBSCRIPTION_ID`. (3) Server: Play Developer API client
+(`api/_play.js`), `ensureLicenseForPlayPurchase` + `playTokens` map
+(`api/_licenseops.js`), `POST /api/license/redeem-play`, worker route + 5
+`GOOGLE_PLAY_*` env keys. (4) Webhook: Pub/Sub OIDC verify + message parse
+(`api/_play.js`), `POST /api/webhooks/play` (grant→extend / loss→revoke /
+risk→note). Suite now 426 checks; lint 5 warnings / 0 errors. Remaining:
+Play Console setup + Bubblewrap keystore/update/validate/build/AAB + on-device
+approval, then the ship ritual (version bump + docs header hash). One branch
+per the user's "one branch for this feature" — no separate docs branch.
 
 Everything below is **shipped and live** (main ≈ `2e31abf`, v0.1.126,
 2026-09-09):

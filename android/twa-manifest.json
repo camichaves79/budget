@@ -20,8 +20,8 @@
     "path": "android.keystore",
     "alias": "android"
   },
-  "appVersion": "0.1.129",
-  "appVersionCode": 129,
+  "appVersion": "0.1.130",
+  "appVersionCode": 130,
   "shortcuts": [],
   "generatorApp": "bubblewrap-cli",
   "webManifestUrl": "https://5budget.app/manifest.webmanifest",

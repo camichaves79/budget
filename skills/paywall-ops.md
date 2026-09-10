@@ -53,6 +53,14 @@
   `currency_rate`); payout reports are the reconciliation truth;
   chargebacks: **$15 dispute fee**. Store currency is COP — expect COP
   payout reports.
+- **Play fee (Android, A18 — not yet shipped):** **15%** of the price, no
+  fixed per-transaction fee (Google's subscription rate; it can drop to 10%
+  after a subscriber's 12-month anniversary — the ledger keeps 15% as the
+  conservative estimate, `estimatePlayFeeCents`). Play has no per-order
+  invoice/receipt URL and no $0.50 floor; reconcile Play rows against the
+  Play earnings/Finance reports (never LS payouts). An Android cohort nets
+  ~$4.25 of $5 vs LS's ~$4.25 (LS) after fees — both roughly net $4.25 at
+  this price, so the Play 15% is the same net as LS's 5% + $0.50 at $5.
 - Scale knobs (documented, not implemented): conversion %, free-allowance size,
   Gemini context caching, price. See `ARCHITECTURE.md` §5.
 
@@ -167,7 +175,9 @@ the CSV row.
 
 **Firestore check (non-negotiable):** after a successful redeem, the Firebase
 console → Firestore must show the `sales`, `licenses` and `entitlements`
-collections (each with at least one doc). If the console stays empty, the REST
+collections (each with at least one doc), plus — after any Play purchase —
+the `playTokens` map (a 4th collection keyed by Play `purchaseToken` →
+`{ license_id }`). If the console stays empty, the REST
 write path is failing silently — stop and diagnose per §9 before treating the
 feature as working (restore alone is NOT proof: it self-heals from the LS
 orders API without Firestore).
@@ -184,18 +194,27 @@ correctly since v0.1.117 (legacy `fees`/`net` doc keys fall back).
 
 - **Accountant export:** `curl -H "x-budget-admin: <secret>"
   https://api.5budget.app/api/ledger/export?format=csv`. Columns:
-  date, order_number, status, gross, tax, total, fees_estimate, net_estimate,
+  source (ls|play), date, order_number, status, gross, tax, total,
+  fees_estimate, net_estimate,
   currency, buyer_email, license_id, receipt_url, invoice_url, refunded,
   refunded_amount, refunded_at, test_mode. Invoices are generated
-  automatically on first sight of a paid order (`generate-invoice` endpoint).
-- **Reconcile monthly:** diff the CSV against LS orders list + payout reports
-  (fees incl. surcharges are only exact there). Payouts: twice monthly,
-  **13-day hold**, **$50 minimum payout threshold**, USD.
+  automatically on first sight of a paid order (`generate-invoice` endpoint —
+  LS only; Play has no invoices).
+- **Reconcile monthly:** diff the CSV against BOTH merchants, split by the
+  `source` column — LS rows vs the LS orders list + payout reports (fees incl.
+  surcharges are only exact there; payouts twice monthly, **13-day hold**,
+  **$50 minimum payout threshold**, USD), Play rows vs the Play earnings /
+  Finance reports (15% fee, no fixed floor, no invoice/receipt URL).
 - **Refunds:** LS refund → `order_refunded` webhook → ledger refund fields +
   license marked `refunded`. Known v1 gap: parse verification is stateless
   (HMAC + expiry only), so a refunded license stays usable until expiry —
   acceptable for a $5 product; enforcement would add a Firestore check per
   licensed parse.
+- **Refunds/revocation (Play, A18):** a `SUBSCRIPTION_REVOKED` / `EXPIRED`
+  notification or a `voidedPurchaseNotification` (refund/chargeback) marks the
+  license `refunded` via the `playTokens` map; `ON_HOLD` / `IN_GRACE_PERIOD` /
+  `PAUSED` / `CANCELED` set `status: 'at-risk'` without changing expiry. Same
+  stateless-verification gap as LS.
 - **Revoke/rotate:** delete the `licenses/{id}` doc (also removes the
   restore path). Rotating `BUDGET_LICENSE_SECRET` invalidates every issued
   token — only as a last resort.
@@ -279,3 +298,82 @@ auth boundary: `OAuthProvider('apple.com')` + a Service ID + private key.)
   the resolved numeric id in redeem). If a sales row is
   ever missing its `invoice_url`, re-send the LS `order_created` webhook —
   the handler regenerates it.
+
+## 10. Play Billing (Android) ops — A18 (implemented, not yet shipped)
+
+The Android build is the same PWA inside a Bubblewrap **Trusted Web Activity**
+(`app.fivebudget`, `startUrl "/"` + `?src=play`). Google is the Android
+merchant; LS stays the web/iOS merchant. Both mints mint the SAME HMAC license
+into the SAME `licenses`/`entitlements`/`sales` ledger (+ `playTokens`), so the
+accountant CSV stays one file with a `source` column.
+
+**Client flow (TWA):** `?src=play` → `budget.playBuild` (hides LS checkout +
+paste-key; sign-in + restore keep working) → paywall/License shows
+"Subscribe · $5 USD/year" → Google sign-in (email-authorization) → Digital
+Goods API `PaymentRequest.show()` → `purchaseToken` → `POST
+/api/license/redeem-play` → server verifies + acknowledges + mints → license
+stored (same "License active ✓" path).
+
+**Server flow (`/api/license/redeem-play`):** verify Firebase idToken → Play
+Developer API `purchases.subscriptions` (classic resource for the purchaser
+`emailAddress`) → `paymentState === 1` (paid) → `emailsMatch(firebaseEmail,
+emailAddress)` → mint via `ensureLicenseForPlayPurchase` (sales keyed by Play
+`orderId`, license term = `expiryTimeMillis`, `playTokens/{purchaseToken}`
+map) → `:acknowledge` (Play auto-refunds after 3 days unacknowledged).
+
+**Renewals/refunds (`/api/webhooks/play`, Cloud Pub/Sub PUSH):** OIDC bearer
+JWT (Google OAuth2 certs, `iss`/`aud`/`exp` + optional pinned email) →
+`parseDeveloperNotification` + `classifyPlayNotification` →
+`grant` (PURCHASED/RENEWED/RECOVERED/RESTARTED/DEFERRED) extends `exp` +
+writes a new `sales/{orderId}` row; `loss` (REVOKED/EXPIRED/voided) marks
+`refunded`; `risk` (CANCELED/ON_HOLD/GRACE/PAUSED) sets `at-risk`. Never trust
+the notification alone — every path re-queries the Play API for state.
+
+**Play Console setup (user-side, in order):**
+1. Verify the developer account + link a Google Payments **merchant account**.
+2. Monetize → Subscriptions → create `smart_entry_yearly` (US$5.00/year, base
+   plan `p1y`).
+3. API access → link the service account (grant `androidpublisher`); export its
+   JSON → `GOOGLE_PLAY_SERVICE_ACCOUNT` (single line, Secret).
+4. Monetization setup → **Real-time developer notifications** → Pub/Sub topic →
+   create a **PUSH subscription** → endpoint
+   `https://api.5budget.app/api/webhooks/play`. (Optionally pin the push
+   service-account email via `GOOGLE_PLAY_PUBSUB_EMAIL`.)
+5. Bubblewrap: enable `features.playBilling.enabled: true` **and**
+   `alphaDependencies.enabled: true` in `android/twa-manifest.json`; generate
+   the keystore (record the password); `bubblewrap update --manifest android`
+   → `validate --url=https://5budget.app` → `build --manifest android` → AAB.
+6. Upload to an **internal testing track**, add license testers, install on a
+   device, and run the end-to-end test below.
+
+**Env vars (Cloudflare Worker, Secret-type; add to `worker.js` `ENV_KEYS`):**
+`GOOGLE_PLAY_SERVICE_ACCOUNT`, `GOOGLE_PLAY_PACKAGE_NAME` (`app.fivebudget`),
+`GOOGLE_PLAY_SUBSCRIPTION_ID`, `GOOGLE_PLAY_PUBSUB_AUDIENCE` (optional —
+defaults to `https://<host>/api/webhooks/play`), `GOOGLE_PLAY_PUBSUB_EMAIL`
+(optional). Client (Pages Production + local `.env`): `VITE_PLAY_SUBSCRIPTION_ID`.
+
+**Client error-code map (Android "Subscribe" failures):**
+- "Google Play Billing is not available in this view…" → `paywall.playUnavailable` (Digital Goods API absent — not the TWA, or the `playBilling` feature is off).
+- "This purchase belongs to a different email…" → `play-email-mismatch` (the Play account ≠ signed-in Google account).
+- "Your payment hasn't been confirmed yet…" → `play-not-paid` (`paymentState ≠ 1`).
+- "That purchase reference wasn't found…" → `play-purchase-not-found` (bad token/productId, or the service account lacks access).
+- Worker logs for `play: token endpoint <status>` = the Play OAuth JWT was rejected (wrong/revoked `GOOGLE_PLAY_SERVICE_ACCOUNT`).
+
+**Verify after setup:**
+```bash
+# 1. Redeem a Play purchase token (from a license-tester purchase):
+curl -s -X POST https://api.5budget.app/api/license/redeem-play \
+  -H 'Content-Type: application/json' -H "x-budget-secret: $SECRET" \
+  -d '{"purchaseToken":"<token>","productId":"smart_entry_yearly","idToken":"<firebase-id-token>"}'
+
+# 2. Webhook signature (sanity): a bad bearer answers 401.
+curl -s -X POST https://api.5budget.app/api/webhooks/play \
+  -H 'Authorization: Bearer garbage' -d '{}'
+
+# 3. Ledger (must show a source=play row):
+curl -s -H "x-budget-admin: $ADMIN" \
+  "https://api.5budget.app/api/ledger/export?format=csv"
+```
+Then: internal-track install → in-app purchase via Digital Goods API → app
+toasts "License active ✓" → Firestore shows `sales`/`licenses`/`entitlements`/
+`playTokens` (the §6 non-negotiable check) → CSV has a `play` row.

@@ -21,17 +21,22 @@ import {
 } from '../api/parse.js';
 import {
   DEFAULT_LICENSE_DAILY_CAP, LICENSE_TERM_SECONDS, createLicenseMeter, emailsMatch, estimateLsFeeCents,
-  estimateNetCents, ledgerToCsv, makeLicensePayload, orderToLedger, signLicense,
-  verifyLicenseToken, verifyWebhookSignature, webhookToLedger,
+  estimateNetCents, estimatePlayFeeCents, estimatePlayNetCents, ledgerToCsv, makeLicensePayload,
+  orderToLedger, playPurchaseToLedger, signLicense, verifyLicenseToken, verifyWebhookSignature,
+  webhookToLedger,
 } from '../api/_license.js';
 import { checkIpRateLimit, createIpRateLimiter, isAllowedOrigin } from '../api/_http.js';
-import { ensureLicenseForOrder, saleRowForMerge } from '../api/_licenseops.js';
+import { ensureLicenseForOrder, ensureLicenseForPlayPurchase, saleRowForMerge } from '../api/_licenseops.js';
+import { classifyPlayNotification, parseDeveloperNotification, parsePubSubMessage, validatePubSubClaims, verifyPubSubToken } from '../api/_play.js';
 import redeemHandler from '../api/license/redeem.js';
+import redeemPlayHandler from '../api/license/redeem-play.js';
+import playWebhookHandler from '../api/webhooks/play.js';
 import webhookHandler from '../api/webhooks/ls.js';
 import { createHmac, createSign, generateKeyPairSync } from 'node:crypto';
 import { FREE_DAILY_PARSES, nextQuota, remainingFreeToday } from '../src/lib/quota';
 import { initialData } from '../src/state/store';
 import { licenseIsActive, parseLicenseToken } from '../src/lib/license';
+import { playBuildDecision } from '../src/lib/playBuild';
 import { decodeJwtParts, fromFields, setDocMerge, signJwt, toFields, verifyJwtSignature } from '../api/_firebase.js';
 import worker, { createNodeRes, hydrateEnv, toNodeReq } from '../worker.js';
 import type { Category } from '../src/lib/types';
@@ -574,7 +579,7 @@ const csv = ledgerToCsv([
   ledgerRow,
   { ...ledgerRow, buyer_email: 'a,"b",c', refunded: true, refunded_amount: 500, license_id: 'lic-1' },
 ]);
-check('csv starts with BOM + header', csv.startsWith('\uFEFFdate,order_number'), true);
+check('csv starts with BOM + header', csv.startsWith('\uFEFFsource,date,order_number'), true);
 check('csv escapes quotes', csv.includes('"a,""b"",c"'), true);
 check('csv has header + two rows', csv.split('\r\n').length, 3);
 check('csv renders fee/net estimate columns', csv.includes('500,0,500,75,425,USD'), true);
@@ -584,6 +589,155 @@ check(
     { date: 'd', order_number: 1, status: 'paid', gross: 1, tax: 0, total: 1, fees: 111, net: 222, currency: 'USD' },
   ]).includes('0,1,111,222,USD'),
   true,
+);
+
+// ---- paywall: Google Play fee math (15%) + subscription → ledger ----
+check('play fee estimate on $5', estimatePlayFeeCents(500), 75);
+check('play net estimate on $5', estimatePlayNetCents(500), 425);
+check('play fee estimate on $36', estimatePlayFeeCents(3600), 540);
+check('play net estimate on $36', estimatePlayNetCents(3600), 3060);
+check('play fee estimate rounds $4.99', estimatePlayFeeCents(499), 75);
+check('play fee estimate guards bad input', estimatePlayFeeCents(NaN), 0);
+
+const playStartMs = Date.parse('2026-09-05T10:00:00Z');
+const playPurchase = {
+  orderId: 'GPA.1234-5678-9012-34567',
+  startTimeMillis: String(playStartMs),
+  expiryTimeMillis: String(playStartMs + 365 * 24 * 60 * 60 * 1000),
+  autoRenewing: true,
+  priceCurrencyCode: 'USD',
+  priceAmountMicros: '4990000', // $4.99
+  countryCode: 'US',
+  paymentState: 1, // received
+  acknowledgementState: 0,
+  emailAddress: 'buyer@example.com',
+  purchaseType: 0, // test
+  linkedPurchaseToken: '',
+};
+const playRow = playPurchaseToLedger(playPurchase);
+check('play ledger maps source', playRow.source, 'play');
+check('play ledger maps order id', playRow.order_id, 'GPA.1234-5678-9012-34567');
+check('play ledger maps order number to the GPA id', playRow.order_number, 'GPA.1234-5678-9012-34567');
+check('play ledger maps gross cents', playRow.gross, 499);
+check('play ledger maps fee estimate', playRow.fees_estimate, 75);
+check('play ledger maps net estimate', playRow.net_estimate, 424);
+check('play ledger maps currency', playRow.currency, 'USD');
+check('play ledger maps buyer email', playRow.buyer_email, 'buyer@example.com');
+check('play ledger maps date from startTimeMillis', playRow.date, '2026-09-05T10:00:00.000Z');
+check('play ledger marks test purchase', playRow.test_mode, true);
+check('play ledger leaves invoice/receipt null', [playRow.invoice_url, playRow.receipt_url], [null, null]);
+check('play ledger maps a pending payment', playPurchaseToLedger({ ...playPurchase, paymentState: 0 }).status, 'pending');
+check('play ledger maps a trial', playPurchaseToLedger({ ...playPurchase, paymentState: 2 }).status, 'trial');
+
+// ---- paywall: dual-merchant CSV (source column + default) ----
+const dualCsv = ledgerToCsv([ledgerRow, playRow]);
+check('csv renders the ls source', dualCsv.includes('\r\nls,'), true);
+check('csv renders the play source', dualCsv.includes('\r\nplay,'), true);
+check('csv defaults a missing source to ls', ledgerToCsv([{ date: 'd' }]).includes('\r\nls,'), true);
+
+// ---- Play real-time developer notifications (parse + classify) ----
+const subNotif = {
+  version: '1.0',
+  packageName: 'app.fivebudget',
+  eventTimeMillis: '1757041200000',
+  subscriptionNotification: {
+    version: '1.0',
+    notificationType: 2,
+    purchaseToken: 'tok-123',
+    subscriptionId: 'smart_entry_yearly',
+  },
+};
+const subParsed = parseDeveloperNotification(Buffer.from(JSON.stringify(subNotif)).toString('base64'));
+check('play notif parses a subscription event', subParsed?.kind, 'subscription');
+check('play notif carries the purchase token', subParsed?.purchaseToken, 'tok-123');
+check('play notif carries the notification type', subParsed?.notificationType, 2);
+check('play notif classifies renewed as grant', classifyPlayNotification(subParsed), 'grant');
+check('play notif classifies purchased as grant', classifyPlayNotification({ kind: 'subscription', notificationType: 4 }), 'grant');
+check('play notif classifies revoked as loss', classifyPlayNotification({ kind: 'subscription', notificationType: 12 }), 'loss');
+check('play notif classifies expired as loss', classifyPlayNotification({ kind: 'subscription', notificationType: 13 }), 'loss');
+check('play notif classifies on-hold as risk', classifyPlayNotification({ kind: 'subscription', notificationType: 5 }), 'risk');
+check('play notif classifies canceled as risk', classifyPlayNotification({ kind: 'subscription', notificationType: 3 }), 'risk');
+check('play notif classifies pause-schedule-change as ignore', classifyPlayNotification({ kind: 'subscription', notificationType: 11 }), 'ignore');
+const voidedParsed = parseDeveloperNotification(
+  Buffer.from(
+    JSON.stringify({
+      version: '1.0',
+      packageName: 'app.fivebudget',
+      eventTimeMillis: '1',
+      voidedPurchaseNotification: { purchaseToken: 'tok-9', orderId: 'GPA.9', productType: 1, refundType: 1 },
+    }),
+  ).toString('base64'),
+);
+check('play notif parses a voided (refund) event', voidedParsed?.kind, 'voided');
+check('play notif classifies voided as loss', classifyPlayNotification(voidedParsed), 'loss');
+const testParsed = parseDeveloperNotification(
+  Buffer.from(JSON.stringify({ version: '1.0', testNotification: { version: '1.0' } })).toString('base64'),
+);
+check('play notif parses a test notification', testParsed?.kind, 'test');
+check('play notif classifies test as ignore', classifyPlayNotification(testParsed), 'ignore');
+check('play notif rejects malformed data', parseDeveloperNotification('not-base64-json'), null);
+check(
+  'play notif rejects an unrecognized envelope',
+  parseDeveloperNotification(Buffer.from(JSON.stringify({ version: '1.0' })).toString('base64')),
+  null,
+);
+
+// ---- Play build detection (pure core) ----
+check('play build: src=play marks the build', playBuildDecision(false, 'play'), true);
+check('play build: persisted flag marks the build', playBuildDecision(true, null), true);
+check('play build: web browser is not the play build', playBuildDecision(false, null), false);
+check('play build: unrelated src param is not the play build', playBuildDecision(false, 'other'), false);
+
+// ---- Play Pub/Sub push: message parse + claim validation (pure) ----
+const pushEnvelope = JSON.stringify({
+  subscription: 'projects/x/subscriptions/play',
+  message: {
+    data: Buffer.from(
+      JSON.stringify({
+        version: '1.0',
+        packageName: 'app.fivebudget',
+        eventTimeMillis: '1',
+        subscriptionNotification: { version: '1.0', notificationType: 4, purchaseToken: 'tok' },
+      }),
+    ).toString('base64'),
+    messageId: 'm1',
+  },
+});
+check('pubsub parses a push envelope', parsePubSubMessage(pushEnvelope)?.messageId, 'm1');
+check('pubsub rejects a body without data', parsePubSubMessage(JSON.stringify({ message: { messageId: 'm1' } })), null);
+check('pubsub rejects non-json', parsePubSubMessage('nope'), null);
+check(
+  'pubsub claims accept a valid google token',
+  validatePubSubClaims(
+    { iss: 'https://accounts.google.com', aud: 'https://api.5budget.app/api/webhooks/play', exp: Math.floor(Date.now() / 1000) + 300 },
+    { audience: 'https://api.5budget.app/api/webhooks/play' },
+  ),
+  true,
+);
+check(
+  'pubsub claims reject a wrong audience',
+  validatePubSubClaims(
+    { iss: 'https://accounts.google.com', aud: 'https://evil.example', exp: Math.floor(Date.now() / 1000) + 300 },
+    { audience: 'https://api.5budget.app/api/webhooks/play' },
+  ),
+  false,
+);
+check(
+  'pubsub claims reject a wrong issuer',
+  validatePubSubClaims(
+    { iss: 'https://evil.example', aud: 'https://api.5budget.app/api/webhooks/play', exp: Math.floor(Date.now() / 1000) + 300 },
+    { audience: 'https://api.5budget.app/api/webhooks/play' },
+  ),
+  false,
+);
+check('pubsub claims reject an expired token', validatePubSubClaims({ iss: 'https://accounts.google.com', aud: 'a', exp: 1 }, { audience: 'a' }), false);
+check(
+  'pubsub claims reject a wrong pinned email',
+  validatePubSubClaims(
+    { iss: 'https://accounts.google.com', aud: 'a', exp: Math.floor(Date.now() / 1000) + 300, email: 'wrong@x', email_verified: true },
+    { audience: 'a', expectedEmail: 'push@x' },
+  ),
+  false,
 );
 
 // ---- firebase REST helpers (service-account JWT + field codecs) ----
@@ -1160,6 +1314,386 @@ await (async () => {
   else process.env.LEMONSQUEEZY_API_KEY = prevLsKey;
   if (prevSecret === undefined) delete process.env.BUDGET_PARSE_SECRET;
   else process.env.BUDGET_PARSE_SECRET = prevSecret;
+  if (prevLicenseSecret === undefined) delete process.env.BUDGET_LICENSE_SECRET;
+  else process.env.BUDGET_LICENSE_SECRET = prevLicenseSecret;
+})();
+
+// ---- Play Billing (2026-09): redeem-play mint + idempotency + handler ----
+await (async () => {
+  const jwkPub = { ...rsa.publicKey.export({ format: 'jwk' }), kid: 'local-kid' };
+  const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  const makeIdToken = (email: string) => {
+    const now = Math.floor(Date.now() / 1000);
+    const header = { alg: 'RS256', kid: 'local-kid', typ: 'JWT' };
+    const payload = {
+      aud: 'test-project',
+      iss: 'https://securetoken.google.com/test-project',
+      iat: now,
+      exp: now + 3600,
+      sub: 'uid-1',
+      email,
+    };
+    const input = `${b64(header)}.${b64(payload)}`;
+    const signer = createSign('RSA-SHA256');
+    signer.update(input);
+    return `${input}.${signer.sign(privPem).toString('base64url')}`;
+  };
+
+  const playStartMs = Date.parse('2026-09-05T10:00:00Z');
+  const playPurchase = {
+    orderId: 'GPA.1234-5678-9012-34567',
+    startTimeMillis: String(playStartMs),
+    expiryTimeMillis: String(playStartMs + 365 * 24 * 60 * 60 * 1000),
+    autoRenewing: true,
+    priceCurrencyCode: 'USD',
+    priceAmountMicros: '4990000',
+    paymentState: 1,
+    acknowledgementState: 0,
+    emailAddress: 'buyer@example.com',
+    purchaseType: 0,
+    linkedPurchaseToken: '',
+  };
+
+  const prevSa = process.env.FIREBASE_SERVICE_ACCOUNT;
+  process.env.FIREBASE_SERVICE_ACCOUNT = JSON.stringify({
+    client_email: 'svc@test-project.iam.gserviceaccount.com',
+    project_id: 'test-project',
+    private_key: privPem,
+  });
+  const prevPlaySa = process.env.GOOGLE_PLAY_SERVICE_ACCOUNT;
+  process.env.GOOGLE_PLAY_SERVICE_ACCOUNT = JSON.stringify({
+    client_email: 'play@test-project.iam.gserviceaccount.com',
+    private_key: privPem,
+  });
+  const prevPkg = process.env.GOOGLE_PLAY_PACKAGE_NAME;
+  process.env.GOOGLE_PLAY_PACKAGE_NAME = 'app.fivebudget';
+  const prevSecret = process.env.BUDGET_PARSE_SECRET;
+  process.env.BUDGET_PARSE_SECRET = 'testparse';
+  const prevLicenseSecret = process.env.BUDGET_LICENSE_SECRET;
+  process.env.BUDGET_LICENSE_SECRET = 'testlicense';
+
+  const sv = (v: string) => ({ stringValue: v });
+  const nv = (v: number) => ({ integerValue: String(v) });
+  const store: Record<string, { fields: Record<string, unknown> }> = {
+    'sales/GPA.existing': {
+      fields: { license_id: sv('lic-play-existing'), redeemed_at: sv('2026-09-05T00:00:00.000Z') },
+    },
+    'licenses/lic-play-existing': {
+      fields: {
+        lic: sv('lic-play-existing'),
+        uid: sv('uid-1'),
+        plan: sv('yearly'),
+        source: sv('play'),
+        iat: nv(Math.floor(playStartMs / 1000)),
+        exp: nv(Math.floor(playStartMs / 1000) + LICENSE_TERM_SECONDS),
+        status: sv('active'),
+      },
+    },
+  };
+  const commits: Array<{ name: string; fields: Record<string, unknown>; fieldPaths: string[] }> = [];
+  const acknowledgeCalls: string[] = [];
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: string | URL, opts: { method?: string; body?: string } = {}) => {
+    const u = String(url);
+    if (u.includes('service_accounts/v1/jwk')) {
+      return new Response(JSON.stringify({ keys: [jwkPub] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (u.includes('androidpublisher.googleapis.com') && u.includes(':acknowledge')) {
+      acknowledgeCalls.push(u);
+      return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (u.includes('androidpublisher.googleapis.com') && u.includes('/purchases/subscriptions/')) {
+      return new Response(JSON.stringify(playPurchase), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (u === 'https://oauth2.googleapis.com/token') {
+      return new Response(JSON.stringify({ access_token: 'fake', expires_in: 3600 }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (u.includes('firestore.googleapis.com') && u.includes(':commit')) {
+      const body = JSON.parse(opts.body ?? '{}') as { writes?: Array<Record<string, unknown>> };
+      const write = (body.writes ?? [])[0] ?? {};
+      const update = (write.update ?? {}) as { name?: string; fields?: Record<string, unknown> };
+      const mask = (write.updateMask ?? {}) as { fieldPaths?: string[] };
+      commits.push({ name: String(update.name ?? ''), fields: update.fields ?? {}, fieldPaths: mask.fieldPaths ?? [] });
+      return new Response(JSON.stringify({ writeResults: [{}] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (u.includes('firestore.googleapis.com')) {
+      const get = /\/documents\/(sales|licenses)\/([^/?]+)$/.exec(u);
+      if (get) {
+        const found = store[`${get[1]}/${get[2]}`];
+        if (found) {
+          return new Response(JSON.stringify(found), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+      }
+      return new Response(JSON.stringify({ error: { code: 404, status: 'NOT_FOUND' } }), { status: 404, headers: { 'Content-Type': 'application/json' } });
+    }
+    return new Response('{}', { status: 404, headers: { 'Content-Type': 'application/json' } });
+  }) as typeof fetch;
+
+  // ensureLicenseForPlayPurchase: mint path.
+  {
+    commits.length = 0;
+    const r = await ensureLicenseForPlayPurchase({ ...playPurchase, orderId: 'GPA.fresh' }, 'tok-fresh', 'uid-1');
+    if (!r.ok) throw new Error('play mint failed');
+    const sales = commits.find((c) => c.name.endsWith('/sales/GPA.fresh'));
+    check('play mint writes four docs (sales + license + entitlement + token map)', commits.length, 4);
+    check('play mint returns a fresh license bound to the uid', [r.payload.lic.length > 10, r.payload.uid], [true, 'uid-1']);
+    check('play mint sales row carries the source', sales?.fields.source, sv('play'));
+    check('play mint sales row carries the GPA order id', sales?.fields.order_id, sv('GPA.fresh'));
+    check('play mint sales row carries the purchase token', sales?.fields.purchase_token, sv('tok-fresh'));
+    check(
+      'play mint license doc carries source play',
+      commits.some(
+        (c) => c.name.includes('/licenses/') && (c.fields.source as { stringValue?: unknown } | undefined)?.stringValue === 'play',
+      ),
+      true,
+    );
+    check('play mint writes the entitlement', commits.some((c) => c.name.endsWith('/entitlements/uid-1')), true);
+  }
+
+  // ensureLicenseForPlayPurchase: idempotent re-sign.
+  {
+    commits.length = 0;
+    const r = await ensureLicenseForPlayPurchase({ ...playPurchase, orderId: 'GPA.existing' }, 'tok-existing', 'uid-1');
+    if (!r.ok) throw new Error('play backfill failed');
+    check('play re-redeem re-signs the existing license (idempotent)', r.payload.lic, 'lic-play-existing');
+    check('play re-redeem writes only the sales doc + token map', commits.length, 2);
+  }
+
+  // redeem-play handler: email mismatch, then success + acknowledge.
+  const runRedeemPlay = async (email: string) => {
+    const body = JSON.stringify({ purchaseToken: 'tok-x', productId: 'smart_entry_yearly', idToken: makeIdToken(email) });
+    const req = {
+      method: 'POST',
+      headers: { origin: 'https://5budget.app', 'x-budget-secret': 'testparse' },
+      async *[Symbol.asyncIterator]() {
+        yield Buffer.from(body);
+      },
+    } as unknown as import('node:http').IncomingMessage;
+    const res = {
+      statusCode: 0,
+      headers: {} as Record<string, string>,
+      body: '',
+      setHeader(k: string, v: string) {
+        res.headers[k] = v;
+      },
+      end(text: string) {
+        res.body = text ?? '';
+      },
+    } as unknown as import('node:http').ServerResponse;
+    await redeemPlayHandler(req, res);
+    return { statusCode: res.statusCode, body: res.body };
+  };
+
+  {
+    const r = await runRedeemPlay('attacker@example.com');
+    check('redeem-play rejects a non-buyer account email', [r.statusCode, JSON.parse(r.body).code], [409, 'play-email-mismatch']);
+  }
+  {
+    commits.length = 0;
+    acknowledgeCalls.length = 0;
+    const r = await runRedeemPlay('buyer@example.com');
+    const parsed = JSON.parse(r.body) as { ok?: boolean; license?: string };
+    check(
+      'redeem-play succeeds for the buyer email',
+      [r.statusCode, parsed.ok === true, typeof parsed.license === 'string' && parsed.license.length > 20],
+      [200, true, true],
+    );
+    check('redeem-play acknowledges the subscription', acknowledgeCalls.length, 1);
+    check(
+      'redeem-play writes the sales row keyed by the GPA order id',
+      commits.some((c) => c.name.endsWith('/sales/GPA.1234-5678-9012-34567')),
+      true,
+    );
+  }
+
+  globalThis.fetch = originalFetch;
+  if (prevSa === undefined) delete process.env.FIREBASE_SERVICE_ACCOUNT;
+  else process.env.FIREBASE_SERVICE_ACCOUNT = prevSa;
+  if (prevPlaySa === undefined) delete process.env.GOOGLE_PLAY_SERVICE_ACCOUNT;
+  else process.env.GOOGLE_PLAY_SERVICE_ACCOUNT = prevPlaySa;
+  if (prevPkg === undefined) delete process.env.GOOGLE_PLAY_PACKAGE_NAME;
+  else process.env.GOOGLE_PLAY_PACKAGE_NAME = prevPkg;
+  if (prevSecret === undefined) delete process.env.BUDGET_PARSE_SECRET;
+  else process.env.BUDGET_PARSE_SECRET = prevSecret;
+  if (prevLicenseSecret === undefined) delete process.env.BUDGET_LICENSE_SECRET;
+  else process.env.BUDGET_LICENSE_SECRET = prevLicenseSecret;
+})();
+
+// ---- Play webhook (2026-09): Pub/Sub OIDC verify + renewal/refund handling ----
+await (async () => {
+  const jwkPub = { ...rsa.publicKey.export({ format: 'jwk' }), kid: 'oauth-kid' };
+  const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  const makePushToken = (claims: Record<string, unknown>) => {
+    const header = { alg: 'RS256', kid: 'oauth-kid', typ: 'JWT' };
+    const input = `${b64(header)}.${b64(claims)}`;
+    const signer = createSign('RSA-SHA256');
+    signer.update(input);
+    return `${input}.${signer.sign(privPem).toString('base64url')}`;
+  };
+
+  const prevSa = process.env.FIREBASE_SERVICE_ACCOUNT;
+  process.env.FIREBASE_SERVICE_ACCOUNT = JSON.stringify({
+    client_email: 'svc@test-project.iam.gserviceaccount.com',
+    project_id: 'test-project',
+    private_key: privPem,
+  });
+  const prevPlaySa = process.env.GOOGLE_PLAY_SERVICE_ACCOUNT;
+  process.env.GOOGLE_PLAY_SERVICE_ACCOUNT = JSON.stringify({
+    client_email: 'play@test-project.iam.gserviceaccount.com',
+    private_key: privPem,
+  });
+  const prevPkg = process.env.GOOGLE_PLAY_PACKAGE_NAME;
+  process.env.GOOGLE_PLAY_PACKAGE_NAME = 'app.fivebudget';
+  const prevSub = process.env.GOOGLE_PLAY_SUBSCRIPTION_ID;
+  process.env.GOOGLE_PLAY_SUBSCRIPTION_ID = 'smart_entry_yearly';
+  const prevAud = process.env.GOOGLE_PLAY_PUBSUB_AUDIENCE;
+  process.env.GOOGLE_PLAY_PUBSUB_AUDIENCE = 'https://api.5budget.app/api/webhooks/play';
+  const prevLicenseSecret = process.env.BUDGET_LICENSE_SECRET;
+  process.env.BUDGET_LICENSE_SECRET = 'testlicense';
+
+  const sv = (v: string) => ({ stringValue: v });
+  const nv = (v: number) => ({ integerValue: String(v) });
+  const iat = Math.floor(Date.now() / 1000) - 100;
+  const exp = iat + LICENSE_TERM_SECONDS;
+  const playStartMs = Date.parse('2026-09-05T10:00:00Z');
+  const renewedExpMs = playStartMs + 2 * 365 * 24 * 60 * 60 * 1000;
+  const playPurchase = {
+    orderId: 'GPA.1234-5678-9012-34567',
+    startTimeMillis: String(playStartMs),
+    expiryTimeMillis: String(renewedExpMs),
+    autoRenewing: true,
+    priceCurrencyCode: 'USD',
+    priceAmountMicros: '4990000',
+    paymentState: 1,
+    acknowledgementState: 1,
+    emailAddress: 'buyer@example.com',
+    purchaseType: 2,
+    linkedPurchaseToken: '',
+  };
+  const store: Record<string, { fields: Record<string, unknown> }> = {
+    'playTokens/tok-renew': { fields: { license_id: sv('lic-play'), orderId: sv('GPA.initial') } },
+    'licenses/lic-play': {
+      fields: { lic: sv('lic-play'), uid: sv('uid-1'), plan: sv('yearly'), source: sv('play'), iat: nv(iat), exp: nv(exp), status: sv('active') },
+    },
+  };
+  const commits: Array<{ name: string; fields: Record<string, unknown>; fieldPaths: string[] }> = [];
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: string | URL, opts: { method?: string; body?: string } = {}) => {
+    const u = String(url);
+    if (u.includes('/oauth2/v3/certs')) {
+      return new Response(JSON.stringify({ keys: [jwkPub] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (u.includes('androidpublisher.googleapis.com') && u.includes('/purchases/subscriptions/')) {
+      return new Response(JSON.stringify(playPurchase), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (u === 'https://oauth2.googleapis.com/token') {
+      return new Response(JSON.stringify({ access_token: 'fake', expires_in: 3600 }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (u.includes('firestore.googleapis.com') && u.includes(':commit')) {
+      const body = JSON.parse(opts.body ?? '{}') as { writes?: Array<Record<string, unknown>> };
+      const write = (body.writes ?? [])[0] ?? {};
+      const update = (write.update ?? {}) as { name?: string; fields?: Record<string, unknown> };
+      const mask = (write.updateMask ?? {}) as { fieldPaths?: string[] };
+      commits.push({ name: String(update.name ?? ''), fields: update.fields ?? {}, fieldPaths: mask.fieldPaths ?? [] });
+      return new Response(JSON.stringify({ writeResults: [{}] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (u.includes('firestore.googleapis.com')) {
+      const get = /\/documents\/(sales|licenses|playTokens)\/([^/?]+)$/.exec(u);
+      if (get) {
+        const found = store[`${get[1]}/${get[2]}`];
+        if (found) {
+          return new Response(JSON.stringify(found), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+      }
+      return new Response(JSON.stringify({ error: { code: 404, status: 'NOT_FOUND' } }), { status: 404, headers: { 'Content-Type': 'application/json' } });
+    }
+    return new Response('{}', { status: 404, headers: { 'Content-Type': 'application/json' } });
+  }) as typeof fetch;
+
+  const goodToken = makePushToken({
+    iss: 'https://accounts.google.com',
+    aud: 'https://api.5budget.app/api/webhooks/play',
+    exp: Math.floor(Date.now() / 1000) + 300,
+    email: 'push@x',
+    email_verified: true,
+  });
+  check(
+    'pubsub token verify accepts a valid signed token',
+    (await verifyPubSubToken(goodToken, { audience: 'https://api.5budget.app/api/webhooks/play' })).ok,
+    true,
+  );
+  check(
+    'pubsub token verify rejects a wrong audience',
+    (await verifyPubSubToken(goodToken, { audience: 'https://other.example/api/webhooks/play' })).ok,
+    false,
+  );
+  check('pubsub token verify rejects garbage', (await verifyPubSubToken('garbage', { audience: 'x' })).ok, false);
+
+  const runWebhook = async (body: string, token: string) => {
+    const req = {
+      method: 'POST',
+      headers: { origin: 'https://5budget.app', authorization: token ? `Bearer ${token}` : '', 'content-type': 'application/json' },
+      async *[Symbol.asyncIterator]() {
+        yield Buffer.from(body);
+      },
+    } as unknown as import('node:http').IncomingMessage;
+    const res = {
+      statusCode: 0,
+      headers: {} as Record<string, string>,
+      body: '',
+      setHeader(k: string, v: string) {
+        res.headers[k] = v;
+      },
+      end(text: string) {
+        res.body = text ?? '';
+      },
+    } as unknown as import('node:http').ServerResponse;
+    await playWebhookHandler(req, res);
+    return { statusCode: res.statusCode, body: res.body };
+  };
+
+  {
+    const r = await runWebhook('{}', 'garbage');
+    check('play webhook rejects a bad signature', r.statusCode, 401);
+  }
+
+  const renewNotification = Buffer.from(
+    JSON.stringify({
+      version: '1.0',
+      packageName: 'app.fivebudget',
+      eventTimeMillis: '1',
+      subscriptionNotification: { version: '1.0', notificationType: 2, purchaseToken: 'tok-renew', subscriptionId: 'smart_entry_yearly' },
+    }),
+  ).toString('base64');
+  {
+    commits.length = 0;
+    const body = JSON.stringify({ subscription: 'projects/x/subscriptions/play', message: { data: renewNotification, messageId: 'm-renew' } });
+    const r = await runWebhook(body, goodToken);
+    check('play webhook answers 200 for a valid renewal', r.statusCode, 200);
+    const lic = commits.find((c) => c.name.endsWith('/licenses/lic-play'));
+    check('play webhook extends the license expiry', lic?.fields.exp, nv(Math.floor(renewedExpMs / 1000)));
+    check('play webhook writes a sales row for the renewed order', commits.some((c) => c.name.endsWith('/sales/GPA.1234-5678-9012-34567')), true);
+  }
+
+  globalThis.fetch = originalFetch;
+  if (prevSa === undefined) delete process.env.FIREBASE_SERVICE_ACCOUNT;
+  else process.env.FIREBASE_SERVICE_ACCOUNT = prevSa;
+  if (prevPlaySa === undefined) delete process.env.GOOGLE_PLAY_SERVICE_ACCOUNT;
+  else process.env.GOOGLE_PLAY_SERVICE_ACCOUNT = prevPlaySa;
+  if (prevPkg === undefined) delete process.env.GOOGLE_PLAY_PACKAGE_NAME;
+  else process.env.GOOGLE_PLAY_PACKAGE_NAME = prevPkg;
+  if (prevSub === undefined) delete process.env.GOOGLE_PLAY_SUBSCRIPTION_ID;
+  else process.env.GOOGLE_PLAY_SUBSCRIPTION_ID = prevSub;
+  if (prevAud === undefined) delete process.env.GOOGLE_PLAY_PUBSUB_AUDIENCE;
+  else process.env.GOOGLE_PLAY_PUBSUB_AUDIENCE = prevAud;
   if (prevLicenseSecret === undefined) delete process.env.BUDGET_LICENSE_SECRET;
   else process.env.BUDGET_LICENSE_SECRET = prevLicenseSecret;
 })();

@@ -17,7 +17,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { db } from './_firebase.js';
-import { LICENSE_TERM_SECONDS, makeLicensePayload, orderToLedger, signLicense } from './_license.js';
+import { LICENSE_TERM_SECONDS, makeLicensePayload, orderToLedger, playPurchaseToLedger, signLicense } from './_license.js';
 
 export function licenseSecret() {
   return (process.env.BUDGET_LICENSE_SECRET ?? '').trim();
@@ -112,5 +112,105 @@ export async function ensureLicenseForOrder(attributes, uid) {
       .doc(uid)
       .set({ lic, plan: 'yearly', iat: iatSeconds, exp: expSeconds, orderId, updatedAt: now }, { merge: true });
   }
+  return { ok: true, license: token, payload };
+}
+
+/**
+ * Mint-or-return the signed license for a verified Google Play subscription
+ * purchase — the Play twin of `ensureLicenseForOrder`. Same license shape and
+ * the same `licenses`/`entitlements` collections; the sales row is keyed by
+ * the Play `orderId` (one row per charge — a renewal is a NEW orderId and
+ * lands as a new row; the webhook chains renewals via `linkedPurchaseToken`).
+ * Idempotent by orderId. The license term follows Play's actual
+ * `expiryTimeMillis` when present (fallback: start + one year).
+ *
+ * @param {Record<string, unknown> | null | undefined} purchase classic purchases.subscriptions resource
+ * @param {string | null} purchaseToken the token that was redeemed (trace field)
+ * @param {string | null} uid Firebase uid to bind the license to (optional)
+ * @returns {Promise<{ ok: true, license: string, payload: ReturnType<typeof makeLicensePayload> } | { ok: false, code: string }>}
+ */
+export async function ensureLicenseForPlayPurchase(purchase, purchaseToken, uid) {
+  const orderId = typeof purchase?.orderId === 'string' && purchase.orderId !== '' ? purchase.orderId : '';
+  if (!orderId) return { ok: false, code: 'bad-order' };
+  const fire = db();
+  if (!fire) return { ok: false, code: 'not-configured' };
+  const secret = licenseSecret();
+  if (!secret) return { ok: false, code: 'not-configured' };
+
+  const ledger = playPurchaseToLedger(purchase);
+
+  const salesRef = fire.collection('sales').doc(orderId);
+  const existingSale = await salesRef.get();
+  const existingData = existingSale.exists
+    ? /** @type {Record<string, unknown>} */ (existingSale.data() ?? {})
+    : {};
+  const existingLicenseId = existingData.license_id;
+  if (typeof existingLicenseId === 'string' && existingLicenseId !== '') {
+    const licDoc = await fire.collection('licenses').doc(existingLicenseId).get();
+    if (licDoc.exists) {
+      await salesRef.set(
+        { ...saleRowForMerge(ledger, existingData), purchase_token: purchaseToken ?? null },
+        { merge: true },
+      );
+      // Token → license map: lets a later renewal/refund webhook resolve this
+      // purchaseToken back to the license it must extend or revoke (no uid).
+      await fire
+        .collection('playTokens')
+        .doc(purchaseToken ?? orderId)
+        .set({ license_id: existingLicenseId, orderId, updatedAt: new Date().toISOString() }, { merge: true });
+      const data = /** @type {Record<string, unknown>} */ (licDoc.data());
+      const payload = makeLicensePayload({
+        lic: existingLicenseId,
+        uid: typeof data.uid === 'string' ? data.uid : null,
+        iatSeconds: typeof data.iat === 'number' ? data.iat : Math.floor(Date.now() / 1000),
+        expSeconds: typeof data.exp === 'number' ? data.exp : Math.floor(Date.now() / 1000) + LICENSE_TERM_SECONDS,
+      });
+      return { ok: true, license: signLicense(payload, secret), payload };
+    }
+  }
+
+  // Mint: the term follows Play's expiry (renewals extend it server-side via
+  // the webhook), falling back to start + one year when expiry is missing.
+  const startMs = Number(purchase?.startTimeMillis);
+  const expMs = Number(purchase?.expiryTimeMillis);
+  const iatSeconds = Number.isFinite(startMs) ? Math.floor(startMs / 1000) : Math.floor(Date.now() / 1000);
+  const expSeconds =
+    Number.isFinite(expMs) && expMs > startMs ? Math.floor(expMs / 1000) : iatSeconds + LICENSE_TERM_SECONDS;
+  const lic = randomUUID();
+  const payload = makeLicensePayload({ lic, uid, iatSeconds, expSeconds });
+  const token = signLicense(payload, secret);
+
+  const now = new Date().toISOString();
+  await fire
+    .collection('licenses')
+    .doc(lic)
+    .set(
+      {
+        lic,
+        orderId,
+        purchaseToken: purchaseToken ?? null,
+        uid: uid ?? null,
+        plan: 'yearly',
+        source: 'play',
+        iat: iatSeconds,
+        exp: expSeconds,
+        status: 'active',
+        createdAt: now,
+      },
+      { merge: true },
+    );
+  await salesRef.set({ ...saleRowForMerge(ledger, existingData), license_id: lic, purchase_token: purchaseToken ?? null, redeemed_at: now }, { merge: true });
+  if (uid) {
+    await fire
+      .collection('entitlements')
+      .doc(uid)
+      .set({ lic, plan: 'yearly', source: 'play', iat: iatSeconds, exp: expSeconds, orderId, updatedAt: now }, { merge: true });
+  }
+  // Token → license map: lets a later renewal/refund webhook resolve this
+  // purchaseToken back to the license it must extend or revoke (no uid).
+  await fire
+    .collection('playTokens')
+    .doc(purchaseToken ?? orderId)
+    .set({ license_id: lic, orderId, updatedAt: now }, { merge: true });
   return { ok: true, license: token, payload };
 }

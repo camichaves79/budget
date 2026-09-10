@@ -28,7 +28,7 @@ import {
 } from '../lib/license';
 import type { LicensePayload } from '../lib/license';
 import { FREE_DAILY_PARSES, loadQuota, nextQuota, remainingFreeToday, saveQuota } from '../lib/quota';
-import { checkLicenseKey, lookupLicense, redeemLicense } from '../lib/licenseService';
+import { checkLicenseKey, lookupLicense, redeemLicense, redeemPlay } from '../lib/licenseService';
 import { useI18n } from '../lib/i18n';
 import {
   authConfigured as authEnvConfigured,
@@ -40,6 +40,8 @@ import {
 } from '../lib/auth';
 import type { AuthUser } from '../lib/auth';
 import { checkoutConfigured, openCheckout } from '../lib/checkout';
+import { detectPlayBuild } from '../lib/playBuild';
+import { PLAY_SUBSCRIPTION_ID, playBillingSupported, purchasePlaySubscription } from '../lib/playBilling';
 
 const PENDING_ORDER_KEY = 'budget.pendingOrder.v1';
 
@@ -78,6 +80,11 @@ export interface EntitlementValue {
   activatePastedKey: (key: string) => Promise<'ok' | 'invalid' | 'error'>;
   completePendingPurchase: () => Promise<'ok' | 'none' | 'error'>;
   buy: () => Promise<'overlay' | 'tab' | 'unavailable'>;
+  /** True inside the Play Store build (TWA): purchases go through Play
+   * Billing, so the LS checkout UI is hidden while sign-in + restore keep
+   * working. */
+  playBuild: boolean;
+  buyPlay: () => Promise<'ok' | 'unavailable' | 'cancelled' | 'error'>;
 }
 
 const EntitlementContext = createContext<EntitlementValue | null>(null);
@@ -152,6 +159,9 @@ export function EntitlementProvider({ children }: { children: ReactNode }) {
   const [busy, setBusy] = useState<'redeeming' | null>(null);
   const [lastEvent, setLastEvent] = useState<EntitlementEvent | null>(null);
   const [redeemError, setRedeemError] = useState<string | null>(null);
+  // Play-build detection: synchronous + idempotent in the lazy initializer
+  // (StrictMode-safe), so the flag is set before any child renders purchase UI.
+  const [playBuild] = useState<boolean>(() => detectPlayBuild());
 
   const licensedActive = licenseIsActive(license);
   const { intl } = useI18n();
@@ -306,6 +316,22 @@ export function EntitlementProvider({ children }: { children: ReactNode }) {
 
   const buy = useCallback(() => openCheckout(), []);
 
+  /** Play Billing: sign-in → Digital Goods purchase → server redeem. */
+  const buyPlay = useCallback(async (): Promise<'ok' | 'unavailable' | 'cancelled' | 'error'> => {
+    if (!playBillingSupported()) return 'unavailable';
+    const idToken = await getUserIdToken();
+    if (!idToken) return 'error';
+    const purchase = await purchasePlaySubscription(PLAY_SUBSCRIPTION_ID);
+    if (!purchase) return 'cancelled';
+    const result = await redeemPlay(purchase.purchaseToken, purchase.productId, idToken);
+    if (result.ok) {
+      applyToken(result.license, 'licensed');
+      return 'ok';
+    }
+    setRedeemError(result.message);
+    return 'error';
+  }, [applyToken]);
+
   const value = useMemo<EntitlementValue>(
     () => ({
       licenseToken,
@@ -330,6 +356,8 @@ export function EntitlementProvider({ children }: { children: ReactNode }) {
       activatePastedKey,
       completePendingPurchase,
       buy,
+      playBuild,
+      buyPlay,
     }),
     [
       licenseToken,
@@ -351,6 +379,8 @@ export function EntitlementProvider({ children }: { children: ReactNode }) {
       activatePastedKey,
       completePendingPurchase,
       buy,
+      playBuild,
+      buyPlay,
     ],
   );
 

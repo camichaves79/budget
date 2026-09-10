@@ -231,6 +231,78 @@ export function estimateNetCents(subtotalCents, currency = 'USD', currencyRate =
   return subtotalCents - estimateLsFeeCents(subtotalCents, currency, currencyRate);
 }
 
+/* ---------- Google Play fee math (ESTIMATE — see docs) ---------- */
+
+/**
+ * Google Play service fee estimate: 15% of the price (subscription rate;
+ * there is no fixed per-transaction fee, unlike Lemon Squeezy's $0.50). The
+ * fee may drop to 10% after a subscriber's 12-month anniversary (footnote in
+ * skills/paywall-ops.md); the ledger keeps 15% as the conservative estimate,
+ * and Play earnings reports are the reconciliation source of truth.
+ * @param {number} subtotalCents
+ * @returns {number}
+ */
+export function estimatePlayFeeCents(subtotalCents) {
+  if (!Number.isFinite(subtotalCents) || subtotalCents <= 0) return 0;
+  return Math.round(subtotalCents * 0.15);
+}
+
+/**
+ * @param {number} subtotalCents
+ * @returns {number}
+ */
+export function estimatePlayNetCents(subtotalCents) {
+  return subtotalCents - estimatePlayFeeCents(subtotalCents);
+}
+
+/**
+ * Map a Google Play subscription purchase (the classic
+ * purchases.subscriptions resource) into the SAME sales-ledger shape the
+ * Lemon Squeezy path uses, with `source: 'play'`. Amounts are integer cents
+ * in the order currency — Play reports `priceAmountMicros` (1/1,000,000 of a
+ * currency unit), so cents = micros / 10,000. `order_id`/`order_number` are
+ * the Play order id (`GPA.xxx-n`, one per charge; renewals chain via
+ * `linkedPurchaseToken`). Play has no per-order invoice/receipt URL, so those
+ * stay null and reconciliation uses the earnings reports.
+ * @param {Record<string, unknown> | null | undefined} purchase
+ */
+export function playPurchaseToLedger(purchase) {
+  const p = purchase ?? {};
+  const micros = Number(p.priceAmountMicros);
+  const gross = Number.isFinite(micros) && micros > 0 ? Math.round(micros / 10000) : 0;
+  const startMs = Number(p.startTimeMillis);
+  const paymentState = Number(p.paymentState);
+  const status =
+    paymentState === 1
+      ? 'paid'
+      : paymentState === 2
+        ? 'trial'
+        : paymentState === 0 || paymentState === 3
+          ? 'pending'
+          : 'unknown';
+  const orderId = typeof p.orderId === 'string' ? p.orderId : '';
+  return {
+    source: 'play',
+    order_id: orderId,
+    order_number: orderId !== '' ? orderId : null,
+    date: Number.isFinite(startMs) ? new Date(startMs).toISOString() : null,
+    status,
+    gross,
+    tax: 0,
+    total: gross,
+    fees_estimate: estimatePlayFeeCents(gross),
+    net_estimate: estimatePlayNetCents(gross),
+    currency: typeof p.priceCurrencyCode === 'string' ? p.priceCurrencyCode : 'USD',
+    buyer_email: typeof p.emailAddress === 'string' ? p.emailAddress : '',
+    receipt_url: null,
+    invoice_url: null,
+    test_mode: Number(p.purchaseType) === 0,
+    refunded: false,
+    refunded_amount: 0,
+    refunded_at: null,
+  };
+}
+
 /* ---------- LS order → sales-ledger mapping ---------- */
 
 /**
@@ -244,6 +316,7 @@ export function orderToLedger(attributes) {
   const subtotal = Number.isFinite(a.subtotal) ? /** @type {number} */ (a.subtotal) : 0;
   const urls = a.urls && typeof a.urls === 'object' ? /** @type {Record<string, unknown>} */ (a.urls) : {};
   return {
+    source: 'ls',
     order_id: String(a.identifier ?? ''),
     order_number: a.order_number ?? null,
     date: typeof a.created_at === 'string' ? a.created_at : null,
@@ -279,6 +352,7 @@ export function webhookToLedger(eventName, attributes) {
 /* ---------- Ledger → CSV (accountant export) ---------- */
 
 export const LEDGER_CSV_COLUMNS = [
+  'source',
   'date',
   'order_number',
   'status',
@@ -315,6 +389,13 @@ function csvEscape(value) {
 const CSV_FIELD_ALIASES = { fees_estimate: 'fees', net_estimate: 'net' };
 
 /**
+ * Columns whose empty/missing value falls back to a default. Rows written
+ * before the dual-merchant split carry no `source`; they render as `ls`.
+ * @type {Record<string, string>}
+ */
+const CSV_FIELD_DEFAULTS = { source: 'ls' };
+
+/**
  * @param {Array<Record<string, unknown>>} rows
  * @returns {string} CSV text (CRLF, \uFEFF BOM for spreadsheet apps)
  */
@@ -324,7 +405,10 @@ export function ledgerToCsv(rows) {
     lines.push(
       LEDGER_CSV_COLUMNS.map((col) => {
         const legacy = CSV_FIELD_ALIASES[col];
-        return csvEscape(row[col] ?? (legacy !== undefined ? row[legacy] : undefined));
+        const value = row[col] ?? (legacy !== undefined ? row[legacy] : undefined);
+        return csvEscape(
+          value === null || value === undefined || value === '' ? CSV_FIELD_DEFAULTS[col] : value,
+        );
       }).join(','),
     );
   }

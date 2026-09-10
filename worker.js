@@ -26,9 +26,11 @@
 
 import parseHandler from './api/parse.js';
 import redeemHandler from './api/license/redeem.js';
+import redeemPlayHandler from './api/license/redeem-play.js';
 import lookupHandler from './api/license/lookup.js';
 import checkHandler from './api/license/check.js';
 import webhookHandler from './api/webhooks/ls.js';
+import playWebhookHandler from './api/webhooks/play.js';
 import ledgerExportHandler from './api/ledger/export.js';
 
 /**
@@ -40,9 +42,11 @@ import ledgerExportHandler from './api/ledger/export.js';
 const ROUTES = [
   ['/api/parse', parseHandler],
   ['/api/license/redeem', redeemHandler],
+  ['/api/license/redeem-play', redeemPlayHandler],
   ['/api/license/lookup', lookupHandler],
   ['/api/license/check', checkHandler],
   ['/api/webhooks/ls', webhookHandler],
+  ['/api/webhooks/play', playWebhookHandler],
   ['/api/ledger/export', ledgerExportHandler],
 ];
 
@@ -134,6 +138,11 @@ const ENV_KEYS = [
   'LEMONSQUEEZY_WEBHOOK_SECRET',
   'LEMONSQUEEZY_STORE_ID',
   'FIREBASE_SERVICE_ACCOUNT',
+  'GOOGLE_PLAY_SERVICE_ACCOUNT',
+  'GOOGLE_PLAY_PACKAGE_NAME',
+  'GOOGLE_PLAY_SUBSCRIPTION_ID',
+  'GOOGLE_PLAY_PUBSUB_AUDIENCE',
+  'GOOGLE_PLAY_PUBSUB_EMAIL',
 ];
 
 /**
