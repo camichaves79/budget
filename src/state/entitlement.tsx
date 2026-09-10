@@ -40,7 +40,6 @@ import {
 } from '../lib/auth';
 import type { AuthUser } from '../lib/auth';
 import { checkoutConfigured, openCheckout } from '../lib/checkout';
-import { detectPlayBuild } from '../lib/playBuild';
 
 const PENDING_ORDER_KEY = 'budget.pendingOrder.v1';
 
@@ -79,9 +78,6 @@ export interface EntitlementValue {
   activatePastedKey: (key: string) => Promise<'ok' | 'invalid' | 'error'>;
   completePendingPurchase: () => Promise<'ok' | 'none' | 'error'>;
   buy: () => Promise<'overlay' | 'tab' | 'unavailable'>;
-  /** True inside the Play Store build (TWA): purchases stay web-only, so
-   * purchase UI is hidden while sign-in + license restore keep working. */
-  playBuild: boolean;
 }
 
 const EntitlementContext = createContext<EntitlementValue | null>(null);
@@ -156,9 +152,6 @@ export function EntitlementProvider({ children }: { children: ReactNode }) {
   const [busy, setBusy] = useState<'redeeming' | null>(null);
   const [lastEvent, setLastEvent] = useState<EntitlementEvent | null>(null);
   const [redeemError, setRedeemError] = useState<string | null>(null);
-  // Play-build detection: synchronous + idempotent in the lazy initializer
-  // (StrictMode-safe), so the flag is set before any child renders purchase UI.
-  const [playBuild] = useState<boolean>(() => detectPlayBuild());
 
   const licensedActive = licenseIsActive(license);
   const { intl } = useI18n();
@@ -337,7 +330,6 @@ export function EntitlementProvider({ children }: { children: ReactNode }) {
       activatePastedKey,
       completePendingPurchase,
       buy,
-      playBuild,
     }),
     [
       licenseToken,
@@ -359,7 +351,6 @@ export function EntitlementProvider({ children }: { children: ReactNode }) {
       activatePastedKey,
       completePendingPurchase,
       buy,
-      playBuild,
     ],
   );
 

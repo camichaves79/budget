@@ -1,0 +1,31 @@
+{
+  "packageId": "app.fivebudget",
+  "host": "5budget.app",
+  "name": "$5 Budget",
+  "launcherName": "$5 Budget",
+  "display": "standalone",
+  "themeColor": "#1b3022",
+  "themeColorDark": "#1b3022",
+  "navigationColor": "#1b3022",
+  "navigationColorDark": "#1b3022",
+  "navigationDividerColor": "#1b3022",
+  "navigationDividerColorDark": "#1b3022",
+  "backgroundColor": "#f8f7f4",
+  "enableNotifications": false,
+  "startUrl": "/",
+  "iconUrl": "https://5budget.app/icon-512.png",
+  "maskableIconUrl": "https://5budget.app/icon-512.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "android.keystore",
+    "alias": "android"
+  },
+  "appVersion": "0.1.129",
+  "appVersionCode": 129,
+  "shortcuts": [],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://5budget.app/manifest.webmanifest",
+  "fallbackType": "customtabs",
+  "enableSiteSettingsShortcut": true,
+  "orientation": "default"
+}

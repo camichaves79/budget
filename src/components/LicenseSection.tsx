@@ -21,7 +21,6 @@ export function LicenseSection() {
     licenseExpiryLabel,
     licensedActive,
     pendingOrder,
-    playBuild,
     redeemError,
     remaining,
     restoreLicense,
@@ -129,14 +128,14 @@ export function LicenseSection() {
           </div>
           {licensedActive ? (
             <span className="license-pill">{t('license.active')}</span>
-          ) : playBuild ? null : (
+          ) : (
             <button type="button" className="btn" onClick={unlock} disabled={!checkoutReady || busy}>
               {busy ? t('license.working') : account ? t('license.unlockYear') : t('license.signInUnlock')}
             </button>
           )}
         </div>
 
-        {pendingOrder && !licensedActive && !playBuild && (
+        {pendingOrder && !licensedActive && (
           <div className="setting-row">
             <div>
               <div className="setting-name">{t('license.purchaseWaiting')}</div>
@@ -180,7 +179,7 @@ export function LicenseSection() {
           </div>
         )}
 
-        {!licensedActive && !playBuild && (
+        {!licensedActive && (
           <form onSubmit={activateKey} className="key-form">
             <div className="setting-name">{t('license.haveKey')}</div>
             <div className="setting-desc">{t('license.keyFallback')}</div>

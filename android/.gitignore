@@ -1,0 +1,6 @@
+# Bubblewrap generates the Android project from twa-manifest.json
+# (`bubblewrap update`), so only the config and this file are tracked.
+# The keystore, generated project and build outputs are local-only.
+*
+!.gitignore
+!twa-manifest.json

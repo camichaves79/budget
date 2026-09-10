@@ -1,6 +1,7 @@
 
 !.env.example
 !.vscode/extensions.json
+.bubblewrap-home
 .dev.vars
 .DS_Store
 .env
@@ -10,6 +11,8 @@
 .smoke
 .vercel
 .vscode/*
+.wrangler
+.wrangler-home
 *.local
 *.log
 *.njsproj
@@ -29,5 +32,3 @@ npm-debug.log*
 pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-.wrangler
-.wrangler-home
