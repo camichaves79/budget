@@ -4,15 +4,15 @@
   "name": "$5 Budget",
   "launcherName": "$5 Budget",
   "display": "standalone",
-  "themeColor": "#1b3022",
-  "themeColorDark": "#1b3022",
-  "navigationColor": "#1b3022",
-  "navigationColorDark": "#1b3022",
-  "navigationDividerColor": "#1b3022",
-  "navigationDividerColorDark": "#1b3022",
-  "backgroundColor": "#f8f7f4",
-  "enableNotifications": false,
-  "startUrl": "/",
+  "themeColor": "#1B3022",
+  "themeColorDark": "#1B3022",
+  "navigationColor": "#1B3022",
+  "navigationColorDark": "#1B3022",
+  "navigationDividerColor": "#1B3022",
+  "navigationDividerColorDark": "#1B3022",
+  "backgroundColor": "#F8F7F4",
+  "enableNotifications": true,
+  "startUrl": "/?src=play",
   "iconUrl": "https://5budget.app/icon-512.png",
   "maskableIconUrl": "https://5budget.app/icon-512.png",
   "splashScreenFadeOutDuration": 300,
@@ -20,12 +20,28 @@
     "path": "android.keystore",
     "alias": "android"
   },
-  "appVersion": "0.1.130",
-  "appVersionCode": 130,
+  "appVersionName": "0.1.130",
+  "appVersionCode": 133,
   "shortcuts": [],
   "generatorApp": "bubblewrap-cli",
   "webManifestUrl": "https://5budget.app/manifest.webmanifest",
   "fallbackType": "customtabs",
+  "features": {
+    "playBilling": {
+      "enabled": true
+    }
+  },
+  "alphaDependencies": {
+    "enabled": true
+  },
   "enableSiteSettingsShortcut": true,
-  "orientation": "default"
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "minSdkVersion": 23,
+  "orientation": "default",
+  "fingerprints": [],
+  "additionalTrustedOrigins": [],
+  "retainedBundles": [],
+  "displayOverride": [],
+  "appVersion": "0.1.130"
 }
