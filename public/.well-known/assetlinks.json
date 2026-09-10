@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "app.fivebudget",
+      "sha256_cert_fingerprints": [
+        "00:06:17:52:B0:32:C1:A1:77:D5:86:1A:61:E8:0D:BA:20:C2:61:87:92:CD:87:19:B0:50:31:0C:EA:BD:B3:B2"
+      ]
+    }
+  }
+]
