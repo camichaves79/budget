@@ -36,18 +36,21 @@
 
 ## 2. Pricing (approved, amended 2026-09-09)
 
-- **COP 17,500/year, SUBSCRIPTION with auto-renew** — the live product since
-  the store's approval (first real sale 2026-09-09: order `9426883`, ≈ US$5.62
-  at LS's `currency_rate` 0.00032112, renews 2027-09-09). The original
-  $5-one-time/manual-renewal plan was superseded at product creation (user's
-  call, 2026-09-09); license keys are enabled with UNLIMITED activations.
-  Brand-aligned; expected earnings at 50 paying users ≈ $55–100/yr (see the
-  session cost model).
+- **US$5.00/year, SUBSCRIPTION with auto-renew** — the live product
+  ("$5 Budget — Smart Entry (1 year)"). The user re-priced it from the
+  interim COP 17,500 to USD 5.00 on 2026-09-09 (same product/checkout
+  UUID; the store currency stays COP, so payouts convert). The original
+  $5-one-time/manual-renewal plan was superseded at product creation
+  (user's call, 2026-09-09); license keys are enabled with UNLIMITED
+  activations. First real sale: order `9426883` (the COP-era price,
+  ≈ US$5.62 at LS's `currency_rate` 0.00032112, renews 2027-09-09).
+  Brand-aligned; expected earnings at 50 paying users ≈ $55–100/yr (see
+  the session cost model).
 - Cost math: Gemini ≈ $0.00036–0.00048/parse (Lite→Flash, paid key); LS fee
   5% + $0.50 per sale (**+1.5% international-card / PayPal, +0.5% subscription
   now applies**); the ledger's fee/net columns are ESTIMATES (currency-aware
   since v0.1.117: the $0.50 baseline converts via the order's
-  `currency_rate`); payout reports are the reconciliation truth);
+  `currency_rate`); payout reports are the reconciliation truth;
   chargebacks: **$15 dispute fee**. Store currency is COP — expect COP
   payout reports.
 - Scale knobs (documented, not implemented): conversion %, free-allowance size,
@@ -263,11 +266,16 @@ auth boundary: `OAuthProvider('apple.com')` + a Service ID + private key.)
   post-approval, either flip the whole admin panel to Test mode and recreate
   the product/webhook/key there, or — the chosen path at 1 user — make the
   first sale REAL and verify against the live webhook deliveries + Firestore.
-- **Ledger CSV/invoice regressions (fixed `74c99d4`, v0.1.117):** the CSV's
+- **Ledger CSV/invoice regressions (fixed `74c99d4` + `0f033d0`, v0.1.117 +
+  v0.1.122):** the CSV's
   fee/net columns rendered empty since ship (doc keys `fees`/`net` vs the
   `fees_estimate`/`net_estimate` contract — now canonical with legacy
   fallback), the +$0.50 fee baseline was USD-only (now converts via
-  `currency_rate`), and webhook/redeem merge-sets wrote `invoice_url: null`
-  over stored URLs (now routed through `saleRowForMerge`). If a sales row is
+  `currency_rate`), webhook/redeem merge-sets wrote `invoice_url: null`
+  over stored URLs (now routed through `saleRowForMerge`), and
+  `generate-invoice` was called with the order's UUID `identifier` while
+  the LS API wants the NUMERIC order id (404 — the first live sale lost
+  its invoice link this way; fixed by passing `data.id` in the webhook and
+  the resolved numeric id in redeem). If a sales row is
   ever missing its `invoice_url`, re-send the LS `order_created` webhook —
   the handler regenerates it.

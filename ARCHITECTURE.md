@@ -1,18 +1,28 @@
 # Architecture — $5 Budget App
 
 > **Living record** — updated whenever the app ships a meaningful change.
-> Last updated: **2026-09-09** (main ≈ `74c99d4`, v0.1.117; **Lemon Squeezy
+> Last updated: **2026-09-09** (main ≈ `c9634ad`, v0.1.125; **Lemon Squeezy
 > store APPROVED and the FIRST LIVE SALE verified end-to-end** — live
 > checkout → phone redeem → Firestore → webhook 200 → accountant CSV;
 > `GEMINI_PAID_API_KEY` verified against licensed parses (local + prod);
 > the Worker now holds LIVE LS credentials (API key, fresh webhook signing
-> secret, store id `468123`); Firestore reset to one clean real row; ledger
-> fixes shipped (v0.1.117): the accountant CSV's fee columns now render
-> (legacy fallback), the fee baseline converts for non-USD orders, and
-> webhook/redeem merges can no longer clobber `invoice_url`. **Product
-> model (2026-09-09):** the live product is a COP 17,500/year SUBSCRIPTION
-> with unlimited-activation license keys — A12's one-time/manual-renewal
-> assumption is amended; the "$5/year" catalog copy is a parked i18n item.
+> secret, store id `468123`); Firestore holds one clean real row (old test
+> rows gone with the LS test-side housekeeping); ledger fixes shipped:
+> the accountant CSV's fee columns render (legacy fallback), the fee
+> baseline converts for non-USD orders, webhook/redeem merges can no longer
+> clobber `invoice_url`, and `generate-invoice` uses the NUMERIC LS order
+> id (v0.1.122 — the identifier UUID answers 404, which is how the first
+> sale lost its invoice link; one `order_created` resend healed the live
+> row, so every CSV column is now populated). **Product model
+> (2026-09-09):** the live product is a **US$5.00/year SUBSCRIPTION**
+> (re-priced by the user — same product/checkout UUID) with
+> unlimited-activation license keys; the store currency is COP, so payouts
+> convert, and the paywall copy states **"$5 USD/year"** in every catalog
+> (v0.1.123–0.1.125). A12's one-time/manual-renewal assumption is amended
+> (auto-renew). **UI guard batch, iPhone-approved (2026-09-09,
+> v0.1.119–0.1.121):** the smart-entry and Budgets "no categories" guards
+> drop their sheet titles and their buttons ARE the add-category action —
+> they switch to Categories with the add-category form already open.
 > **Cloudflare migration COMPLETE** — frontend on `5budget.app`
 > (Cloudflare Pages, custom domain), the six API functions on ONE Cloudflare
 > Worker at `api.5budget.app`, Vercel retired; Firebase OAuth JWT now signed
@@ -124,7 +134,7 @@ iPhone PWA ──HTTPS──▶ Cloudflare Pages (static, CDN, `5budget.app`)   
 | A9 | Linear git history, feature branch per change, ff-merge to `main`, rollback = a revert commit; Pages Actions + Vercel Git integration auto-deploy | Deterministic, reviewable, instantly reversible | Accepted |
 | A10 | Shared-secret header + origin allow-list + input whitelisting on the function | Cheap defense layers; acknowledged as obfuscation, not auth (see §4) | Accepted |
 | A11 | Rejected: bring-your-own-key (BYOK) and the fixed 50-user capacity plans | BYOK was built then abandoned (stash discarded 2026-09-06); quota-cap option reverted; the paywall (A12) is the chosen monetization path | Rejected → superseded by A12 |
-| A12 | Smart-entry paywall: 10 free parses/day (client-side counter, UX not security), then a **$5/year** license sold through Lemon Squeezy (MoR, 5% + $0.50/txn) with an in-app checkout overlay; the post-purchase redirect carries the order id and the app auto-redeems it server-side into an **HMAC-signed license** (verified on every parse, 100/day meter); **buying always requires Google sign-in — every license is account-bound at mint time**; a Settings paste-key is a recovery fallback only. **Redemption is email-authorized (2026-09):** the signed-in email must match the LS buyer email (409 `email-mismatch` otherwise) and the license endpoints are per-IP rate-limited, so enumerable numeric order ids cannot be claimed; buyers must use their Google email at checkout | Price chosen for brand fit + positive expected earnings at 50+ users (~40–70% ROI, break-even ~10–12 payers); license minting stays server-side so keys can't be forged client-side; mandatory sign-in makes restore airtight and kills the unsigned-buyer edge cases; the email match is the actual authorization layer (sign-in alone is only identity) | Accepted (amended 2026-09-09: the live product is a COP 17,500/yr subscription with unlimited-activation license keys — see header) |
+| A12 | Smart-entry paywall: 10 free parses/day (client-side counter, UX not security), then a **$5/year** license sold through Lemon Squeezy (MoR, 5% + $0.50/txn) with an in-app checkout overlay; the post-purchase redirect carries the order id and the app auto-redeems it server-side into an **HMAC-signed license** (verified on every parse, 100/day meter); **buying always requires Google sign-in — every license is account-bound at mint time**; a Settings paste-key is a recovery fallback only. **Redemption is email-authorized (2026-09):** the signed-in email must match the LS buyer email (409 `email-mismatch` otherwise) and the license endpoints are per-IP rate-limited, so enumerable numeric order ids cannot be claimed; buyers must use their Google email at checkout | Price chosen for brand fit + positive expected earnings at 50+ users (~40–70% ROI, break-even ~10–12 payers); license minting stays server-side so keys can't be forged client-side; mandatory sign-in makes restore airtight and kills the unsigned-buyer edge cases; the email match is the actual authorization layer (sign-in alone is only identity) | Accepted (amended 2026-09-09: the live product is a US$5.00/year subscription with unlimited-activation license keys — see header) |
 | A13 | Identity for license binding: **Firebase Auth** (Google sign-in only — Apple sign-in discarded 2026-09-06, the $99/yr developer account was never justified) + **Firestore** for entitlements and the sales ledger, written via a zero-dependency REST client (service-account JWT → Firestore REST; the client never touches Firestore) | Firebase over Supabase: $0 Spark tier with no project-pause risk and the same Google account as Gemini; cloud holds identity/entitlement/purchase metadata only — budget data stays on-device | Accepted |
 | A14 | Licensed tier runs on a **paid Gemini key** with `gemini-3.5-flash-lite` primary and `gemini-3.6-flash` fallback (inverted from the free tier), and a cache-friendly system prompt ready for context-caching savings. **Safety floor (2026-09-06):** when the paid key is rejected with a config-type error (400/401/403/404 — invalid key, permissions, billing, unknown model), the parse retries with the free key so a broken paid key never bricks licensed parses; quota/transient failures stay on the paid key | Free-tier quotas can't back a paid product; Lite ≈25% cheaper per parse and is already the proven fallback; paid tier also opts out of training use; the fallback keeps paying users working through key-rotation/billing mishaps (validated in prod) | Accepted |
 | A15 | Hosting migration to **Cloudflare**: static frontend → **Cloudflare Pages**, the six API functions → **Cloudflare Workers** (Node→Web handler shim + `nodejs_compat`, still zero runtime dependencies) | GitHub Pages' ToS forbids primarily-commercial sites and Vercel Hobby is non-commercial — the paywall (A12) makes this app commercial, so both current homes were non-compliant. Phased for reversibility: Pages first, Worker port with dual-run cutover second, Vercel retired last | **Shipped 2026-09-08** — `5budget.app` (Pages, custom domain) + `api.5budget.app` (Worker, Smart Placement near Gemini); Vercel + GitHub Pages fully retired; gotchas fixed along the way: Worker env bindings are non-enumerable getters (explicit-key hydration), and workerd lacks `crypto.createSign` (WebCrypto `signJwt`). Ops: `skills/hosting-migration.md` |
@@ -142,7 +152,7 @@ iPhone PWA ──HTTPS──▶ Cloudflare Pages (static, CDN, `5budget.app`)   
 | **Privacy** | Strong | Transaction history never leaves the device; only utterance + category list are sent; logs carry metadata only (status/model/retryDelay). The cloud now stores identity, entitlement and purchase metadata (A13) — budget data still never leaves the device. Free-tier Gemini data-use caveat remains; the licensed tier uses a paid key (the opt-out). |
 | **Maintainability** | Good | ~2k LOC app + one 600-line function; pure logic modules; UI copy centralized in `src/lib/i18n.ts`; docs in `skills/`; conventions in `project-skill.md`. |
 | **Observability** | Weakest link | Worker logs (Cloudflare → `budget-api` → Logs) are metadata-only and ad-hoc; no metrics, no alerting, no error budget. The sales ledger + per-license usage meters improve visibility; diagnosis still = user report + log grep. |
-| **Testability** | Solid for logic, thin for UI | 361 smoke checks cover money/periods/validators/microservice helpers/license+paywall logic (incl. the paid-key fallback), the install-nudge decision core, the emoji grapheme cap, plus i18n catalog completeness, placeholder parity, plurals and per-locale money; no UI test framework; handler smoke-testable via fetch stubbing. |
+| **Testability** | Solid for logic, thin for UI | 366 smoke checks cover money/periods/validators/microservice helpers/license+paywall logic (incl. the paid-key fallback), the install-nudge decision core, the emoji grapheme cap, plus i18n catalog completeness, placeholder parity, plurals and per-locale money; no UI test framework; handler smoke-testable via fetch stubbing. |
 | **Cost efficiency** | $5/yr license, ~40–70% ROI | Infra stays free at current scale; operating cost is almost entirely Gemini usage. The free tier's cross-subsidy is the scale risk (A12, §5) — free users' Gemini ≈ $0.14/user/yr vs $4.25 net per payer. |
 | **Portability** | Medium | Provider swap is one function + one client module; storage adapter swappable; backend pinned to the Node-style `handler(req, res)` contract behind `worker.js`'s Web-Request shim. |
 
@@ -185,7 +195,9 @@ iPhone PWA ──HTTPS──▶ Cloudflare Pages (static, CDN, `5budget.app`)   
     (`7f5e995`) made `ensureLicenseForOrder` upsert the complete row on every
     path, and v0.1.117 guards the webhook/redeem merges so neither can null out
     a stored invoice URL; the CSV fee columns that rendered empty since ship now
-    display (legacy key fallback).
+    display (legacy key fallback); v0.1.122 switched `generate-invoice` to the
+    NUMERIC LS order id (the identifier UUID answers 404 — the first live sale
+    lost its invoice link this way, healed by one webhook resend).
 
 ## 5. Where we might go next (as the user base grows)
 

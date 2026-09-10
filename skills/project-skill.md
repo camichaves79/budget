@@ -111,7 +111,7 @@ and (except for smart entry) never leaves the device.
   the bundler to lose. Client dep: `firebase` (auth module only, modular
   imports) — the one deliberate dependency addition, justified by A13.
 - No router, no UI library, no icon library (inline stroke SVGs)
-- Lint: `oxlint` · Tests: hand-rolled smoke suite (`tests/smoke.ts`, 361 checks)
+- Lint: `oxlint` · Tests: hand-rolled smoke suite (`tests/smoke.ts`, 366 checks)
 - npm scripts: `dev` · `build` (tsc -b && vite build) · `lint` · `preview` ·
   `test` (bundles tests/smoke.ts via `vite.test.config.ts` into `.smoke/` and runs it)
 - **Local npm quirk:** the global npm cache in this environment has permission issues.
@@ -308,7 +308,7 @@ in those tight overrides.
   limiter, request sanitizer, Gemini array parser, retry policy, response cache),
   **license/paywall logic** (token sign/verify/meter, free-allowance quota, LS fee
   math, order→ledger mapping, webhook signature, CSV export) plus the
-  install-nudge decision core and the emoji grapheme cap. 361 checks.
+  install-nudge decision core and the emoji grapheme cap. 366 checks.
 - `npm run build` + `npm run lint` before shipping. Lint has 5 known harmless
   warnings (react-refresh export rules in `store.tsx`/`entitlement.tsx`/
   `AmountInput.tsx` and one set-state-in-effect in `App.tsx`).
@@ -325,7 +325,9 @@ in those tight overrides.
   `multi-transaction-entry`, `paid-key-fallback`, `four-sections`,
   `plus-sing-relocation`, `install-app-signal`, `budgets-no-categories-guard`,
   `category-emoji-field`, `default-emoji-moneybag`, `first-open-welcome`,
-  `smart-submit-lock`, `i18n-german`, `og-share-preview`, `ledger-csv-invoice-fix`).
+  `smart-submit-lock`, `i18n-german`, `og-share-preview`, `ledger-csv-invoice-fix`, `ledger-invoice-numeric-id`,
+   `ui-miscelaneous-0013`…`0015`, `paywall-copy-about-5`, `paywall-copy-usd5`,
+   `paywall-copy-usd-label`).
 - **Only commit/push when the user explicitly says so.**
 - **"ship"** = commit → push branch → fast-forward merge into `main` → push → delete
   branch locally and remotely → verify deploys. History stays linear (no merge commits).
@@ -447,7 +449,7 @@ in those tight overrides.
 
 ## 10. Current state & next-session context
 
-Everything below is **shipped and live** (main ≈ `74c99d4`, v0.1.117,
+Everything below is **shipped and live** (main ≈ `c9634ad`, v0.1.125,
 2026-09-09):
 
 - Smart entry end-to-end: PWA → Vercel microservice → Gemini 3.6 Flash → instant save
@@ -657,31 +659,41 @@ Candidate next steps (ask the user, don't assume):
   paywall-ops §6 non-negotiable check) → LS webhook 200 → accountant CSV;
   `GEMINI_PAID_API_KEY` verified against licensed parses (local mint +
   prod parse with zero `paid key rejected` log lines). The live product:
-  **"$5 Budget — Smart Entry (1 year)"** — **COP 17,500/year SUBSCRIPTION**
-  (auto-renew), license keys enabled with unlimited activations, checkout
+  **"$5 Budget — Smart Entry (1 year)"** — **US$5.00/year SUBSCRIPTION**
+  (auto-renew, re-priced by the user on 2026-09-09; the COP 17,500 price
+  was interim), license keys enabled with unlimited activations, checkout
   UUID `37a51134-…` (old: `3ea610ea-…`); `VITE_CHECKOUT_URL` updated in
-  Pages (Production) + local `.env`. The Worker now holds **LIVE LS
+  Pages (Production) + local `.env`. The Worker holds **LIVE LS
   credentials**: API key, a fresh webhook signing secret (the 401s came
-  from a test-side secret), and store id `468123` — note LS splits
-  test/live keys, webhooks AND products per side; a test-mode toggle on a
-  live product does NOT produce a test order. First sale: order `9426883`
-  (order_number `4681231`, COP 17,501.25, license `03ec4a76-…`, renews
-  2027-09-09). Firestore was reset to this one clean row (old test rows
-  gone with the pre-approval test store's data).
-- **Ledger fixes (`ledger-csv-invoice-fix`, `74c99d4`, v0.1.117 minor):**
-  the accountant CSV's `fees_estimate`/`net_estimate` columns rendered
-  EMPTY since ship (doc keys were `fees`/`net`) — now canonical + legacy
-  fallback; the +$0.50 fee baseline converts via the order's
-  `currency_rate` for non-USD orders; webhook/redeem merges route through
-  `saleRowForMerge` so they can no longer null out a stored `invoice_url`
-  (that's how the first sale lost its invoice link). Suite now 361 checks.
-- **One cosmetic loose end:** the live row's `invoice_url` fills on ONE
-  `order_created` resend in LS (the new Worker code regenerates it); the
-  CSV already shows everything else.
-- **Parked:** the "$5/year" copy in all eleven catalogs now that the
-  product is COP 17,500/yr (i18n ship); LS housekeeping (delete the
-  test-side webhook, revoke the test API key); Preview env vars on Pages
-  (only NODE_VERSION there — harmless, branch previews unused); any
-  translation nits found while using the app.
+  from a test-side secret), and store id `468123` — LS splits test/live
+  keys, webhooks AND products per side; a test-mode toggle on a live
+  product does NOT produce a test order. First sale: order `9426883`
+  (order_number `4681231`, license `03ec4a76-…`, renews 2027-09-09; it
+  predates the USD re-price). Firestore holds this one clean real row; the
+  test-side webhook and test API key are deleted/revoked (housekeeping
+  done). The store currency is COP — USD product prices convert at payout.
+- **Ledger fixes (v0.1.117 + v0.1.122, minor):** the accountant CSV's
+  `fees_estimate`/`net_estimate` columns rendered EMPTY since ship (doc
+  keys were `fees`/`net`) — now canonical + legacy fallback; the +$0.50
+  fee baseline converts via the order's `currency_rate` for non-USD
+  orders; webhook/redeem merges route through `saleRowForMerge` so they
+  can no longer null out a stored `invoice_url`; and `generate-invoice`
+  takes the NUMERIC LS order id (the identifier UUID answers 404 — the
+  root cause of the missing invoice link). One `order_created` resend
+  healed the live row: every CSV column is now populated (fees/net,
+  receipt_url, invoice_url). Suite now 366 checks.
+- **UI guard batch, iPhone-approved (2026-09-09, v0.1.119–0.1.121):** the
+  smart-entry sheet drops its title in the no-categories guard state, and
+  the smart-entry + Budgets guard buttons ARE the add-category action —
+  they land on Categories with the add-category form already open.
+- **Paywall copy final (2026-09-09, v0.1.123–0.1.125):** every catalog
+  states the exact price with currency — "Unlock · $5 USD/year" (en),
+  "· 5 USD/año" (es), each language's idiomatic form. The "About $5"
+  wording was tried and reverted by the user.
+- **Parked:** the laptop-browser Google sign-in failure (diagnose next —
+  popup-first auth on desktop; works on the iPhone and on localhost per
+  the authorized-domains config, so capture the browser + error text);
+  Preview env vars on Pages (only NODE_VERSION there — harmless, branch
+  previews unused); any translation nits found while using the app.
 - Always read `skills/speech-entry.md` for the feature spec and this file for
   conventions before coding.
