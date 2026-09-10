@@ -435,7 +435,11 @@ in those tight overrides.
 - **Firebase**: `signInWithRedirect` is broken on shared-hosting domains by
   third-party-storage blocking (Safari 16.1+/Chrome 115+) → the app is
   popup-first with redirect fallback; on the custom domain (`5budget.app`)
-  redirect auth works normally. Server-side, never rely on Vercel
+  redirect auth works normally. **Local dev:** a build without the
+  `VITE_FIREBASE_*` vars in `.env` renders the sign-in button DISABLED
+  (`authConfigured()` false — by design, not a bug); set the four public
+  web-app config values (apiKey must match `AIza…`) to enable it.
+  Server-side, never rely on Vercel
   zero-config tracing for npm packages in `/api` functions: it silently
   dropped `firebase-admin` from the bundles (diagnosed via a temp endpoint
   showing "Cannot find package … imported from /var/task/api/"). The repo's
@@ -449,7 +453,7 @@ in those tight overrides.
 
 ## 10. Current state & next-session context
 
-Everything below is **shipped and live** (main ≈ `c9634ad`, v0.1.125,
+Everything below is **shipped and live** (main ≈ `2e31abf`, v0.1.126,
 2026-09-09):
 
 - Smart entry end-to-end: PWA → Vercel microservice → Gemini 3.6 Flash → instant save
@@ -690,10 +694,7 @@ Candidate next steps (ask the user, don't assume):
   states the exact price with currency — "Unlock · $5 USD/year" (en),
   "· 5 USD/año" (es), each language's idiomatic form. The "About $5"
   wording was tried and reverted by the user.
-- **Parked:** the laptop-browser Google sign-in failure (diagnose next —
-  popup-first auth on desktop; works on the iPhone and on localhost per
-  the authorized-domains config, so capture the browser + error text);
-  Preview env vars on Pages (only NODE_VERSION there — harmless, branch
-  previews unused); any translation nits found while using the app.
+- **Parked:** Preview env vars on Pages (only NODE_VERSION there — harmless,
+  branch previews unused); any translation nits found while using the app.
 - Always read `skills/speech-entry.md` for the feature spec and this file for
   conventions before coding.

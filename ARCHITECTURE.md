@@ -1,7 +1,7 @@
 # Architecture — $5 Budget App
 
 > **Living record** — updated whenever the app ships a meaningful change.
-> Last updated: **2026-09-09** (main ≈ `c9634ad`, v0.1.125; **Lemon Squeezy
+> Last updated: **2026-09-09** (main ≈ `2e31abf`, v0.1.126; **Lemon Squeezy
 > store APPROVED and the FIRST LIVE SALE verified end-to-end** — live
 > checkout → phone redeem → Firestore → webhook 200 → accountant CSV;
 > `GEMINI_PAID_API_KEY` verified against licensed parses (local + prod);
