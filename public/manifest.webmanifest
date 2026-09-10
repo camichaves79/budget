@@ -1,9 +1,10 @@
 {
   "name": "$5 Budget",
   "short_name": "$5 Budget",
+  "id": "/",
   "description": "Mobile-first personal budget tracker (COP, offline-first).",
-  "start_url": "./",
-  "scope": "./",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#f8f7f4",
   "theme_color": "#1b3022",

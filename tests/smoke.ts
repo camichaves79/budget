@@ -4,6 +4,7 @@ import {
   INSTALL_TIP_DELAY_MS, INSTALL_TIP_STORAGE_KEY, decideInstallSignal, isStandalone, uaLooksIos,
 } from '../src/lib/installPrompt';
 import { WELCOME_DELAY_MS, WELCOME_SEEN_KEY, shouldShowWelcome } from '../src/lib/welcome';
+import { PLAY_BUILD_KEY, playBuildDecision } from '../src/lib/playBuild';
 import { AUTO_SEND_PAUSE_MS, MIN_SEND_LENGTH } from '../src/components/SmartEntry';
 import { firstGrapheme } from '../src/lib/emoji';
 import { isValidISODate } from '../src/lib/dates';
@@ -1430,6 +1431,15 @@ await (async () => {
   check('emoji: plain text keeps first char', firstGrapheme('abc'), 'a');
   check('emoji: empty stays empty', firstGrapheme(''), '');
   check('emoji: leading whitespace is trimmed at the call site', firstGrapheme('  🏠'.trim()), '🏠');
+
+  // ---- Play Store build flag (twa-play-prep, stance B) ----
+  check('play: no stored flag, no src param', playBuildDecision(false, null), false);
+  check('play: src=play marks the build', playBuildDecision(false, 'play'), true);
+  check('play: stored flag survives later boots', playBuildDecision(true, null), true);
+  check('play: other src params are ignored', playBuildDecision(false, 'utm'), false);
+  check('play: storage key', PLAY_BUILD_KEY, 'budget.playBuild');
+  check('i18n en play paywall body mentions no purchase', t('paywall.playBody', { n: 10 }), 'Smart entry is free for 10 parses a day.');
+  check('i18n en play reset hint mentions no license', t('paywall.playReset'), 'Free entries reset at midnight. Manual entry always works.');
 }
 
 if (failures > 0) {

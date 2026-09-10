@@ -8,12 +8,32 @@ import { useEntitlement } from '../state/entitlement';
  * (product decision 2026-09), so the primary action first requires Google
  * sign-in and then opens the Lemon Squeezy checkout (overlay in-app,
  * tab/redirect fallback). Manual entry stays one tap away and always works.
+ *
+ * Play Store builds (stance B of the Play exploration): NO purchase UI at all
+ * — the card drops the unlock CTA and the sign-in hint and only points to
+ * manual entry, so the Play-distributed app never offers the paid tier.
  */
 export function PaywallCard({ onClose, onManual }: { onClose: () => void; onManual: () => void }) {
-  const { account, buy, busy, checkoutReady, completePendingPurchase, freeDaily, pendingOrder, signIn } = useEntitlement();
+  const { account, buy, busy, checkoutReady, completePendingPurchase, freeDaily, pendingOrder, playBuild, signIn } = useEntitlement();
   const [opening, setOpening] = useState(false);
   const [signingIn, setSigningIn] = useState(false);
   const [error, setError] = useState('');
+
+  if (playBuild) {
+    return (
+      <div className="paywall-card">
+        <p className="paywall-title">{t('paywall.title')}</p>
+        <p className="field-hint">{t('paywall.playBody', { n: freeDaily })}</p>
+        <button type="button" className="btn btn-block" onClick={onManual}>
+          {t('smart.manualInstead')}
+        </button>
+        <button type="button" className="btn btn-block" onClick={onClose}>
+          {t('close')}
+        </button>
+        <p className="field-hint smart-disclosure">{t('paywall.playReset')}</p>
+      </div>
+    );
+  }
 
   const unlock = async () => {
     if (opening || busy || signingIn) return;
