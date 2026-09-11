@@ -761,6 +761,44 @@ which can never call the Play API. The purpose-built account
 **`play-billing@budget-app-11d48.iam.gserviceaccount.com`** now exists, is
 invited in Play Console, and passes the check:
 
+**2026-09-11 (final) — the Worker variable was the last mile, and the new
+diagnostic found it.** `tools/verify-redeem-play.mjs` drove the real endpoint
+with a real Firebase ID token and got the Worker to name its own fault:
+
+```
+POST /api/license/redeem-play -> 503
+{"code":"play-not-configured","reason":"play api 400 for app.fivebudget — Invalid Value"}
+```
+
+That is the v0.3.6 `reason` field paying for itself — the first time this path
+ever explained itself. `400 Invalid Value` is the exact signature of the
+**Firebase admin key**, and reading the variable in Cloudflare confirmed it: the
+Worker's `GOOGLE_PLAY_SERVICE_ACCOUNT` was still the Firebase account. **The
+Play-side credential was correct all along; the Worker simply never got it.**
+That, not the credential, was the blocker behind the failed purchase.
+
+Three local gotchas found while building that probe, each of which cost a
+false trail:
+- **The shared secret the app sends is `VITE_PARSE_SECRET`**, checked by the
+  Worker against **`BUDGET_PARSE_SECRET`** — *not* `BUDGET_LICENSE_SECRET`
+  (`api/_http.js#hasSharedSecret`). Sending the license secret yields a bare
+  401 `unauthorized` before any Play work.
+- **`.dev.vars` is stale in two ways**: `BUDGET_LICENSE_SECRET` predates the
+  2026-09-07 regeneration, and `FIREBASE_SERVICE_ACCOUNT` is a **placeholder**
+  (`fake@local-test.iam.gserviceaccount.com`, no `private_key_id`) that cannot
+  mint a token Firebase accepts. Neither affects production.
+- **`api/_firebase.js#signJwt` emits no `kid` header** (the Worker never needs
+  it), but a Firebase CUSTOM token requires `kid` = `private_key_id`, or the
+  exchange answers `INVALID_CUSTOM_TOKEN`. Hence the probe's own signer.
+
+⚠️ **To set a Worker secret, prefer `npx wrangler secret put <KEY>`**: Cloudflare's
+docs are explicit that it *"creates a new version of the Worker and deploys it
+immediately"* — no draft phase. The dashboard path (Workers & Pages →
+**Overview** → select Worker → **Settings** → Variables and Secrets → **Add** →
+type Secret → then **Deploy**) works but is the one that keeps leaving a draft
+behind. A service-account key must also be a SINGLE-LINE JSON value.
+
+
 ```
 node tools/play-credentials-check.mjs <key.json>
   [3] ok  authorized — the financial/order permission is in effect (HTTP 200)

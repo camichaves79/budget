@@ -20,7 +20,7 @@
     "path": "android.keystore",
     "alias": "android"
   },
-  "appVersionName": "0.3.8",
+  "appVersionName": "0.3.9",
   "appVersionCode": 133,
   "shortcuts": [],
   "generatorApp": "bubblewrap-cli",
