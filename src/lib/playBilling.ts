@@ -197,12 +197,18 @@ async function probeCanMakePayment(sku: string): Promise<string> {
  * Inspect the Play billing surface WITHOUT charging or opening a sheet:
  * API presence, service acquisition, SKU resolution through Play, and whether
  * Chrome has a payment app for the billing method.
+ *
+ * `canMakePayment` is probed even when the Digital Goods service fails, because
+ * the two failures are different faults with different fixes: "no payment app"
+ * means the INSTALLED APK does not advertise the TWA billing services
+ * (`PaymentService` / `IS_READY_TO_PAY`) — a stale or billing-less bundle —
+ * while a service-level rejection means Chrome refused this context outright.
  */
 export async function probePlay(): Promise<PlayDiagnostics> {
   const apiPresent = playBillingSupported();
   const service = await getService();
+  const canPay = await probeCanMakePayment(PLAY_SUBSCRIPTION_ID);
   let details = '';
-  let canPay = '';
   if (service && PLAY_SUBSCRIPTION_ID !== '') {
     try {
       const items = await service.getDetails([PLAY_SUBSCRIPTION_ID]);
@@ -215,7 +221,6 @@ export async function probePlay(): Promise<PlayDiagnostics> {
     } catch (error) {
       details = `err (${describeError(error)})`;
     }
-    canPay = await probeCanMakePayment(PLAY_SUBSCRIPTION_ID);
   }
   return {
     apiPresent,
