@@ -88,8 +88,8 @@ and (except for smart entry) never leaves the device.
 - Savings goals feature was **removed entirely** (page, tab, state, types, CSS, docs).
 - Demo transaction seeder was **removed**.
 - No app header bar (tab bar is the navigation identity).
-- The add button is a **coin-style "$"** (2026-09): a circular engraving-green
-  button with a thin white rim + green outer ring and a bold Rajdhani `$`,
+- The add button is a **coin-style "$"** (2026-09): a circular mint `#60c784`
+  button with a thin white rim + engraving-green outer ring and a bold Rajdhani `$`,
   centered on the tab bar (visible in all four sections), its horizontal
   diameter aligned with the bar's upper side so the top half floats above it;
   tapping it switches to Cash Flow and opens smart entry. A lightning overlay
@@ -286,7 +286,7 @@ same-kind fallback category), `setBudget` (null = remove), `importData`, `resetA
 | `--income-soft` | `#e9f2ed` | income emoji circles |
 
 Icon color: **mint `#60c784`** (RGB 96,199,132) + engraving-green strokes (PNG icons +
-favicon bg). Not a CSS var (icons only).
+favicon bg); the tab-bar coin fill is the same mint (2026-09-10). Not a CSS var.
 
 **Progress bars** are tonal (no traffic lights): 6px slate track; fill = mint 0–75%,
 primary 76–99%, terracotta 100%+; over-budget row gets the coral tint.

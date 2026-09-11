@@ -32,8 +32,8 @@ calculations.
   visible in all four sections (2026-09 relocation): a circular button centered on
   the bar, its horizontal diameter aligned with the bar's upper side; tapping it
   switches to Cash Flow and opens the input.
-- The glyph is a **bold "$"** on a coin-style circle — engraving-green disc, thin
-  white rim, thin green outer ring (2026-09 user direction). A lightning overlay
+- The glyph is a **bold "$"** on a coin-style circle — mint `#60c784` disc, thin
+  white rim, thin engraving-green outer ring (2026-09 user direction). A lightning overlay
   was tried and removed (2026-09); the button stays visually simple.
 - Provide an accessible label such as "Add transaction". Do not rely on the glyph alone.
 
