@@ -753,8 +753,52 @@ sale, and the user **refunded the purchase** — so there is no money outstandin
 and no lingering entitlement to recover. Do not spend more time chasing that
 stuck purchase; the job now is to make the NEXT one work.
 
+**RESOLVED 2026-09-11 — the Play credential now exists and is VERIFIED.** Root
+cause of the whole `play-not-configured` chain: **the Play Console "API access"
+step had been completed with the WRONG identity — the Firebase admin service
+account** (`firebase-adminsdk-fbsvc@budget-app-11d48.iam.gserviceaccount.com`),
+which can never call the Play API. The purpose-built account
+**`play-billing@budget-app-11d48.iam.gserviceaccount.com`** now exists, is
+invited in Play Console, and passes the check:
+
+```
+node tools/play-credentials-check.mjs <key.json>
+  [3] ok  authorized — the financial/order permission is in effect (HTTP 200)
+```
+
+The three-stage signature that got us there, each stage a different fault — worth
+knowing because they look alike in a browser but are trivially distinguishable
+with the tool:
+1. **Firebase key** → step 2 ok (Google still issues a token: the token endpoint
+   does NOT scope-check) → Play answers **400 `Invalid Value`**.
+2. **A real Play service account with the API enabled but no Play Console
+   permissions** → Google issues a token → every `purchases.*`, `orders.*` and
+   `voidedpurchases.*` call answers **401 `permissionDenied`**, while
+   **`edits.insert` returns 200** — i.e. app-level access works, financial access
+   does not. That asymmetry is the fingerprint.
+3. **After the two permissions were ticked** → 401 became 400 within ~2 minutes
+   (propagation), and `voidedpurchases.list` then returned **200**.
+
+⚠️ **THE TRAP THAT COST THIS ROUND TRIP: the Play Console invite SAVES THE TWO
+BILLING PERMISSIONS UNCHECKED.** The account still appears "active" with app
+access, so it looks finished. When inviting a service account you must explicitly
+tick *"View financial data, orders, and cancellation survey responses"* AND
+*"Manage orders and subscriptions"* — Google's docs name exactly those two for
+Play Billing. Re-open the account under **Users & permissions** and verify them;
+saving them propagates in roughly two minutes.
+
+⚠️ **The tool's first probe was WRONG and has been fixed.** It called
+`subscriptions.get` with a bogus purchase token — but that endpoint answers
+400 `Invalid Value` for a malformed token *regardless of permissions*, so the
+probe could not tell "unauthorized" from "bad token" and once reported a healthy
+state for an account Play was rejecting. It now probes
+`voidedpurchases.list`, which needs the same financial permission, takes **no**
+token parameter, and returns 200 with an empty list when authorized. Lesson: an
+authorization probe must not vary a parameter that can itself cause a 400.
+
 - **A `firebase-adminsdk` key can NEVER call the Play API — measured, not
-  assumed.** The obvious candidate on this machine
+  assumed.** (Retained from the earlier diagnosis; superseded by the verified
+  account above, which is the one to use.) The obvious candidate on this machine
   (`budget-app-11d48-firebase-adminsdk-fbsvc-*.json`, three copies on the Desktop
   and in Downloads) is the FIREBASE credential, and it is not a substitute for
   the Play one. `tools/play-credentials-check.mjs` shows why the distinction is

@@ -139,41 +139,41 @@ try {
 }
 
 // --- 3. API reachability / authorization -------------------------------------
-step(3, `calling the Play Developer API for package ${packageName}`);
-// subscriptions.get with a deliberately bogus token: the POINT is to read the
-// error. 401/403 = the service account is not authorized; 404/invalid-token =
-// authorized fine but nothing to find (which is the healthy answer here).
+step(3, `checking Play API authorization for package ${packageName}`);
+// Probe with `voidedpurchases.list`, NOT a bogus purchase token.
+// Why (learned the hard way, 2026-09-11): the purchases/subscriptions endpoints
+// answer HTTP 400 {"message":"Invalid Value"} for a malformed purchase token
+// REGARDLESS of the caller's permissions, so a bogus-token probe cannot tell
+// "not authorized" from "bad token" — the first version of this tool reported a
+// healthy state for an account Play was in fact rejecting with 401.
+// `voidedpurchases.list` needs the SAME financial-data permission, takes NO
+// token parameter, and answers 200 (an empty list is normal) once authorized.
 try {
-  const url = `${PLAY_API}/applications/${encodeURIComponent(packageName)}/purchases/subscriptions/${encodeURIComponent(productId)}/tokens/not-a-real-token`;
+  const url = `${PLAY_API}/applications/${encodeURIComponent(packageName)}/purchases/voidedpurchases`;
   const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
   const text = (await res.text()).slice(0, 400);
-  info(`HTTP ${res.status}`);
+  info(`HTTP ${res.status} (voidedpurchases.list)`);
   info(`body: ${text}`);
-  // Verdict must not be naive about 400. Measured on 2026-09-11: a service
-  // account that is NOT authorized for the app still gets an access token
-  // (Google does not scope-check at the token endpoint) and then gets
-  // HTTP 400 {"message":"Invalid Value"} from the Play API — whereas a
-  // properly authorized account answering "no such purchase" gives 404.
-  // Treating every 400 as healthy hid an authorization problem.
-  const invalidValue = /"message"\s*:\s*"Invalid Value"/.test(text);
-  if (res.status === 401 || res.status === 403 || invalidValue) {
-    bad('the Play API rejects this service account for this app');
+  if (res.status === 401 || res.status === 403) {
+    bad('the Play API denies this service account — the permissions are not in effect');
     console.log(
-      '\n=> The KEY is fine (it signs and Google issues a token) but the ACCOUNT is\n' +
-        '   not usable for Play. Invite it in Play Console → Users and permissions with\n' +
-        '   "View financial data, orders, and cancellation survey responses" +\n' +
-        '   "Manage orders and subscriptions" + read app information, and confirm the\n' +
-        '   androidpublisher API is enabled in its project. A firebase-adminsdk key can\n' +
-        '   never work here: it has no Play Console access.',
+      '\n=> The KEY is fine (it signs and Google issues a token) but the ACCOUNT lacks\n' +
+        '   the financial/order permissions. In Play Console → Users & permissions, open\n' +
+        '   THIS account and tick BOTH:\n' +
+        '     • View financial data, orders, and cancellation survey responses\n' +
+        '     • Manage orders and subscriptions\n' +
+        '   THE TRAP: the invite saves with those two UNCHECKED (happened 2026-09-11) and\n' +
+        '   the account still looks active with app access, which sends you hunting for the\n' +
+        '   wrong problem. Propagation takes a few minutes — 401→200 was observed ~2 min\n' +
+        '   after saving. A firebase-adminsdk key can never work here either.',
     );
-  } else if (res.status === 404) {
-    ok('authorized — Google answered 404 "no such purchase" for a bogus token');
-    console.log('\n=> The server-side Play credentials look CORRECT. If redemption still fails,\n' +
-      '   the fault is elsewhere (product id, package name, or the purchase state).');
-  } else if (res.status === 400) {
-    bad(`HTTP 400 with an unfamiliar body — inspect it above (neither 404 nor "Invalid Value")`);
+  } else if (res.status === 200) {
+    ok('authorized — the financial/order permission is in effect');
+    console.log('\n=> The server-side Play credentials are CORRECT. A 400 "Invalid Value" from the\n' +
+      '   purchases endpoints is then just an invalid purchase token, not a permission\n' +
+      '   problem. Safe to deploy this key as GOOGLE_PLAY_SERVICE_ACCOUNT.');
   } else {
-    info(`unexpected status ${res.status} — inspect the body above`);
+    bad(`unexpected HTTP ${res.status} — inspect the body above`);
   }
 } catch (err) {
   bad(`network error: ${err.message}`);
