@@ -9,8 +9,8 @@
  * endpoint) and then calls the endpoint with a deliberately invalid purchase
  * token. The reply tells us exactly how far the server got:
  *
- *   code=play-not-configured  -> the Play credential/API call failed  (reason says why)
- *   code=play-purchase-not-found -> Google answered 400/404: the credential WORKS
+ *   code=play-not-configured  -> a config value is missing, OR the API answered (reason says which; a 400 "Invalid Value" on a BOGUS token is the SUCCESS case)
+ *   code=play-purchase-not-found -> Google answered 404: the credential WORKS and nothing was found
  *   code=play-email-mismatch  -> credential works AND a purchase was read
  *   code=sign-in-required / bad-id-token -> our own token was rejected
  *   code=unauthorized         -> wrong x-budget-secret
@@ -160,14 +160,35 @@ console.log('\n[4] reading');
 if (code === 'play-purchase-not-found') {
   console.log('    *** The Play credential WORKS. Google answered for a bogus token, which is');
   console.log('        exactly right. A real purchase should now mint successfully. ***');
+} else if (code === 'play-not-configured' && /play api 400 .*Invalid Value/.test(payload.reason ?? '')) {
+  // Not a failure. Measured contrast (2026-09-11):
+  //   Firebase admin key  -> 401 permissionDenied   (authorization rejected)
+  //   play-billing@… key  -> 400 Invalid Value      (authorized; the TOKEN is bad)
+  // So a 400 on a deliberately bogus token means the credential is fine.
+  console.log('    reason =', payload.reason);
+  console.log('    *** This is the SUCCESS case for a bogus token. ***');
+  console.log('        400 "Invalid Value" = the credential passed authorization and Google');
+  console.log('        rejected the TOKEN (ours is fake). An unauthorized credential answers');
+  console.log('        401 permissionDenied instead — that is the distinction.');
+  console.log('        Config is complete: the key loads, signs, and is authorized.');
 } else if (code === 'play-not-configured') {
-  console.log('    The Play call failed. reason =', payload.reason ?? '(none)');
-  console.log('    A missing/mis-set GOOGLE_PLAY_SERVICE_ACCOUNT, or the Worker variable');
-  console.log('    edit was never deployed (the draft-vs-Deploy trap).');
+  const reason = payload.reason ?? '(none)';
+  console.log('    reason =', reason);
+  // `reason` is specific — read it rather than assuming the credential is at fault.
+  if (/GOOGLE_PLAY_PACKAGE_NAME/.test(reason)) {
+    console.log('    => Set GOOGLE_PLAY_PACKAGE_NAME = app.fivebudget on the Worker.');
+  } else if (/oauth token unavailable|GOOGLE_PLAY_SERVICE_ACCOUNT/.test(reason)) {
+    console.log('    => GOOGLE_PLAY_SERVICE_ACCOUNT is missing, malformed, or a key Play rejects.');
+  } else if (/play api /.test(reason)) {
+    console.log('    => Google answered the API call — read its status in the reason above.');
+  } else {
+    console.log('    => Fix the configuration value named above, then re-run.');
+  }
+  console.log('    (Check Variables and Secrets: editing one entry can drop another.)');
 } else if (code === 'bad-id-token' || code === 'sign-in-required') {
   console.log('    Our own token was rejected — the probe, not the Play path.');
 } else if (code === 'unauthorized') {
-  console.log('    x-budget-secret mismatch — BUDGET_LICENSE_SECRET is stale locally.');
+  console.log('    x-budget-secret mismatch — the value must be VITE_PARSE_SECRET / BUDGET_PARSE_SECRET.');
 } else {
   console.log('    unexpected code:', code);
 }
