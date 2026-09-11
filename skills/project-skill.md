@@ -646,17 +646,49 @@ visible as stale.
    2026-09-11: the CSV holds exactly one row (`source=ls`, order `4681231`,
    `test_mode=false`), so a Play row will be unambiguous. A license-tester
    purchase is free and lands as `test_mode: true` — never read it as revenue.
-2. **Restore Play listing/tester visibility for the store account** (see above),
-   which the E2E needs regardless.
-3. Play Console → Real-time developer notifications (Pub/Sub PUSH →
+2. **Device forensics with `adb` — the agreed next move (2026-09-11), and the
+   reason the environment work came first.** The user will enable Developer
+   options → USB debugging and plug the phone into the Mac; `adb` (platform-tools
+   37.0.1) is already fetched and runs there with `ANDROID_USER_HOME=/tmp/adbhome`
+   (no elevated access needed). Read-only inventory to run FIRST, because each
+   line closes a question that cost hours without it:
+   ```bash
+   adb devices                                                     # authorize the RSA prompt
+   adb shell dumpsys package app.fivebudget | grep -iE "versionName|versionCode|installer|firstInstall|signatures"
+   #   → the INSTALLED app's signing cert. If it is not one of the three in
+   #     assetlinks.json, tonight's unsupported-context is fully explained
+   #     (Google re-signs internal-app-sharing uploads with its own per-app key).
+   adb shell dumpsys activity activities | grep -iE "ResumedActivity|CustomTabActivity|webapk"
+   #   → which Activity hosts the page: Chrome's CustomTabActivity (TWA or plain
+   #     Custom Tab) vs a WebAPK. Note both TWA and Custom Tab are CustomTabActivity,
+   #     so this separates WebAPK from Chrome-hosted, nothing finer.
+   adb logcat -c && adb logcat        # then launch from the launcher and read:
+   #   TWAProviderPicker / TwaLauncher  → "Found TWA provider" vs "Found Custom Tabs provider"
+   #     (that single line says whether androidbrowserhelper's customtabs fallback fired)
+   #   cr_OriginVerifier / cr_DigitalAssetLinksHandler → Chrome's own DAL result + reason
+   ```
+   `adb install` of the repo's `android/app-release-signed.apk` is a fast loop for
+   app/manifest changes, but a sideloaded install cannot bill (Chrome's payment-app
+   finder rejects an unknown installer unless `#enable-debug-for-store-billing` is on).
+3. **Play-side state to re-establish** (asked, not yet answered): the tester
+   **invitation link stopped working**, and the store listing is not searchable
+   for the account. Search-invisibility is NORMAL for an unpublished
+   testing-track app (access comes via the Console app or the invitation link) —
+   the dead invitation link is the anomaly. Check in Play Console: is the release
+   still active on the track, and is the intended account still on the tester
+   list? Also add whichever account will buy to **License testing** so the
+   purchase is free rather than a real US$5 charge, and remember the Play
+   purchaser email must equal the app's signed-in account (`play-email-mismatch`
+   otherwise).
+4. Play Console → Real-time developer notifications (Pub/Sub PUSH →
    `https://api.5budget.app/api/webhooks/play`) — renewals/refunds only, not
    needed for the first purchase.
-4. Closed test with **12 testers × 14 continuous days** before production
+5. Closed test with **12 testers × 14 continuous days** before production
    access can even be requested (2 testers today; the clock has not started —
    this is the long pole).
-5. Set `info@5budget.app` as the Play **developer contact** + store-listing
+6. Set `info@5budget.app` as the Play **developer contact** + store-listing
    contact (unverified).
-6. `android/twa-manifest.json` `versionCode` is still 133 and only bumps on the
+7. `android/twa-manifest.json` `versionCode` is still 133 and only bumps on the
    next AAB build. This machine has **no JDK and no Android SDK**, so an AAB
    rebuild needs the toolchain installed (Bubblewrap itself runs via `npx`). A
    fresh build + reinstall is also the cheapest untried fix for the TWA-mode
@@ -666,7 +698,61 @@ visible as stale.
    Settings → Smart entry. Remember it is read once per JS session — fully close
    the app after arming in a browser.
 
-Everything below is **shipped and live** (main = v0.3.0, 2026-09-12):
+**2026-09-11 — environments separated: production + staging (A19, v0.3.0), and
+the dev loop is now safe.** The driver was the user's requirement that ongoing
+development must never touch live PWA users; a push to `main` used to deploy
+BOTH surfaces (Pages + Worker) at once. What exists now, verified end to end:
+
+| | Production | Staging |
+|---|---|---|
+| Frontend | Pages project `budget`, branch `main`, `5budget.app` | Pages project **`budget-staging`**, branch **`staging`**, `staging.5budget.app` (also `budget-staging.pages.dev`) |
+| API | Worker `budget-api` (default env), `api.5budget.app` | Worker **`budget-api-staging`** (`wrangler.toml` `[env.staging]`), `api-staging.5budget.app` |
+| Deploy trigger | push to `main`: `deploy-worker.yml` + Pages | push to `staging`: `deploy-worker-staging.yml` + Pages `budget-staging` |
+| Env vars | Production env (real API, real LS/Play vars) | Production env **of the staging project**: `VITE_API_BASE`/`VITE_PARSE_ENDPOINT` → `api-staging`, `VITE_ENV_LABEL=staging`, **no `VITE_CHECKOUT_URL`, no `VITE_PLAY_SUBSCRIPTION_ID`, no `VITE_FIREBASE_*`** |
+| Money path | live | **inert** (no checkout → LS button disabled; no Play SKU → `playBillingReady` false; no Firebase → sign-in disabled) |
+
+Verification that was actually run (repeatable):
+```bash
+# identity: staging must never carry production's API and vice versa
+curl -s https://staging.5budget.app/ | grep -o 'assets/index-[^"]*\.js'   # then grep the bundle for api-staging.5budget.app / api.5budget.app
+# staging API alive (401 = a real Worker, refusing an unauthenticated call)
+curl -s -X POST https://api-staging.5budget.app/api/license/check -H 'Content-Type: application/json' -d '{"key":"x"}'
+# staging origin is allow-listed, strangers are not
+curl -s -X POST https://api-staging.5budget.app/api/parse -H 'Origin: https://staging.5budget.app' -d '{}'   # 401 unauthorized
+curl -s -X POST https://api-staging.5budget.app/api/parse -H 'Origin: https://evil.example' -d '{}'          # 403 origin-not-allowed
+# the money path really is inert: the CSV still holds ONE row (the LS sale)
+curl -s -H "x-budget-admin: $ADMIN" "https://api.5budget.app/api/ledger/export?format=csv"
+```
+A real smart-entry parse on `staging.5budget.app` (fresh origin → add a category
+first) was confirmed by the user: saved transaction + success toast, i.e. the
+staging Pages → staging Worker → staging parse secret → Gemini chain works.
+
+**Operational traps found while standing it up (all cost a round trip):**
+- A Pages **custom domain always serves that project's PRODUCTION deployment**;
+  previews are only at `<hash|branch>.<project>.pages.dev`. So
+  `staging.5budget.app` had to go on a **separate project** — attaching it to
+  `budget` would have served the live build with live env vars.
+- The Pages **Environment variables** page has two independently-saved lists
+  (**Production** / **Preview**). Variables added to Preview do nothing for this
+  project, because the `staging` branch *is* its production branch. The symptom
+  of a missed save is a redeploy that produces a **byte-identical bundle** (same
+  `index-*.js` hash, no API URL inside) — check the hash, not the dashboard.
+- The Worker **Variables and Secrets** page keeps edits as a draft until the
+  **Deploy** banner is clicked (the A15 gotcha, hit again here).
+- Do **not** add a second top-level `name` to `wrangler.toml`: it declares
+  `budget-api` (default) and `budget-api-staging` (`[env.staging]`); a wrangler
+  file has only one top-level name, and changing it would divert the production
+  deploy to a different Worker.
+- **Bot Fight Mode / zone-wide security levels must stay OFF** (2026-09-11
+  decision): they would apply to the whole `5budget.app` zone, and two things
+  there must remain fetchable by non-browser clients — `/.well-known/
+  assetlinks.json` (Chrome's DAL fetch for the TWA, i.e. exactly tonight's
+  failure mode) and `/api/webhooks/*` (LS + Play Pub/Sub pushes). If staging
+  should stay out of search, do it with a hostname-scoped
+  `X-Robots-Tag: noindex` Transform Rule — not a repo `robots.txt`/`_headers`
+  file, which would ship to production too.
+
+Everything below is **shipped and live** (main = v0.3.1, 2026-09-12):
 
 - Smart entry end-to-end: PWA → Vercel microservice → Gemini 3.6 Flash → instant save
   with fading toasts; review form only for ambiguous parses. Full spec (revised):

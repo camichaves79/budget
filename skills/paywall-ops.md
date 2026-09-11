@@ -462,6 +462,17 @@ Chrome and rebooting were all tried without restoring app mode. Chrome being the
 Android's preference order and takes the first TWA-capable one), and the UA
 should be checked to confirm Chrome is the host.
 
+**Device forensics with `adb` (the agreed next step, 2026-09-11).** Everything
+above was inferred without device logs because no cable was available. With USB
+debugging on, three read-only commands close the open questions — the full
+rationale and command set is `skills/project-skill.md` §10 item 2:
+`adb shell dumpsys package app.fivebudget` (the INSTALLED app's **signing
+certificate** — the one fact that decides whether `assetlinks.json` can ever
+verify), `adb shell dumpsys activity activities` (which Activity hosts the page),
+and `adb logcat` filtered for `TWAProviderPicker` / `TwaLauncher` (did the
+`customtabs` fallback fire?) and `cr_OriginVerifier` /
+`cr_DigitalAssetLinksHandler` (Chrome's own DAL verdict and reason).
+
 **Reading the real failure (support mode).** The app's user-facing copy is
 deliberately generic, so the technical reason is captured instead:
 `lastPlayFailure()` inside `src/lib/playBilling.ts` records the exact step
