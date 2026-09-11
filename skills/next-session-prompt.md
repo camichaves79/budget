@@ -1,126 +1,158 @@
 # Next-session prompt — Play Billing E2E (hand-off)
 
-> Paste the block below into a fresh session to continue this work. It is
-> self-contained: the new session should read the three docs it names before
-> touching anything. Written 2026-09-11 at the end of the session that shipped
-> v0.3.0 and stood up the staging environment.
+> Paste the block below into a fresh session. It is self-contained: the new
+> session should read the docs it names before touching anything. Written
+> 2026-09-11 at the end of the session that **fixed the TWA/DAL blocker and the
+> Play credential** and shipped v0.3.11.
 
 ---
 
 Continue the $5 Budget project in /Users/camichaves/Development/deepseek/budget
-(repo github.com/camichaves79/budget, currently main @ v0.3.0).
+(repo github.com/camichaves79/budget, currently main @ v0.3.11).
 
 READ FIRST: skills/project-skill.md §10 (current state + next-session context),
-skills/paywall-ops.md §10 (Play Billing ops), ARCHITECTURE.md A18 + A19.
+skills/paywall-ops.md §10 (Play Billing ops, incl. the CURRENT Play Console /
+Google Cloud paths), ARCHITECTURE.md A18 + A19.
 
-WHERE WE ARE
-- **Production is healthy and untouched**: `5budget.app` (Pages project `budget`,
-  production branch `main`) + `api.5budget.app` (Worker `budget-api`) at v0.3.0.
-  476 smoke checks, lint 5 warnings / 0 errors.
-- **Staging now exists and is verified end to end (v0.3.0, ADR A19)**: Pages
-  project `budget-staging` (production branch `staging`) at `staging.5budget.app`
-  + Worker `budget-api-staging` at `api-staging.5budget.app`. Its env points at
-  the staging API and deliberately omits `VITE_CHECKOUT_URL`,
-  `VITE_PLAY_SUBSCRIPTION_ID` and `VITE_FIREBASE_*`, so the money path and
-  identity are inert there; `VITE_ENV_LABEL=staging` renders a STAGING badge. A
-  real smart-entry parse on staging was confirmed by the user. **Do all web
-  development on staging or a feature-branch preview; only `main` reaches real
-  users.**
-- **The Play Billing on-device purchase is still NOT done**, and it is not a repo
-  problem. Chrome keeps the installed app out of TWA app mode, so
-  `getDigitalGoodsService` answers `OperationError: unsupported context`. Every
-  input was verified correct: the `assetlinks.json` statement is served 200 /
-  `application/json` / no redirect with all three fingerprints matching Play
-  Console character for character (classical `78:9C:A65F…FFE2`, upload
-  `7EAE:C070…4395`, post-quantum `00:0617 52…B3B2`), the app-side
-  `assetStatements`/`DelegationService`/`autoVerify`/billing `PaymentService` are
-  present, Google's DAL API resolves all three statements from the phone, the
-  start URL `/?src=play` does not redirect, and both Play endpoints are live.
-- The proof that it is a *context* refusal, not a verification mismatch: the app
-  displays a **Custom Tab toolbar** (URL bar visible with `display: standalone`),
-  which per Chromium source means `isInTwaMode()` is false, which means either
-  the Activity is not a `CustomTabActivity` at all (a WebAPK can never be) or the
-  page verifier reports `FAILURE` — the only two ways that gate closes.
-- **The agreed next move is device forensics with `adb`** (the user declined it
-  once, then agreed): enable Developer options → USB debugging on the Xiaomi 14T
-  Pro (HyperOS) and plug it into the Mac. `adb` (platform-tools 37.0.1) is
-  already fetched on this machine and runs with
-  `ANDROID_USER_HOME=/tmp/adbhome /tmp/pt/platform-tools/adb` (no elevated
-  permissions; re-download from dl.google.com if /tmp was cleared). The exact
-  read-only command set and what each line answers is in
-  skills/project-skill.md §10 item 2 — start with
-  `dumpsys package app.fivebudget` (the INSTALLED app's signing certificate, the
-  one fact that could never be read without a cable) and the
-  `TWAProviderPicker`/`TwaLauncher` + `cr_OriginVerifier` logcat lines.
-- **Strongest unproven hypothesis**: the installed copy was delivered by Play
-  **internal app sharing**, which Google re-signs with its own per-app key
-  ("Every APK is re-signed with this test certificate, regardless of which
-  certificate you used to sign your app" —
-  https://support.google.com/googleplay/android-developer/answer/9844679). That
-  certificate is not (and cannot be, unless we add it) in `assetlinks.json`,
-  which would produce exactly this failure. Ask for the **Internal test
-  certificate** fingerprint (Play Console → Test and release → Internal testing →
-  Internal app sharing → Uploaders and testers tab) and compare it with the
-  installed app's cert from `dumpsys`. Second candidate: androidbrowserhelper's
-  `fallbackType: 'customtabs'` fallback, which opens a plain Custom Tab (no
-  `EXTRA_LAUNCH_AS_TRUSTED_WEB_ACTIVITY`) when the provider cannot create a
-  session.
-- **Play-side state to re-establish**: the tester **invitation link stopped
-  working**. Search-invisibility is normal for an unpublished testing-track app
-  (access comes via the Console app or the invitation link), so the dead link is
-  the anomaly — check that the track still has an active release and that the
-  intended account is still a tester. Add the buying account to **License
-  testing** so the purchase is free (`test_mode: true`), and remember the Play
-  purchaser email must equal the app's signed-in account or the server answers
-  `play-email-mismatch`.
+## THE ONE REMAINING UNKNOWN (start here)
 
-GOAL THIS SESSION
-1. Inventory the device with `adb` and settle the certificate/hosting-Activity
-   question (does the installed app carry a certificate that is in
-   `assetlinks.json`, and is the view a TWA, a plain Custom Tab, or a WebAPK?).
-2. Depending on the answer: either add the missing certificate to
-   `public/.well-known/assetlinks.json` (frontend-only, auto-deploys, no AAB
-   rebuild — but ONLY if the certificate is a legitimate one for this app), or
-   reinstall from the testing track under the account that will buy, or fix the
-   fallback path.
-3. Then finish the E2E purchase: TWA app mode → Subscribe · $5 USD/year → Play
-   sheet with the "test purchase" notice → "License active ✓" → Firestore shows
-   `sales`/`licenses`/`entitlements`/`playTokens` → the accountant CSV gains a
-   row with `source=play`.
+A real Play purchase charges the buyer and returns a purchase token, and the
+Worker's verification of that token fails:
 
-TRAPS THAT COST HOURS (all documented in detail in §10 / paywall-ops §10)
-- `unsupported context` has exactly three causes (the `AppStoreBilling` feature,
-  a non-`CustomTabActivity` host, or `isInTwaMode()` false); the user-facing copy
-  says none of them. **`canPay=yes` is NOT a TWA signal** — it is true in an
-  ordinary Chrome tab too, so never read it as evidence.
-- Extra fingerprints in `assetlinks.json` are harmless; the rule (verified in
-  `digital_asset_links_handler.cc`) is that **every certificate the INSTALLED app
-  carries must be listed**. A correct-looking file still fails if the installed
-  app carries a certificate you did not list.
-- Chrome fetches `assetlinks.json` itself (no Play Services call), and a
-  `kFailure` DELETES the stored success, while DNS/offline/5xx do not.
-- Support mode (`?diag=1`) is read **once per JS session** — arm it in a browser,
-  then fully close the app before relaunching, or the dump never appears.
-- On Pages, a custom domain always serves that project's PRODUCTION deployment,
-  and the environment-variables page has two independently-saved lists
-  (Production / Preview); a missed save shows up as a byte-identical bundle hash
-  after a redeploy.
-- Worker dashboard variable edits stay a draft until the **Deploy** banner is
-  clicked. Never add a second top-level `name` to `wrangler.toml`.
-- Keep Bot Fight Mode / zone-wide security levels OFF: they would break Chrome's
-  DAL fetch (`/.well-known/assetlinks.json`) and the LS/Play webhooks.
+    play: subscriptions.get 400 Invalid Value     -> HTTP 503, no license minted
 
-CONVENTIONS (unchanged)
-- One kebab-case feature branch from main. Commit/push ONLY on the user's explicit
-  say-so, with a patch/minor/major classification.
-- Every commit bumps semver in package.json + package-lock.json +
-  src/lib/version.ts + android/twa-manifest.json appVersionName.
-- "ship" = commit → push branch → ff-merge → push main → delete branch.
-  Frontend auto-deploys on push to main; web-only changes need no AAB rebuild.
-  **Merge into `staging` when you want the change live on staging.**
-- The user has no Cloudflare credentials, no gh CLI, and there is no JDK or
-  Android SDK on this machine (Bubblewrap runs via `npx`); they do the dashboard,
-  Play Console and AAB steps, and prefer to read labels off their own console
-  rather than pasting URLs.
-- Work ONE step (or sub-step) at a time with the user, and verify each step from
-  this machine before moving on.
+The Worker, the credential and the endpoint are all now verified good, so this
+400 is about the TOKEN VALUE. Two charges were made and both were refunded, yet
+Play's Purchase history and Play Console's Order management show **no order at
+all** — unreconciled, and possibly the clue itself.
+
+NEXT SESSION, in order:
+1. **One free license-tester purchase** on an account that has never bought, with
+   all three layers captured simultaneously — that is the whole point, since
+   every previous attempt was missing at least one layer:
+   - **Cloudflare**: Workers & Pages -> `budget-api` -> Logs -> **Begin log
+     stream**. v0.3.11 makes the Worker log a safe `tokenFingerprint` (len / head
+     / tail / dot-segments / whitespace / charset) plus Google's FULL error body.
+     The line to read is `play: subscriptions.get 400 {...}`.
+   - **Device**: `tools/adb/twa-forensics.sh start wallet` clears and sizes the
+     logcat buffers; `stop wallet` captures the verdict. Launch the app BEFORE
+     attaching the client capture, because the DevTools page target only exists
+     while the app is running.
+   - **Client**: attach the fetch interceptor to the live page (snippet in §10)
+     to record the exact request body — the purchaseToken's length/head/tail and
+     the productId exactly as the APP sent them.
+2. **Decode the token.** A Google Play purchase token carries a base64 payload
+   naming the package and product it was issued for. If it names anything other
+   than `app.fivebudget` / `smart_entry_yearly`, that alone explains the 400 and
+   needs no further purchase. Watch for whitespace or truncation — the
+   fingerprint reports both.
+3. If the token looks perfect and still 400s, the open hypotheses are: the
+   purchase belongs to a different Google account than the app signs in with; the
+   purchase is pending/incomplete on Google's side; or the classic
+   `purchases.subscriptions` resource rejects a token Play is still settling.
+   Capture a fresh token and repeat step 1 rather than guessing.
+
+## WHAT IS NOW SOLVED (do not re-litigate)
+
+- **`OperationError: unsupported context` — FIXED and verified on the device.**
+  The root cause was a **fourth signing certificate**
+  (`ED:93:38:AE:20:F3:92:27:E2:6D:AE:8B:EE:6B:85:B9:86:F8:20:9D:2C:24:ED:74:A6:EA:CB:FA:C9:13:6C:15`)
+  that the installed app carries and `assetlinks.json` did not list. Adding it
+  (now entry #1; all originals kept) flipped the device from
+  `5budget.app: 1024` (STATE_VERIFICATION_FAILURE) to **`verified`**, removed
+  Chrome's `Statement failure matching fingerprint`, and turned TWA app mode ON.
+  Proof: `getDigitalGoodsService('https://play.google.com/billing')` -> **OK**,
+  returning `smart_entry_yearly`, COP 15,500, `subscriptionPeriod P1Y`, with
+  `canPay: true` and `display-mode: standalone` (no `browser`).
+- **Both earlier hypotheses are dead, with evidence**: the
+  androidbrowserhelper `customtabs` fallback never fired
+  (`TWAProviderPicker: Found TWA provider` + `TwaLauncher: Launching Trusted Web
+  Activity`), and the install is a real Play split install from
+  `com.android.vending` — not an internal-app-sharing re-sign.
+- **The Play credential is correct.** `GOOGLE_PLAY_SERVICE_ACCOUNT` had been the
+  FIREBASE admin key, which can never call the Play API. A purpose-built
+  `play-billing@budget-app-11d48.iam.gserviceaccount.com` now exists, is invited
+  in Play Console with BOTH billing permissions, and passes the check that cannot
+  lie — the tokenless `voidedpurchases.list` -> **HTTP 200**.
+- **The "dead invitation link"** was an account mismatch: the phone was signed
+  into a different Play account than the tester list held.
+
+## TRAPS THAT COST TIME THIS SESSION (also in §10 / paywall-ops §10)
+
+- **`400 Invalid Value` is NOT evidence of a working credential.** It is the
+  generic bad-token response for `purchases.*`: every synthetic token shape
+  returns it, with a good key AND with the Firebase key. Only the tokenless
+  `voidedpurchases.list -> 200` proves authorization. (The first version of
+  `tools/play-credentials-check.mjs` got this wrong; fixed.)
+- **A Play Console invite SAVES THE TWO BILLING PERMISSIONS UNCHECKED.** The
+  account still looks active with app access. Tick *"View financial data, orders,
+  and cancellation survey responses"* AND *"Manage orders and subscriptions"*;
+  propagation took ~2 minutes (401 -> 400 -> 200).
+- **`Setup → API access` is a DEAD NAV PATH.** Keys come only from Google Cloud
+  (IAM & Admin -> Service Accounts -> Keys); the API is enabled in Google Cloud;
+  Play Console only GRANTS permission (Users & permissions). No GCP-project
+  linking is needed any more.
+- **Cloudflare secret edits stay a DRAFT until Deploy is clicked.** Prefer
+  `npx wrangler secret put <KEY> --env=""` (the `--env=""` is required because
+  `wrangler.toml` declares `[env.staging]`), which deploys immediately.
+- **The shared secret the app sends is `VITE_PARSE_SECRET`**, checked against
+  **`BUDGET_PARSE_SECRET`** — NOT `BUDGET_LICENSE_SECRET`. The wrong one gives a
+  bare 401 before any Play work happens.
+- **`.dev.vars` is stale in two ways**: `BUDGET_LICENSE_SECRET` predates the
+  2026-09-07 regeneration, and `FIREBASE_SERVICE_ACCOUNT` is a **placeholder**
+  (`fake@local-test…`, no `private_key_id`) that cannot mint a token Firebase
+  accepts. Use a real key with `--sa`.
+- **`api/_firebase.js#signJwt` emits no `kid`**, but a Firebase CUSTOM token
+  requires it — hence the probe's own signer.
+- **`.smoke/` is wiped by every `npm test`** (it is the vite test build's
+  `outDir`). Device tooling lives in `tools/adb/`; artifacts go to
+  `/tmp/twa-forensics/`.
+- **`adb` needs BOTH `HOME` and `ANDROID_USER_HOME`** set to a writable dir, or
+  it aborts on `Cannot mkdir ~/.android`. `tools/adb/adb.sh` handles this.
+- **Keep Bot Fight Mode / zone-wide security OFF** — it would break Chrome's DAL
+  fetch and the LS/Play webhooks, undoing the fix.
+
+## TOOLING ADDED (all committed)
+
+    tools/cert-fingerprint.mjs        JDK-free APK signing-cert reader (APK v2/v3 block)
+    tools/twa-display-mode.mjs        reads display-mode/app mode inside the LIVE TWA via DevTools
+    tools/play-credentials-check.mjs  3-step Play credential check (parse -> OAuth -> authorization)
+    tools/verify-redeem-play.mjs      drives the real redeem-play with a real Firebase ID token
+    tools/adb/adb.sh                  adb wrapper fixing the HOME/ANDROID_USER_HOME trap
+    tools/adb/twa-forensics.sh        clears/sizes logcat buffers, captures the launch verdict
+
+Reading the device without eyes: `tools/adb/adb.sh shell uiautomator dump
+/sdcard/ui.xml` plus grep `text="…"` prints the whole rendered UI (that is how
+the "already subscribed" dialog was read). DevTools reads the signed-in account
+and the LOADED BUNDLE HASH — note a stale bundle survived a normal relaunch and
+only a `Page.reload` with `ignoreCache` cleared it.
+
+## CONVENTIONS (unchanged)
+
+- One kebab-case feature branch from main. Commit/push ONLY on explicit say-so,
+  with a patch/minor/major classification. Every commit bumps semver in
+  `package.json` + `package-lock.json` + `src/lib/version.ts` +
+  `android/twa-manifest.json` `appVersionName`.
+- `ship` = commit -> push branch -> ff-merge -> push main -> delete branch.
+  Frontend auto-deploys on push to main; the Worker deploys via
+  `deploy-worker.yml`. Web-only changes need no AAB rebuild.
+- The user has no Cloudflare credentials locally, no gh CLI, and no JDK or
+  Android SDK on this machine. They do the dashboard, Play Console and AAB steps,
+  and prefer to read labels off their own console rather than paste URLs.
+- Work ONE step at a time, and verify each step from this machine before moving
+  on. **Never let a purchase be the first test of a path** — that is what
+  produced two charges with no entitlement.
+
+## OTHER OPEN ITEMS (non-Play)
+
+- **Closed test: 12 testers × 14 continuous days** before production access can
+  even be requested — the long pole, and the clock has not started.
+- Set `info@5budget.app` as the Play **developer contact** and store-listing
+  contact (unverified).
+- **`budget.playBuild` leak**: the flag persists in the localStorage shared
+  between the TWA and Chrome, and it *hides the LS checkout* in browser contexts
+  while offering a Play button that cannot work there. v0.3.3 honours it only in
+  a `standalone` display context, which fixes ordinary tabs; whether the
+  Chrome-installed PWA on the same device is covered too was reasoned but **not
+  re-tested on the device**. Worth verifying.
+- Parked: Preview env vars on Pages; translation nits.

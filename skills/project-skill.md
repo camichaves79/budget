@@ -510,6 +510,49 @@ in those tight overrides.
 
 ## 10. Current state & next-session context
 
+**▶ SESSION SUMMARY — 2026-09-11, v0.3.2 → v0.3.11. Read this before anything
+else in §10; the sections below are the detailed record.** The full hand-off for
+the next session is `skills/next-session-prompt.md`.
+
+**SOLVED — the two-session blocker, `OperationError: unsupported context`.** The installed TWA carried a **fourth signing
+certificate** that `assetlinks.json` never listed. With the phone finally on USB,
+`dumpsys package app.fivebudget` gave the fact that could never be inferred:
+`ED:93:38:AE:20:F3:92:27:E2:6D:AE:8B:EE:6B:85:B9:86:F8:20:9D:2C:24:ED:74:A6:EA:CB:FA:C9:13:6C:15`,
+confirmed by hashing the `base.apk` pulled off the device. Listing it (now entry
+#1; all originals kept) flipped Android's own state from `5budget.app: 1024`
+(`STATE_VERIFICATION_FAILURE`) to **`verified`**, silenced Chrome's `Statement
+failure matching fingerprint`, and turned TWA **app mode ON**.
+Verified end state on the device:
+`getDigitalGoodsService('https://play.google.com/billing')` → **OK**, returning
+`smart_entry_yearly` · COP 15,500 · `subscriptionPeriod P1Y`, with `canPay: true`
+and `display-mode: standalone` (no `browser`). **Both earlier hypotheses are
+dead**, with evidence: the androidbrowserhelper `customtabs` fallback never fired
+(`TWAProviderPicker: Found TWA provider` + `TwaLauncher: Launching Trusted Web
+Activity`), and the install is a real Play split install from
+`com.android.vending` — not an internal-app-sharing re-sign.
+
+**SOLVED — the Play credential.** `GOOGLE_PLAY_SERVICE_ACCOUNT` held the
+**Firebase admin key**, which can never call the Play API. A purpose-built
+`play-billing@budget-app-11d48.iam.gserviceaccount.com` now exists, is invited in
+Play Console with BOTH billing permissions, and passes the only check that cannot
+lie — the tokenless `voidedpurchases.list` → **HTTP 200**.
+
+**STILL OPEN — one unknown.** A real purchase charges the buyer and returns a
+purchase token, and the Worker's verification of it fails:
+`play: subscriptions.get 400 Invalid Value` → 503, no licence. Two charges were
+made and **both refunded**; Play's Purchase history and Play Console's Order
+management show **no order at all**, which is unreconciled and may be the clue.
+v0.3.11 now logs a safe token fingerprint plus Google's full error body, so the
+next attempt is diagnostic instead of blind — see `skills/next-session-prompt.md`
+for the exact three-layer capture procedure.
+
+**⚠️ CORRECTION — `400 Invalid Value` is NOT evidence of a working credential.**
+An earlier claim in this session said the reverse. Measured: every synthetic
+token shape returns 400 with a good key AND with the Firebase key; only the
+tokenless `voidedpurchases.list → 200` proves authorization. The first version of
+`tools/play-credentials-check.mjs` drew the wrong conclusion from it and has been
+fixed.
+
 **SHIPPED — Play Store + Play Billing (A18), live on `main` at v0.2.6
 (2026-09-12).** All four phases are on main: pure logic + tests
 (`estimatePlayFeeCents` 15%, `playPurchaseToLedger`, the `source` CSV column +
