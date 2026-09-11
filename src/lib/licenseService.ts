@@ -7,6 +7,7 @@
 
 import { parseLicenseToken } from './license';
 import { t } from './i18n';
+import { supportModeEnabled } from './supportMode';
 import type { LicensePayload } from './license';
 
 const API_BASE = (import.meta.env.VITE_API_BASE ?? '').trim();
@@ -159,7 +160,24 @@ export async function redeemPlay(purchaseToken: string, productId: string, idTok
   if (code === 'internal' && typeof payload?.reason === 'string' && payload.reason !== '') {
     return { ok: false, code: 'internal', message: t('licensing.serverError', { reason: payload.reason.slice(0, 160) }) };
   }
-  return { ok: false, code: 'network', message: t('licensing.unreachable') };
+  // Anything the server says that we do not recognize must still be ACTIONABLE.
+  // Falling straight through to the generic "check your connection" copy is how
+  // a real on-device failure got read as a network problem: the 2026-09-11 Play
+  // purchase returned a code this map did not know, and the user was told to
+  // check their connection while an unacknowledged purchase sat in Play.
+  // Ordinary users get the honest generic copy; support mode (?diag=1) appends
+  // the status and code so the next occurrence names itself (same policy as the
+  // Play diagnostics dump — no technical text on ordinary screens).
+  if (supportModeEnabled()) {
+    return {
+      ok: false,
+      code: code || 'network',
+      message: t('licensing.serverError', {
+        reason: `${status ? `HTTP ${status}` : 'no response'} · ${code || 'no code'}`,
+      }),
+    };
+  }
+  return { ok: false, code: code || 'network', message: t('licensing.unreachable') };
 }
 
 /** Restore the license bound to the signed-in account (new device/reinstall). */

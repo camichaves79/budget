@@ -5,4 +5,4 @@
  * Bump this constant together with `package.json` `version` (+ lockfile) on
  * every commit, classified patch/minor/major.
  */
-export const APP_VERSION = '0.3.3';
+export const APP_VERSION = '0.3.4';
