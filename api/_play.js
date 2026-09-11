@@ -225,21 +225,45 @@ async function getPlayAccessToken() {
  * purchaser `emailAddress` (which v2 drops) + `orderId`/`paymentState`.
  * @param {string} purchaseToken
  * @param {string} productId
- * @returns {Promise<{ status: number, purchase: Record<string, unknown> | null }>}
+ * @returns {Promise<{ status: number, purchase: Record<string, unknown> | null, reason?: string }>}
  */
 export async function getSubscription(purchaseToken, productId) {
   const token = await getPlayAccessToken();
   const pkg = packageName();
-  if (!token || !pkg || !purchaseToken || !productId) return { status: 0, purchase: null };
+  // Why the call failed, in a form safe to show a user in support mode and to
+  // log. Never includes the token, the key, or the purchase token — those must
+  // not reach a client or a log line. `play-not-configured` used to be a single
+  // opaque code, which is why a real purchase failing left no actionable trace.
+  if (!token) return { status: 0, purchase: null, reason: 'play oauth token unavailable (see worker logs: play: token endpoint / GOOGLE_PLAY_SERVICE_ACCOUNT)' };
+  if (!pkg) return { status: 0, purchase: null, reason: 'GOOGLE_PLAY_PACKAGE_NAME is not set on the worker' };
+  if (!productId) return { status: 0, purchase: null, reason: 'no productId supplied' };
+  if (!purchaseToken) return { status: 0, purchase: null, reason: 'no purchaseToken supplied' };
   try {
     const res = await fetch(
       `${PLAY_API}/applications/${encodeURIComponent(pkg)}/purchases/subscriptions/${encodeURIComponent(productId)}/tokens/${encodeURIComponent(purchaseToken)}`,
       { headers: { Authorization: `Bearer ${token}` } },
     );
-    if (!res.ok) return { status: res.status, purchase: null };
+    if (!res.ok) {
+      // Google's own error text: `error.message` for an authorization failure is
+      // short and does not echo the token. Truncated, and never the token itself.
+      let detail = '';
+      try {
+        const body = /** @type {Record<string, unknown>} */ (await res.json());
+        const err = /** @type {Record<string, unknown> | undefined} */ (body?.error);
+        detail = typeof err?.message === 'string' ? err.message.slice(0, 120) : '';
+      } catch {
+        /* non-JSON error body — the status alone still discriminates */
+      }
+      console.error('play: subscriptions.get', res.status, detail);
+      return {
+        status: res.status,
+        purchase: null,
+        reason: `play api ${res.status} for ${pkg}${detail ? ` — ${detail}` : ''}`,
+      };
+    }
     return { status: 200, purchase: /** @type {Record<string, unknown>} */ (await res.json()) };
   } catch {
-    return { status: 0, purchase: null };
+    return { status: 0, purchase: null, reason: 'play api unreachable from the worker' };
   }
 }
 

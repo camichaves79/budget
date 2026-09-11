@@ -328,7 +328,7 @@ in those tight overrides.
   install-nudge decision core, the Play-build/support-mode decision cores (incl.
   the display-mode/viewport dump helpers and the service re-acquisition rule) and
   the emoji grapheme cap, the environment-label badge and the staging origin
-  allow-list. 480 checks.
+  allow-list. 485 checks.
 - `npm run build` + `npm run lint` before shipping. Lint has 5 known harmless
   warnings (react-refresh export rules in `store.tsx`/`entitlement.tsx`/
   `AmountInput.tsx` and one set-state-in-effect in `App.tsx`).
@@ -522,7 +522,7 @@ secrets in `ENV_KEYS`); and the Pub/Sub webhook (`POST /api/webhooks/play`,
 OIDC-verified). Play Console side is done too: subscription `smart_entry_yearly`
 (US$5.00/year, base plan `p1y`, Active), service account invited as a user with
 financial-data + manage-orders permissions, worker secrets deployed, AAB on a
-testing track. Suite 480 checks; lint 5 warnings / 0 errors.
+testing track. Suite 485 checks; lint 5 warnings / 0 errors.
 
 **The exact gate behind `OperationError: unsupported context` (proven in
 Chromium source, 2026-09-11).** It is one enum (`kUnsupportedContext`) with
@@ -742,11 +742,52 @@ below was executed, the DAL fix worked end to end, the Play sheet opened and a
   which means OAuth worked and the fault is Play Console API authorization (a
   service account without access makes Google answer 401/403, surfacing as
   `play-purchase-not-found`).
-- **Recovery**: the purchase token is the only key to this subscription and the
-  server cannot enumerate a user's purchases, so the token must come from the
-  client. The app did not persist it. Cancel in Play → Manage subscriptions (the
-  token stays valid for the paid period, so recovery is still possible if a token
-  can be captured) and fix the server *before* any new purchase.
+
+**2026-09-11 (later) — the charge is confirmed, the purchase was refunded, and
+the credential is PROVEN WRONG.** The bank line settles it: **Google, COP
+15,500.00, 16:00 Friday 11 Sep 2026** — exactly the `price` `getDetails` reports
+for `smart_entry_yearly`, and ~34 s after the Play sheet opened (15:59:26 in the
+capture). So the purchase was real. There is **no order in Play Console's Order
+management and nothing in Manage subscriptions**, the Worker never recorded a
+sale, and the user **refunded the purchase** — so there is no money outstanding
+and no lingering entitlement to recover. Do not spend more time chasing that
+stuck purchase; the job now is to make the NEXT one work.
+
+- **A `firebase-adminsdk` key can NEVER call the Play API — measured, not
+  assumed.** The obvious candidate on this machine
+  (`budget-app-11d48-firebase-adminsdk-fbsvc-*.json`, three copies on the Desktop
+  and in Downloads) is the FIREBASE credential, and it is not a substitute for
+  the Play one. `tools/play-credentials-check.mjs` shows why the distinction is
+  easy to miss: it **succeeds** at step 2 (Google issues a 1024-char access token
+  — the token endpoint does not scope-check the account) and then gets
+  **HTTP 400 `{"message":"Invalid Value"}`** from the Play API. A properly
+  authorized account answering "no such purchase" gives **404**, not 400. (The
+  tool's first verdict read that 400 as healthy — fixed; it now treats
+  `Invalid Value` as an authorization failure.)
+- **No Play key exists on this machine** (searched Desktop/Downloads/Documents/
+  `~/.config`), and it is not in `.dev.vars` — the credential lives only as a
+  Worker secret, and the user had no Worker or Play Console access during this
+  session. **That, and nothing else, is what blocks the fix.** To unblock, in
+  order: (1) Play Console → **Setup → API access**: confirm a service account
+  exists and is invited under **Users and permissions** with "View financial
+  data, orders, and cancellation survey responses" + "Manage orders and
+  subscriptions" + read app information; (2) Google Cloud → IAM → Service
+  Accounts → that account → Keys → **Create new key → JSON**; (3) verify it
+  locally with `node tools/play-credentials-check.mjs <key.json>` — step 3 must
+  report **404**; (4) only then paste it (single line) into
+  `GOOGLE_PLAY_SERVICE_ACCOUNT` on `budget-api` **and click the Deploy banner**.
+- **`getSubscription` now explains itself** (v0.3.6): it returns a safe `reason`
+  (`play api <status> for <pkg> — <Google's message>`, or which env value is
+  missing, or that OAuth failed), `redeem-play` passes it through on the 503,
+  and `licensing.*` surfaces it **in support mode only** (`?diag=1`) — no
+  technical text on ordinary screens. The server also logs
+  `play: subscriptions.get <status> <detail>`. Together these mean the next
+  occurrence names its own cause instead of reporting a bare
+  `play-not-configured`.
+- **Recovery is no longer needed** for the refunded purchase, but the constraint
+  stands for the future: the purchase token is the only handle on a purchase and
+  the server cannot enumerate a user's purchases, so the token must come from the
+  client — the app does not persist it.
 - **Note for reading the app's screen/state without eyes or a support build**:
   `adb shell uiautomator dump /sdcard/ui.xml` + grep `text="…"` prints the whole
   rendered UI (that is how the "already subscribed" dialog was read), and

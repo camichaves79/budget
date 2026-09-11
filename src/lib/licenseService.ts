@@ -155,6 +155,16 @@ export async function redeemPlay(purchaseToken: string, productId: string, idTok
     return { ok: false, code: 'unauthorized', message: t('licensing.unauthorized') };
   }
   if (code === 'not-configured' || status === 503) {
+    // The server now explains WHY the Play call failed (its status and Google's
+    // own error message). Surface it in support mode only — ordinary users keep
+    // the friendly "the owner is on it" copy.
+    if (supportModeEnabled() && typeof payload?.reason === 'string' && payload.reason !== '') {
+      return {
+        ok: false,
+        code: 'not-configured',
+        message: t('licensing.serverError', { reason: payload.reason.slice(0, 160) }),
+      };
+    }
     return { ok: false, code: 'not-configured', message: t('licensing.notConfigured') };
   }
   if (code === 'internal' && typeof payload?.reason === 'string' && payload.reason !== '') {

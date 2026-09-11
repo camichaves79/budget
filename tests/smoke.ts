@@ -28,7 +28,7 @@ import {
 } from '../api/_license.js';
 import { checkIpRateLimit, createIpRateLimiter, isAllowedOrigin } from '../api/_http.js';
 import { ensureLicenseForOrder, ensureLicenseForPlayPurchase, saleRowForMerge } from '../api/_licenseops.js';
-import { classifyPlayNotification, parseDeveloperNotification, parsePubSubMessage, validatePubSubClaims, verifyPubSubToken } from '../api/_play.js';
+import { classifyPlayNotification, getSubscription, parseDeveloperNotification, parsePubSubMessage, validatePubSubClaims, verifyPubSubToken } from '../api/_play.js';
 import redeemHandler from '../api/license/redeem.js';
 import redeemPlayHandler from '../api/license/redeem-play.js';
 import playWebhookHandler from '../api/webhooks/play.js';
@@ -691,6 +691,14 @@ check(
   parseDeveloperNotification(Buffer.from(JSON.stringify({ version: '1.0' })).toString('base64')),
   null,
 );
+
+// ---- Play redemption diagnostics ----
+// A real purchase failed on 2026-09-11 and produced only the bare code
+// `play-not-configured`, which named nothing; `getSubscription` now returns a
+// safe `reason`. The assertion lives beside the redeem-play fixture below, NOT
+// here: `_play.js` caches the parsed service account in module state on first
+// read, so calling getSubscription() early — with no GOOGLE_PLAY_SERVICE_ACCOUNT
+// in the environment — poisons every later Play fixture, which cannot un-cache it.
 
 // ---- Play build detection (pure core) ----
 check('play build: src=play marks the build', playBuildDecision(false, 'play'), true);
@@ -1650,6 +1658,24 @@ await (async () => {
       commits.some((c) => c.name.endsWith('/sales/GPA.1234-5678-9012-34567')),
       true,
     );
+  }
+
+  // getSubscription must always explain WHY it failed. A bare
+  // `play-not-configured` named nothing and cost a session, so assert the
+  // contract here — where GOOGLE_PLAY_* is set up and fetch is mocked — rather
+  // than early in the file, where the module-level service-account cache would
+  // latch an empty account and break every later Play fixture.
+  {
+    const withProduct = await getSubscription('tok-x', 'smart_entry_yearly');
+    check('play getSubscription: a successful read carries no failure reason', withProduct.reason ?? null, null);
+    check('play getSubscription: a successful read returns the purchase', typeof withProduct.purchase === 'object' && withProduct.purchase !== null, true);
+
+    const noProduct = await getSubscription('tok-x', '');
+    check('play getSubscription: explains a missing productId', noProduct.reason, 'no productId supplied');
+    check('play getSubscription: no purchase on failure', noProduct.purchase, null);
+
+    const noToken = await getSubscription('', 'smart_entry_yearly');
+    check('play getSubscription: explains a missing purchaseToken', noToken.reason, 'no purchaseToken supplied');
   }
 
   globalThis.fetch = originalFetch;

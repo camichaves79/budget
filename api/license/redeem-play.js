@@ -81,9 +81,18 @@ async function redeem(req, res, cors) {
   }
   const uid = verified.uid;
 
-  const { status, purchase } = await getSubscription(purchaseToken, productId);
+  const { status, purchase, reason } = await getSubscription(purchaseToken, productId);
   if (!purchase) {
-    send(res, status === 404 ? 404 : 503, { ok: false, code: status === 404 ? 'play-purchase-not-found' : 'play-not-configured' }, cors);
+    // `reason` is a safe, non-secret explanation (package id + Google's status and
+    // error message — never the key or the purchase token). Without it a real
+    // purchase failure was reported as a bare `play-not-configured`, which named
+    // nothing and cost a session.
+    send(
+      res,
+      status === 404 ? 404 : 503,
+      { ok: false, code: status === 404 ? 'play-purchase-not-found' : 'play-not-configured', reason: reason ?? '' },
+      cors,
+    );
     return;
   }
   const paymentState = Number(purchase.paymentState);
