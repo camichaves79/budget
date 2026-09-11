@@ -586,6 +586,56 @@ from scratch and is correct:
   `DelegationService` with the TWA service action, an `autoVerify` app-link
   filter, and `PaymentService`/`PaymentActivity` advertising
   `https://play.google.com/billing`;
+
+**SOLVED 2026-09-11 (adb session) — the missing fingerprint, and the end of the
+`unsupported context` hunt (v0.3.2).** ⚠️ The bullet above ("so whichever way the
+app was installed its certificate is listed") was **WRONG and is the belief that
+cost the sessions**: the three listed fingerprints were never read off a device.
+With the phone finally on USB, `dumpsys package app.fivebudget` showed the
+installed app carried a **fourth, unlisted** certificate:
+
+```
+ED:93:38:AE:20:F3:92:27:E2:6D:AE:8B:EE:6B:85:B9:86:F8:20:9D:2C:24:ED:74:A6:EA:CB:FA:C9:13:6C:15
+```
+
+Confirmed three independent ways — `dumpsys` signatures, `sha256` of the
+`base.apk` **pulled off the device** (`node tools/cert-fingerprint.mjs`), and
+Android's own recorded state `Domain verification state: 5budget.app: 1024`
+(`STATE_VERIFICATION_FAILURE`). Chrome's own log named it at the launch instant:
+
+```
+TWALauncherActivity: Using url from Manifest: https://5budget.app/?src=play
+TWAProviderPicker:   Found TWA provider, finishing search: com.android.chrome
+cr_ChromeConnection: New Custom Tab session created by package: app.fivebudget
+TwaLauncher:         Launching Trusted Web Activity.
+chromium: [WARNING:components/content_relationship_verification/digital_asset_links_handler.cc:170]
+          Statement failure matching fingerprint.
+```
+
+Two long-standing hypotheses are now **dead**: the androidbrowserhelper
+`customtabs` fallback never fired (`Found TWA provider` + `Launching Trusted Web
+Activity`), and this was not an internal-app-sharing re-sign (`installerPackageName
+=com.android.vending`, delivered as a real Play split install: `base.apk` +
+`split_config.en.xxhdpi`). The TWA launched **as a TWA**; Chrome then denied app
+mode at DAL verification — cause 3 of `getResponseCode()`. Fix: the device's
+certificate is now **entry #1** of `assetlinks.json` (all previous entries kept —
+extras are harmless, but every certificate the installed app carries must be
+listed).
+
+**How to read a device certificate (no JDK / Android SDK needed).**
+`tools/cert-fingerprint.mjs` parses the APK Signing Block (scheme v2/v3) in pure
+Node and prints the SHA-256 in `assetlinks.json` form:
+```bash
+adb shell pm path app.fivebudget            # note base.apk
+adb pull <base.apk path> /tmp/installed-base.apk
+node tools/cert-fingerprint.mjs /tmp/installed-base.apk
+```
+`adb` needs **both** `HOME` and `ANDROID_USER_HOME` pointed at a writable dir
+(`ANDROID_USER_HOME` alone is not enough — adb 37.0.1 still aborts on
+`Cannot mkdir ~/.android`). `.smoke/adb/run.sh` is the ready wrapper;
+`.smoke/adb/twa-forensics.sh start|stop <tag>` clears/sizes the log buffers and
+captures the verdict, because **the main/system buffers roll over in minutes**
+and the launch verdict is gone by the time anyone looks.
 - Google's own DAL API (`statements:list`) resolves all three statements **from
   the device**;
 - the TWA start URL `/?src=play` returns 200 with zero redirects; the deployed
@@ -639,47 +689,46 @@ check), plus a `[try N @ HH:MM:SS]` suffix on `service=` so a stale reading is
 visible as stale.
 
 **Remaining on the Play track (next session):**
-1. **The on-device E2E purchase**: get the app into TWA app mode, then Play
+1. **The on-device E2E purchase**: the DAL blocker is fixed (v0.3.2), so the next
+   step is to force a re-verification and confirm app mode. **A stored DAL
+   `kFailure` is not re-tried on its own** — after `assetlinks.json` changes, the
+   sequence that works is: force-stop Chrome, reinstall the app from Play (Android's
+   own verifier runs at install), then launch and check
+   `dumpsys package app.fivebudget | grep -A3 "Domain verification state"` — the
+   state must leave `1024` before app mode can be granted. Then the toolbar should
+   be gone and the Play sheet should open: Play
    sheet → test purchase on the test account → "License active ✓" → Firestore
    shows `sales`/`licenses`/`entitlements`/`playTokens` (the §6 non-negotiable
    check) → the accountant CSV has a `source=play` row. Baseline captured
    2026-09-11: the CSV holds exactly one row (`source=ls`, order `4681231`,
    `test_mode=false`), so a Play row will be unambiguous. A license-tester
    purchase is free and lands as `test_mode: true` — never read it as revenue.
-2. **Device forensics with `adb` — the agreed next move (2026-09-11), and the
-   reason the environment work came first.** The user will enable Developer
-   options → USB debugging and plug the phone into the Mac; `adb` (platform-tools
-   37.0.1) is already fetched and runs there with `ANDROID_USER_HOME=/tmp/adbhome`
-   (no elevated access needed). Read-only inventory to run FIRST, because each
-   line closes a question that cost hours without it:
-   ```bash
-   adb devices                                                     # authorize the RSA prompt
-   adb shell dumpsys package app.fivebudget | grep -iE "versionName|versionCode|installer|firstInstall|signatures"
-   #   → the INSTALLED app's signing cert. If it is not one of the three in
-   #     assetlinks.json, tonight's unsupported-context is fully explained
-   #     (Google re-signs internal-app-sharing uploads with its own per-app key).
-   adb shell dumpsys activity activities | grep -iE "ResumedActivity|CustomTabActivity|webapk"
-   #   → which Activity hosts the page: Chrome's CustomTabActivity (TWA or plain
-   #     Custom Tab) vs a WebAPK. Note both TWA and Custom Tab are CustomTabActivity,
-   #     so this separates WebAPK from Chrome-hosted, nothing finer.
-   adb logcat -c && adb logcat        # then launch from the launcher and read:
-   #   TWAProviderPicker / TwaLauncher  → "Found TWA provider" vs "Found Custom Tabs provider"
-   #     (that single line says whether androidbrowserhelper's customtabs fallback fired)
-   #   cr_OriginVerifier / cr_DigitalAssetLinksHandler → Chrome's own DAL result + reason
-   ```
-   `adb install` of the repo's `android/app-release-signed.apk` is a fast loop for
-   app/manifest changes, but a sideloaded install cannot bill (Chrome's payment-app
-   finder rejects an unknown installer unless `#enable-debug-for-store-billing` is on).
-3. **Play-side state to re-establish** (asked, not yet answered): the tester
-   **invitation link stopped working**, and the store listing is not searchable
-   for the account. Search-invisibility is NORMAL for an unpublished
-   testing-track app (access comes via the Console app or the invitation link) —
-   the dead invitation link is the anomaly. Check in Play Console: is the release
-   still active on the track, and is the intended account still on the tester
-   list? Also add whichever account will buy to **License testing** so the
-   purchase is free rather than a real US$5 charge, and remember the Play
-   purchaser email must equal the app's signed-in account (`play-email-mismatch`
-   otherwise).
+2. ~~**Device forensics with `adb`**~~ — **DONE 2026-09-11**, and it produced the
+   answer (see the "SOLVED" block at the top of §10). The command set that
+   mattered, kept for reuse: `dumpsys package <pkg>` for the installed signing
+   certificate + `Domain verification state` + the `autoVerify` filter,
+   `dumpsys activity activities` for the hosting Activity, and
+   `.smoke/adb/twa-forensics.sh start|stop <tag>` for the buffered launch verdict
+   (`TWAProviderPicker`, `TwaLauncher`, `cr_ChromeConnection`, and Chrome's
+   `digital_asset_links_handler` reason — the last two are the ones that name the
+   fault). Remember `adb logcat -c` immediately BEFORE the relaunch: the buffers
+   roll over in minutes and the verdict does not survive.
+   `adb install` of `android/app-release-signed.apk` remains a fast loop for
+   app/manifest changes, but a sideloaded install cannot bill (Chrome's
+   payment-app finder rejects an unknown installer unless
+   `#enable-debug-for-store-billing` is on).
+3. **Play-side state — half answered 2026-09-11.** The listing was NOT reachable
+   because **the phone was signed into a different Play account than the one on
+   the tester list**; switching the Play Store account installed the app
+   immediately (so the track release and the tester entry are both fine, and the
+   "dead invitation link" was an account-mismatch symptom, not a broken track).
+   Still to do: add the buying account to **License testing** so the purchase is
+   free rather than a real US$5 charge, and remember the Play purchaser email
+   must equal the app's signed-in account (`play-email-mismatch` otherwise).
+   **Open question to close on the Console:** which Play Console entry is
+   `ED:93:38:AE…6C:15`? It is what Play actually delivers to the device, yet it
+   was not one of the three fingerprints read off **Protected with Play**. Write
+   that answer down here so the file is never rebuilt from a stale list again.
 4. Play Console → Real-time developer notifications (Pub/Sub PUSH →
    `https://api.5budget.app/api/webhooks/play`) — renewals/refunds only, not
    needed for the first purchase.
