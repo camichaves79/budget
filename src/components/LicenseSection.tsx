@@ -41,6 +41,7 @@ export function LicenseSection() {
   // probePlay never opens a sheet and never charges, so it is safe when armed.
   const [supportMode] = useState<boolean>(() => supportModeEnabled());
   const [playDiag, setPlayDiag] = useState<string | null>(null);
+  const [probing, setProbing] = useState(false);
 
   // The one-shot license events ("License active ✓") normally surface as the
   // dashboard toast, but a purchase completed HERE fires while the dashboard
@@ -74,6 +75,19 @@ export function LicenseSection() {
       alive = false;
     };
   }, [supportMode]);
+
+  // Re-run the probe on demand (support mode). `force` re-acquires the Digital
+  // Goods service rather than reusing a cached success, so a refusal that was
+  // transient reads as a FRESH failure instead of a stale one — the question a
+  // device debug session actually needs answered.
+  const reprobePlay = async () => {
+    setProbing(true);
+    try {
+      setPlayDiag(formatPlayDiagnostics(await probePlay(true)));
+    } finally {
+      setProbing(false);
+    }
+  };
 
   const unlock = async () => {
     setNote(null);
@@ -249,10 +263,20 @@ export function LicenseSection() {
 
         {shownNote && <p className={shownNote.kind === 'success' ? 'note-success' : 'error-text'}>{shownNote.text}</p>}
 
-        {supportMode && playDiag !== null && (
+        {supportMode && (
           <div className="play-diag">
-            <div className="setting-name">{t('license.playDiag')}</div>
-            <pre className="play-diag-body">{playDiag}</pre>
+            <div className="play-diag-head">
+              <div className="setting-name">{t('license.playDiag')}</div>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => void reprobePlay()}
+                disabled={probing}
+              >
+                {probing ? t('license.working') : t('license.playReprobe')}
+              </button>
+            </div>
+            {playDiag !== null && <pre className="play-diag-body">{playDiag}</pre>}
           </div>
         )}
       </div>

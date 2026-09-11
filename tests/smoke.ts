@@ -38,7 +38,14 @@ import { initialData } from '../src/state/store';
 import { licenseIsActive, parseLicenseToken } from '../src/lib/license';
 import { playBuildDecision } from '../src/lib/playBuild';
 import { supportModeDecision } from '../src/lib/supportMode';
-import { classifyPlayFailure, formatPlayDiagnostics, playBillingReady } from '../src/lib/playBilling';
+import {
+  classifyPlayFailure,
+  describeDisplayModes,
+  describeViewport,
+  formatPlayDiagnostics,
+  playBillingReady,
+  serviceAcquisitionDecision,
+} from '../src/lib/playBilling';
 import { decodeJwtParts, fromFields, setDocMerge, signJwt, toFields, verifyJwtSignature } from '../api/_firebase.js';
 import worker, { createNodeRes, hydrateEnv, toNodeReq } from '../worker.js';
 import type { Category } from '../src/lib/types';
@@ -707,26 +714,34 @@ check('play billing: an unsupported payment method is an error', classifyPlayFai
 check('play billing: an invalid-state failure is an error', classifyPlayFailure('InvalidStateError'), 'error');
 check('play billing: a nameless failure is an error', classifyPlayFailure(''), 'error');
 
-// ---- Play Billing diagnostics dump (pure formatter) ----
+// ---- Play Billing diagnostics dump (pure formatter + pure cores) ----
 check(
   'play diag: a healthy snapshot reads back verbatim',
   formatPlayDiagnostics({
     apiPresent: true,
     sku: 'smart_entry_yearly',
     service: 'ok',
+    serviceTry: 1,
+    serviceAt: '21:14:03',
     canPay: 'yes',
     details: 'smart_entry_yearly "Smart entry" 5.00 USD subscription',
     lastFailure: '',
+    displayModes: 'standalone',
+    viewport: 'inner 812 / screen 892 / chrome≈80px',
+    url: 'https://5budget.app/?src=play',
     standalone: true,
     userAgent: 'UA/1',
   }),
   [
     'api=yes',
     'sku=smart_entry_yearly',
-    'service=ok',
+    'service=ok [try 1 @ 21:14:03]',
     'canPay=yes',
     'details=smart_entry_yearly "Smart entry" 5.00 USD subscription',
     'lastFail=(none)',
+    'display=standalone',
+    'viewport=inner 812 / screen 892 / chrome≈80px',
+    'url=https://5budget.app/?src=play',
     'standalone=yes',
     'ua=UA/1',
   ].join('\n'),
@@ -737,9 +752,14 @@ check(
     apiPresent: false,
     sku: '',
     service: '',
+    serviceTry: 0,
+    serviceAt: '',
     canPay: '',
     details: '',
     lastFailure: 'show aborted (AbortError)',
+    displayModes: '',
+    viewport: '',
+    url: '',
     standalone: false,
     userAgent: '',
   }).split('\n'),
@@ -750,13 +770,42 @@ check(
     'canPay=(not probed)',
     'details=(not probed)',
     'lastFail=show aborted (AbortError)',
+    'display=(unknown)',
+    'viewport=(unknown)',
+    'url=(unknown)',
     'standalone=no',
     'ua=',
   ],
 );
 check('play diag: no payment app is shouted', formatPlayDiagnostics({
-  apiPresent: true, sku: 's', service: 'ok', canPay: 'NO', details: 'x', lastFailure: '', standalone: false, userAgent: '',
+  apiPresent: true, sku: 's', service: 'ok', serviceTry: 1, serviceAt: '', canPay: 'NO',
+  details: 'x', lastFailure: '', displayModes: 'standalone', viewport: 'v', url: 'u',
+  standalone: false, userAgent: '',
 }).split('\n')[3], 'canPay=NO');
+check('play diag: an untimed attempt still reports its count', formatPlayDiagnostics({
+  apiPresent: true, sku: 's', service: 'unavailable (x)', serviceTry: 3, serviceAt: '',
+  canPay: '', details: '', lastFailure: '', displayModes: 'browser', viewport: 'v', url: 'u',
+  standalone: false, userAgent: '',
+}).split('\n')[2], 'service=unavailable (x) [try 3]');
+
+// The three causes of "unsupported context" are indistinguishable from the
+// error alone, so the dump carries the signals a device session needs: the
+// display-mode SET (a Custom Tab reports `browser`) and the browser-UI delta.
+check('play diag: no display mode is named, not blank', describeDisplayModes([]), '(none)');
+check('play diag: one display mode', describeDisplayModes(['standalone']), 'standalone');
+check('play diag: several modes are all named', describeDisplayModes(['standalone', 'minimal-ui']), 'standalone+minimal-ui');
+check('play diag: a browser view is named as such', describeDisplayModes(['browser']), 'browser');
+check('play diag: viewport delta is the browser-UI footprint', describeViewport(812, 892), 'inner 812 / screen 892 / chrome≈80px');
+check('play diag: app mode has a tiny delta', describeViewport(900, 900), 'inner 900 / screen 900 / chrome≈0px');
+check('play diag: a nonsense negative delta floors at zero', describeViewport(1000, 900), 'inner 1000 / screen 900 / chrome≈0px');
+check('play diag: geometry is rounded', describeViewport(812.4, 892.6), 'inner 812 / screen 893 / chrome≈80px');
+
+// A cached FAILURE must never be reused: one transient refusal (the activity
+// still settling) would otherwise poison every later probe and Subscribe tap.
+check('play service: a cached success is reused', serviceAcquisitionDecision(true, false), 'reuse');
+check('play service: a failure is re-attempted', serviceAcquisitionDecision(false, false), 'acquire');
+check('play service: the re-probe forces a fresh attempt', serviceAcquisitionDecision(true, true), 'acquire');
+check('play service: forcing with nothing cached still acquires', serviceAcquisitionDecision(false, true), 'acquire');
 
 // ---- Play Pub/Sub push: message parse + claim validation (pure) ----
 const pushEnvelope = JSON.stringify({

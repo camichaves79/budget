@@ -32,10 +32,10 @@ and (except for smart entry) never leaves the device.
   Firestore hold identity, entitlement and the sales ledger (server-side REST
   writes, client never touches Firestore). Lemon Squeezy is the merchant of
   record. Ops checklist: `skills/paywall-ops.md`.
-- **Google Play (Android, A18 — in progress on `play-billing-logic`, NOT yet
-  shipped):** the PWA is packaged as a Bubblewrap Trusted Web Activity
-  (`app.fivebudget`); Google is the Android merchant (Play Billing
-  subscriptions) while Lemon Squeezy stays the web/iOS merchant. Play
+- **Google Play (Android, A18 — SHIPPED to `main` at v0.2.6; the on-device
+  purchase E2E is still unproven):** the PWA is packaged as a Bubblewrap
+  Trusted Web Activity (`app.fivebudget`); Google is the Android merchant (Play
+  Billing subscriptions) while Lemon Squeezy stays the web/iOS merchant. Play
   purchases mint the SAME HMAC license into the SAME ledger
   (`/api/license/redeem-play` + `/api/webhooks/play` + a `playTokens` map),
   and the accountant CSV gains a `source` column (ls|play).
@@ -323,8 +323,9 @@ in those tight overrides.
   limiter, request sanitizer, Gemini array parser, retry policy, response cache),
   **license/paywall logic** (token sign/verify/meter, free-allowance quota, LS fee
   math, order→ledger mapping, webhook signature, CSV export) plus the
-  install-nudge decision core, the Play-build/support-mode decision cores and
-  the emoji grapheme cap. 452 checks.
+  install-nudge decision core, the Play-build/support-mode decision cores (incl.
+  the display-mode/viewport dump helpers and the service re-acquisition rule) and
+  the emoji grapheme cap. 465 checks.
 - `npm run build` + `npm run lint` before shipping. Lint has 5 known harmless
   warnings (react-refresh export rules in `store.tsx`/`entitlement.tsx`/
   `AmountInput.tsx` and one set-state-in-effect in `App.tsx`).
@@ -488,55 +489,151 @@ secrets in `ENV_KEYS`); and the Pub/Sub webhook (`POST /api/webhooks/play`,
 OIDC-verified). Play Console side is done too: subscription `smart_entry_yearly`
 (US$5.00/year, base plan `p1y`, Active), service account invited as a user with
 financial-data + manage-orders permissions, worker secrets deployed, AAB on a
-testing track. Suite 452 checks; lint 5 warnings / 0 errors.
+testing track. Suite 465 checks; lint 5 warnings / 0 errors.
 
-**2026-09-12 — the on-device purchase was blocked all session, and the cause was
-Digital Asset Links, not the app.** The chain, in the order it was proven:
-"Google Play Billing is not available in this view…" → the app could not say why
-(only an `AbortError`-vs-everything-else distinction existed) → added a
-support-mode diagnostics probe → `getDigitalGoodsService` threw
-`OperationError: unsupported context` → traced through Chromium source to
-`DigitalGoodsFactoryImpl.getResponseCode()` returning `kUnsupportedContext` when
-`CustomTabActivity#isInTwaMode()` is false → `SharedActivityCoordinator`
-allows TWA mode only while DAL verification has not `FAILURE` → the published
+**The exact gate behind `OperationError: unsupported context` (proven in
+Chromium source, 2026-09-11).** It is one enum (`kUnsupportedContext`) with
+exactly **three** causes in
+`chrome/android/java/src/.../browserservices/digitalgoods/DigitalGoodsFactoryImpl.java#getResponseCode()`:
+1. the `AppStoreBilling` feature is off — enabled by default on Android and
+   **not reachable from chrome://flags** (only `#enable-debug-for-store-billing`
+   → `AppStoreBillingDebug` is user-facing), so this is effectively never it;
+2. the displaying Activity is not a `CustomTabActivity` (plain Chrome tab, a
+   WebAPK's `WebappActivity`, or a non-Chrome host);
+3. `CustomTabActivity#isInTwaMode()` is false.
+
+`isInTwaMode()` lives on `BaseCustomTabActivity` and is
+`mTwaCoordinator != null && mTwaCoordinator.shouldUseAppModeUi()`. The first
+half requires the launch intent to carry **both** a Custom Tabs session binder
+and `android.support.customtabs.extra.LAUNCH_AS_TRUSTED_WEB_ACTIVITY` (so a TWA
+that fell back to a plain Custom Tab has a null coordinator). The second half is
+`SharedActivityCoordinator#appModeUiAllowedFor(state)` = `state == null ||
+state.status != FAILURE` — **app mode is denied ONLY by an actual `FAILURE`**; a
+pending or absent verification still allows it. The visible tell is the Custom
+Tab **toolbar**: `display: standalone` hides it in app mode, so a URL bar means
+app mode is off.
+
+Fact-checking the DAL plumbing (also 2026-09-11):
+- Chrome fetches `https://<origin>/.well-known/assetlinks.json` **itself**
+  (`DigitalAssetLinksHandler`, browser-process `SimpleURLLoader`, credentials
+  omitted) — no Play Services / `digitalassetlinks.googleapis.com` call in the
+  verification path, so "the API is unreachable" is not a failure mode.
+- DNS/offline/timeout/502-503-504 are `kNoConnection`: they do **not** wipe a
+  stored success. A 404, a parse error, or a fingerprint/package mismatch is
+  `kFailure` — and `kFailure` **deletes** the stored success for that
+  (package, cert, origin, relation). Successes live in Chrome SharedPreferences
+  with **no TTL** and are wiped by Chrome's clear-browsing-data.
+- **`canPay=yes` is NOT a TWA signal.** `PaymentRequest.canMakePayment()` for
+  the Play billing method returns true even in an ordinary Chrome tab (measured
+  on-device), so a dump showing `canPay=yes` beside `service=unavailable` is not
+  a contradiction and must never be used to argue the view is a TWA.
+- A Chrome-installed PWA/WebAPK can **never** satisfy cause 2: `WebappActivity`
+  extends `BaseCustomTabActivity` as a *sibling* of `CustomTabActivity`, so the
+  `instanceof` check fails first. Installing the site from Chrome can never
+  enable billing.
+
+**2026-09-12 — the DAL fingerprint fix, and why it worked.** The published
 `public/.well-known/assetlinks.json` listed **one** fingerprint (Play's
 post-quantum certificate) while Chrome compares the certificate the installed
-app actually carries (the **classical** app-signing key). Publishing all three
-(commit `306c7d1`, v0.2.5) fixed verification, but only after a **device
-reboot**, because Chrome caches the statement list in its browser process.
+app carries. Publishing all three (commit `306c7d1`, v0.2.5) fixed verification,
+but only after a **device reboot**, because the stale answer survives an app
+relaunch.
 
-**Two traps that each cost hours — always check these first:**
-- A Chrome-installed home-screen shortcut ("Add to Home screen") is
-  indistinguishable from the Play-installed app: same name, same icon, and
-  `display: standalone` makes it report `standalone=yes` as well. It is not a
-  TWA, so billing can never work there, and once localStorage is cleared it
-  falls back to the **Lemon Squeezy** checkout (no `?src=play` in its start
-  URL). Launch from **Play Store → Manage apps & device → Manage → Open**.
-- Chrome's DAL statement cache means a plain app relaunch can keep serving the
-  pre-fix answer: force-stop Chrome or reboot the device after changing
-  `assetlinks.json`.
+**2026-09-11 (evening session) — the E2E purchase is STILL not done, and it is
+no longer a repo problem.** Everything on the server/app side was re-verified
+from scratch and is correct:
+- the live statement is 200, `application/json`, no redirect, and lists all
+  three fingerprints (classical app-signing `78:9C:A65F…FFE2`, upload
+  `7EAE:C070…4395`, post-quantum `00:0617 52…B3B2`) — read back **character for
+  character** from Play Console → App integrity;
+- the upload-key fingerprint was recomputed from the built APK in `android/`
+  and matches entry #2, so whichever way the app was installed its certificate
+  is listed;
+- the app half is right too: `assetStatements` → `https://5budget.app`,
+  `DelegationService` with the TWA service action, an `autoVerify` app-link
+  filter, and `PaymentService`/`PaymentActivity` advertising
+  `https://play.google.com/billing`;
+- Google's own DAL API (`statements:list`) resolves all three statements **from
+  the device**;
+- the TWA start URL `/?src=play` returns 200 with zero redirects; the deployed
+  bundle carries the Play flow; `/api/license/redeem-play` and
+  `/api/webhooks/play` are live (401 on a missing secret / bad bearer).
+
+Yet Chrome kept the app **out of TWA app mode** (toolbar visible,
+`standalone=yes`), so the Digital Goods service was refused. The trigger could
+not be pinned further without Chrome's own log: this machine has no adb
+(platform-tools can be fetched with `curl`, but the **phone was not available
+over USB**), and the app's web layer cannot observe the native decision.
+
+**Prime suspect (unproven): the androidbrowserhelper Custom Tabs fallback.**
+`android/twa-manifest.json` has `fallbackType: 'customtabs'`, and
+`TwaLauncher` falls back to a **plain Custom Tab** when the provider cannot
+create a session (`CustomTabsClient.bindCustomTabsServicePreservePriority`
+returns false, or `newSession()` returns null) — and the fallback launches via
+`twaBuilder.buildCustomTabsIntent()`, which omits
+`EXTRA_LAUNCH_AS_TRUSTED_WEB_ACTIVITY`. That produces exactly the observed
+state: Custom Tab toolbar, `standalone=yes`, `unsupported context`. The launcher
+also persists a session token (`mTokenStore.store(Token.create(...))`), and
+Chrome's data was cleared during the session, which is the one thing known to
+have changed since the reading that worked.
+
+**Device context (2026-09-11):** **Xiaomi 14T Pro / HyperOS**, Chrome the default
+browser (UA `Chrome/152.0.0.0 Mobile Safari`, so the provider *is* Chrome), app
+installed **from the Play Store**, installed build `appVersionName 0.1.130` /
+`versionCode 133` = the Sep 10 AAB in `android/`. Tried and insufficient:
+Chrome force-stop, device reboot, clearing Chrome's browsing data (which also
+drops the stored DAL success and the stored license), clearing the **app's** own
+data, and removing Chrome's battery restriction. The MIUI-optimization toggle
+could not be found in HyperOS developer options. **Not yet tried:** a fresh AAB
+build + reinstall (needs the toolchain), or `adb logcat` (needs USB debugging).
+
+**Also blocking the E2E, independent of billing:** the Play Store **listing does
+not open for the account** (search finds nothing, the detail page from "Manage
+apps & device → Manage" is blank) — i.e. tester/track access is not visible to
+the store account. That must be fixed in Play Console before a license-tester
+purchase is possible, whatever happens with TWA mode.
+
+**Diagnostics added (v0.2.7, patch — 2026-09-11).** `probePlay(force)` no longer
+caches a
+FAILED service acquisition (`serviceAcquisitionDecision`: reuse a success, always
+re-acquire a failure), so one transient refusal cannot poison every later probe
+and Subscribe tap for the rest of the session; Settings → Smart entry gains a
+support-mode **Re-probe** button (`license.playReprobe`, ×11 languages) that
+forces a fresh acquisition. The dump also gained `display=` (the full matching
+`display-mode` set — `browser` means a Custom Tab), `viewport=` (inner vs screen
+height; the delta is the browser-UI footprint) and `url=` (the verified-origin
+check), plus a `[try N @ HH:MM:SS]` suffix on `service=` so a stale reading is
+visible as stale.
 
 **Remaining on the Play track (next session):**
-1. **The on-device E2E purchase, still not completed**: Play sheet → test
-   purchase on the test account → "License active ✓" → Firestore shows
-   `sales`/`licenses`/`entitlements`/`playTokens` (the §6 non-negotiable check)
-   → the accountant CSV has a `source=play` row.
-2. Play Console → Real-time developer notifications (Pub/Sub PUSH →
+1. **The on-device E2E purchase**: get the app into TWA app mode, then Play
+   sheet → test purchase on the test account → "License active ✓" → Firestore
+   shows `sales`/`licenses`/`entitlements`/`playTokens` (the §6 non-negotiable
+   check) → the accountant CSV has a `source=play` row. Baseline captured
+   2026-09-11: the CSV holds exactly one row (`source=ls`, order `4681231`,
+   `test_mode=false`), so a Play row will be unambiguous. A license-tester
+   purchase is free and lands as `test_mode: true` — never read it as revenue.
+2. **Restore Play listing/tester visibility for the store account** (see above),
+   which the E2E needs regardless.
+3. Play Console → Real-time developer notifications (Pub/Sub PUSH →
    `https://api.5budget.app/api/webhooks/play`) — renewals/refunds only, not
    needed for the first purchase.
-3. Closed test with **12 testers × 14 continuous days** before production
+4. Closed test with **12 testers × 14 continuous days** before production
    access can even be requested (2 testers today; the clock has not started —
    this is the long pole).
-4. Set `info@5budget.app` as the Play **developer contact** + store-listing
+5. Set `info@5budget.app` as the Play **developer contact** + store-listing
    contact (unverified).
-5. `android/twa-manifest.json` `versionCode` is still 133 and only bumps on the
+6. `android/twa-manifest.json` `versionCode` is still 133 and only bumps on the
    next AAB build. This machine has **no JDK and no Android SDK**, so an AAB
-   rebuild needs the toolchain installed (Bubblewrap itself runs via `npx`).
-6. Support mode stays available for device debugging: arm with
+   rebuild needs the toolchain installed (Bubblewrap itself runs via `npx`). A
+   fresh build + reinstall is also the cheapest untried fix for the TWA-mode
+   fault.
+7. Support mode stays available for device debugging: arm with
    `https://5budget.app/?diag=1` (disarm `?diag=0`) and read the Play dump in
-   Settings → Smart entry.
+   Settings → Smart entry. Remember it is read once per JS session — fully close
+   the app after arming in a browser.
 
-Everything below is **shipped and live** (main = v0.2.6, 2026-09-12):
+Everything below is **shipped and live** (main = v0.2.7, 2026-09-12):
 
 - Smart entry end-to-end: PWA → Vercel microservice → Gemini 3.6 Flash → instant save
   with fading toasts; review form only for ambiguous parses. Full spec (revised):

@@ -29,6 +29,32 @@
  * (`canMakePayment`). It never charges and never opens a sheet, so it is safe
  * to run on render. `formatPlayDiagnostics` renders the snapshot as ASCII for
  * the Settings panel — deliberately untranslated, it is a support dump.
+ *
+ * `OperationError: unsupported context` (2026-09-11 investigation, confirmed
+ * against Chromium): `getDigitalGoodsService()` is refused by exactly three
+ * conditions in `DigitalGoodsFactoryImpl#getResponseCode()` — the
+ * `AppStoreBilling` feature being off (on-by-default on Android and not
+ * user-reachable via chrome://flags), the displaying Activity not being a
+ * `CustomTabActivity`, or `CustomTabActivity#isInTwaMode()` being false. That
+ * last one is `mTwaCoordinator != null && shouldUseAppModeUi()`, where app mode
+ * is denied ONLY while the page verifier reports `FAILURE`
+ * (`SharedActivityCoordinator#appModeUiAllowedFor`) — a pending or absent
+ * verification still allows app mode. So the error means "this is not a
+ * verified TWA view", and the distinguishing UI symptom is a visible Custom Tab
+ * toolbar (app mode off).
+ *
+ * The trap that cost a session: `canMakePayment()` is NOT a TWA signal. It
+ * returns true even in an ordinary Chrome tab (measured on-device 2026-09-11),
+ * so a dump reading `canPay=yes` next to `service=unavailable` is NOT a
+ * contradiction — it says nothing about TWA mode. Never debug this from
+ * `canPay`.
+ *
+ * Consequently a FAILED service acquisition is never cached
+ * (`serviceAcquisitionDecision`): a transient refusal — the activity still
+ * settling, Chrome momentarily unable to host the TWA — must not poison every
+ * later probe and Subscribe tap for the rest of the session. `probePlay(true)`
+ * forces a fresh attempt, which is what the Settings support-mode "Re-probe"
+ * button uses.
  */
 
 const PLAY_BILLING_METHOD = 'https://play.google.com/billing';
@@ -108,11 +134,53 @@ export interface PlayDiagnostics {
   apiPresent: boolean;
   sku: string;
   service: string;
+  /** How many times the service was acquired this session, and when (last try). */
+  serviceTry: number;
+  serviceAt: string;
   canPay: string;
   details: string;
   lastFailure: string;
+  /** Which `display-mode` media queries match — see `describeDisplayModes`. */
+  displayModes: string;
+  /** Viewport vs screen geometry — see `describeViewport`. */
+  viewport: string;
+  url: string;
   standalone: boolean;
   userAgent: string;
+}
+
+/**
+ * Pure: should a previous service acquisition be reused, or should we ask
+ * Chrome again? A cached SUCCESS is reused (the service object is stable for
+ * the session); a cached FAILURE never is — Chrome refuses this view while the
+ * activity is still settling, and a single refusal must not make every later
+ * probe and Subscribe tap fail. `force` bypasses even a cached success, which
+ * is what the support-mode re-probe uses.
+ */
+export function serviceAcquisitionDecision(cachedOk: boolean, force: boolean): 'reuse' | 'acquire' {
+  return !force && cachedOk ? 'reuse' : 'acquire';
+}
+
+/**
+ * Pure: name the matching `display-mode` media queries. In a TWA running in app
+ * mode the web app manifest's `display: standalone` is in force; a Custom Tab
+ * reports `browser`. Reported as a SET because Chrome can match more than one
+ * (e.g. `standalone` together with `minimal-ui`), and because the single
+ * boolean this dump used to carry could not tell those apart.
+ */
+export function describeDisplayModes(matches: string[]): string {
+  return matches.length === 0 ? '(none)' : matches.join('+');
+}
+
+/**
+ * Pure: describe the viewport/screen geometry, whose DELTA is the browser-UI
+ * footprint (status bar + any Custom Tab toolbar). Approximate by nature —
+ * `screen.height` is the display in CSS pixels and `visualViewport` may differ
+ * when the keyboard is up — so it is reported as numbers, not a verdict.
+ */
+export function describeViewport(innerHeight: number, screenHeight: number): string {
+  const chrome = Math.max(0, Math.round(screenHeight - innerHeight));
+  return `inner ${Math.round(innerHeight)} / screen ${Math.round(screenHeight)} / chrome≈${chrome}px`;
 }
 
 /**
@@ -121,21 +189,31 @@ export interface PlayDiagnostics {
  */
 export function formatPlayDiagnostics(d: PlayDiagnostics): string {
   const or = (value: string, fallback: string) => (value === '' ? fallback : value);
+  const tries = d.serviceTry > 0 ? ` [try ${d.serviceTry}${d.serviceAt === '' ? '' : ` @ ${d.serviceAt}`}]` : '';
   return [
     `api=${d.apiPresent ? 'yes' : 'NO'}`,
     `sku=${or(d.sku, '(unset)')}`,
-    `service=${or(d.service, '(not probed)')}`,
+    `service=${or(d.service, '(not probed)')}${tries}`,
     `canPay=${or(d.canPay, '(not probed)')}`,
     `details=${or(d.details, '(not probed)')}`,
     `lastFail=${or(d.lastFailure, '(none)')}`,
+    `display=${or(d.displayModes, '(unknown)')}`,
+    `viewport=${or(d.viewport, '(unknown)')}`,
+    `url=${or(d.url, '(unknown)')}`,
     `standalone=${d.standalone ? 'yes' : 'no'}`,
     `ua=${d.userAgent}`,
   ].join('\n');
 }
 
+/** The acquired service; kept for the session because a success is stable. */
+let cachedService: PlayDigitalGoodsService | null = null;
+/** The acquisition in flight, so concurrent callers share one attempt. */
 let servicePromise: Promise<PlayDigitalGoodsService | null> | null = null;
-/** Why `getService()` came back empty ('' when it succeeded or was not tried). */
+/** Why the last acquisition came back empty ('' when it succeeded). */
 let serviceError = '';
+/** How many acquisitions were attempted, and when the last one ran. */
+let serviceTries = 0;
+let serviceAt = '';
 /** Why the last purchase attempt failed ('' when none has failed). */
 let lastFailure = '';
 
@@ -144,39 +222,95 @@ export function lastPlayFailure(): string {
   return lastFailure;
 }
 
-/** Acquire the Play Billing Digital Goods service once per session. */
-function getService(): Promise<PlayDigitalGoodsService | null> {
-  if (!servicePromise) {
-    servicePromise = (async () => {
-      const w = window as DigitalGoodsWindow;
-      if (typeof w.getDigitalGoodsService !== 'function') {
-        // Not a billing-capable TWA (plain browser tab, WebAPK, WebView).
-        serviceError = 'api missing';
-        return null;
-      }
-      try {
-        return await w.getDigitalGoodsService(PLAY_BILLING_METHOD);
-      } catch (error) {
-        // Chrome knows the API but refuses this view/billing method.
-        serviceError = describeError(error);
-        return null;
-      }
-    })();
+/** Local wall clock as HH:MM:SS — a support dump needs ordering, not dates. */
+function clockLabel(): string {
+  try {
+    return new Date().toTimeString().slice(0, 8);
+  } catch {
+    return '';
   }
-  return servicePromise;
+}
+
+/** One acquisition attempt: ask Chrome for the Digital Goods service. */
+async function acquireService(): Promise<PlayDigitalGoodsService | null> {
+  serviceTries += 1;
+  serviceAt = clockLabel();
+  const w = window as DigitalGoodsWindow;
+  if (typeof w.getDigitalGoodsService !== 'function') {
+    // Not a billing-capable TWA (plain browser tab, WebAPK, WebView).
+    serviceError = 'api missing';
+    return null;
+  }
+  try {
+    const service = await w.getDigitalGoodsService(PLAY_BILLING_METHOD);
+    cachedService = service;
+    serviceError = '';
+    return service;
+  } catch (error) {
+    // Chrome knows the API but refuses this view/billing method.
+    serviceError = describeError(error);
+    return null;
+  }
+}
+
+/**
+ * Acquire the Play Billing Digital Goods service. A success is reused for the
+ * session; a failure is NOT cached, so the next probe or purchase retries (see
+ * `serviceAcquisitionDecision`). `force` re-acquires even after a success.
+ */
+function getService(force = false): Promise<PlayDigitalGoodsService | null> {
+  if (serviceAcquisitionDecision(cachedService !== null, force) === 'reuse' && cachedService) {
+    return Promise.resolve(cachedService);
+  }
+  if (servicePromise) return servicePromise;
+  const attempt = acquireService();
+  servicePromise = attempt;
+  void attempt.then((service) => {
+    // Forget a failed attempt so the next caller really does try again.
+    if (!service && servicePromise === attempt) servicePromise = null;
+  });
+  return attempt;
 }
 
 function currentUserAgent(): string {
   return typeof navigator === 'undefined' ? '' : navigator.userAgent;
 }
 
-function isStandaloneDisplay(): boolean {
-  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
-  try {
-    return window.matchMedia('(display-mode: standalone)').matches;
-  } catch {
-    return false;
+/** The display-mode queries worth naming — a Custom Tab reports `browser`. */
+const DISPLAY_MODES = ['standalone', 'minimal-ui', 'fullscreen', 'browser'];
+
+/** Which `display-mode` queries match right now ([] when unprobeable). */
+function matchedDisplayModes(): string[] {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return [];
+  const matched: string[] = [];
+  for (const mode of DISPLAY_MODES) {
+    try {
+      if (window.matchMedia(`(display-mode: ${mode})`).matches) matched.push(mode);
+    } catch {
+      /* an unsupported query is simply not a match */
+    }
   }
+  return matched;
+}
+
+/** Viewport vs screen geometry ('' when the numbers are unavailable). */
+function currentViewport(): string {
+  if (typeof window === 'undefined') return '';
+  const inner = typeof window.innerHeight === 'number' ? window.innerHeight : 0;
+  const screen = window.screen as Screen | undefined;
+  const screenHeight = screen && typeof screen.height === 'number' ? screen.height : 0;
+  if (inner <= 0 || screenHeight <= 0) return '';
+  return describeViewport(inner, screenHeight);
+}
+
+/**
+ * The current page URL, for the verified-origin check. Purchase-reference
+ * params are stripped at boot (`takePurchaseParam`), so this carries no secret.
+ */
+function currentUrl(): string {
+  if (typeof window === 'undefined' || !window.location) return '';
+  const { origin, pathname, search } = window.location;
+  return `${origin}${pathname}${search}`;
 }
 
 /** Does Chrome believe a payment app handles the Play billing method? */
@@ -203,10 +337,14 @@ async function probeCanMakePayment(sku: string): Promise<string> {
  * means the INSTALLED APK does not advertise the TWA billing services
  * (`PaymentService` / `IS_READY_TO_PAY`) — a stale or billing-less bundle —
  * while a service-level rejection means Chrome refused this context outright.
+ * Note that `canPay=yes` does NOT imply TWA mode (see the module header).
+ *
+ * `force` re-acquires the service instead of reusing a cached success, which is
+ * what the support-mode re-probe uses to test whether a refusal persists.
  */
-export async function probePlay(): Promise<PlayDiagnostics> {
+export async function probePlay(force = false): Promise<PlayDiagnostics> {
   const apiPresent = playBillingSupported();
-  const service = await getService();
+  const service = await getService(force);
   const canPay = await probeCanMakePayment(PLAY_SUBSCRIPTION_ID);
   let details = '';
   if (service && PLAY_SUBSCRIPTION_ID !== '') {
@@ -222,14 +360,20 @@ export async function probePlay(): Promise<PlayDiagnostics> {
       details = `err (${describeError(error)})`;
     }
   }
+  const modes = matchedDisplayModes();
   return {
     apiPresent,
     sku: PLAY_SUBSCRIPTION_ID,
     service: service ? 'ok' : `unavailable (${serviceError || 'not attempted'})`,
+    serviceTry: serviceTries,
+    serviceAt,
     canPay,
     details,
     lastFailure,
-    standalone: isStandaloneDisplay(),
+    displayModes: describeDisplayModes(modes),
+    viewport: currentViewport(),
+    url: currentUrl(),
+    standalone: modes.includes('standalone'),
     userAgent: currentUserAgent(),
   };
 }

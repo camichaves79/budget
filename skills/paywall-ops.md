@@ -361,28 +361,75 @@ console, which differs from most tutorials:**
    Chrome-installed home-screen shortcut looks identical (same icon, same name,
    `display: standalone`) but is NOT the TWA, so billing can never work there.
 
-**Digital Asset Links — required for Play Billing to work at all (2026-09-12).**
-This cost an entire session; it is not optional plumbing:
-- Chrome grants the Digital Goods service **only** to a `CustomTabActivity` in
-  TWA mode. In Chromium,
-  `chrome/android/java/.../digitalgoods/DigitalGoodsFactoryImpl.java` returns
-  `kUnsupportedContext` ("OperationError: unsupported context") when
-  `CustomTabActivity#isInTwaMode()` is false, and
-  `SharedActivityCoordinator#appModeUiAllowedFor` allows TWA mode only while
-  Digital Asset Links verification has **not** returned `FAILURE`.
-- `/.well-known/assetlinks.json` must therefore list **every** certificate Play
-  signs the installed app with. Play now exposes **three**: a **classical**
-  app-signing key (what Chrome actually reads), a **post-quantum** app-signing
-  key, and the developer **upload** key — all under **Protected with Play**
-  (the old "App integrity" page redirects there). Publishing only the
-  post-quantum fingerprint produced `FAILURE` while the file looked perfect.
-- Chrome caches the fetched statement list **in the browser process**, and a TWA
-  launch reuses the running Chrome. After changing the file, **force-stop
-  Chrome or reboot the device**, otherwise the app keeps reporting the old
-  answer.
+**Digital Asset Links — required for Play Billing to work at all (2026-09-12;
+root cause confirmed in Chromium source 2026-09-11).** This cost two sessions;
+it is not optional plumbing. `getDigitalGoodsService()` rejects with
+`OperationError: unsupported context` for exactly **three** reasons, all in
+`chrome/android/java/src/.../browserservices/digitalgoods/DigitalGoodsFactoryImpl.java`
+→ `getResponseCode()`:
+1. the **`AppStoreBilling` feature** is off — on by default on Android and not
+   reachable from chrome://flags (only `#enable-debug-for-store-billing` /
+   `AppStoreBillingDebug` is user-facing), so effectively never the cause;
+2. the displaying Activity is **not a `CustomTabActivity`** — a plain Chrome
+   tab, a WebAPK (`WebappActivity` is a *sibling* class, so a Chrome-installed
+   PWA can never work), or a non-Chrome host;
+3. **`CustomTabActivity#isInTwaMode()` is false** — the usual one.
+
+`isInTwaMode()` is `mTwaCoordinator != null && shouldUseAppModeUi()` on
+`BaseCustomTabActivity`. The first half needs the launch intent to carry **both**
+a Custom Tabs session binder and
+`android.support.customtabs.extra.LAUNCH_AS_TRUSTED_WEB_ACTIVITY`; the second is
+`SharedActivityCoordinator#appModeUiAllowedFor(state)` = `state == null ||
+state.status != FAILURE`, i.e. **only a real `FAILURE` denies app mode** (pending
+or absent verification still allows it). The visible tell is the Custom Tab
+**toolbar** — `display: standalone` hides it in app mode, so a URL bar means app
+mode is off.
+
+- `/.well-known/assetlinks.json` must list **every** certificate Play signs the
+  installed app with. Play exposes **three**: a **classical** app-signing key
+  (what Chrome actually reads), a **post-quantum** app-signing key, and the
+  developer **upload** key — all under **Protected with Play** (the old "App
+  integrity" page redirects there). Publishing only the post-quantum
+  fingerprint produced `FAILURE` while the file looked perfect.
+- Chrome **fetches the file itself** (`DigitalAssetLinksHandler` →
+  browser-process `SimpleURLLoader`, credentials omitted). There is **no** Play
+  Services / `digitalassetlinks.googleapis.com` call in this path, so "the DAL
+  API is unreachable" is never the failure mode — don't chase it.
+- `kNoConnection` (DNS, offline, timeout, 502/503/504) does **not** wipe a
+  stored success; `kFailure` (404, parse error, package/fingerprint mismatch,
+  unusable fingerprint data) **deletes** the stored success for that
+  (package, cert, origin, relation). Successes sit in Chrome SharedPreferences
+  with **no TTL** and are wiped by clearing Chrome's browsing data. After
+  changing the file, force-stop Chrome or reboot so a stale answer cannot
+  survive.
 - The visible symptoms of a failed verification: Chrome stays out of app mode
   (URL bar visible, so `display-mode` still reports `standalone`) and Play
   Billing is refused with the misleading "not available in this view" copy.
+
+**Two traps around this error:**
+- **`canPay=yes` is NOT a TWA signal.** `PaymentRequest.canMakePayment()` for
+  the Play billing method returns true in an ordinary Chrome tab as well
+  (measured on the device 2026-09-11), so a dump showing `canPay=yes` beside
+  `service=unavailable` is not a contradiction. Never infer TWA mode from it.
+- **The Custom Tabs fallback is indistinguishable from a broken TWA.** With
+  `fallbackType: 'customtabs'` (`android/twa-manifest.json` → `build.gradle`),
+  `TwaLauncher` opens a **plain Custom Tab** whenever the provider cannot create
+  a session (`bindCustomTabsServicePreservePriority` false, or `newSession()`
+  null), and that fallback launches via `twaBuilder.buildCustomTabsIntent()`,
+  which omits `EXTRA_LAUNCH_AS_TRUSTED_WEB_ACTIVITY` — giving a toolbar,
+  `standalone=yes` and `unsupported context` with a null TWA coordinator rather
+  than a failed verification. It also persists a session token
+  (`mTokenStore.store(...)`), so clearing Chrome's data can invalidate the
+  session the app is still reusing.
+
+**Device notes (Xiaomi 14T Pro / HyperOS, 2026-09-11).** HyperOS keeps its own
+paths (Settings → Apps → **Manage apps** → app → **Storage** / **Open by
+default**), and its Developer options expose **no** MIUI-optimization toggle to
+try. Clearing the app's own data, un-restricting Chrome's battery, force-stopping
+Chrome and rebooting were all tried without restoring app mode. Chrome being the
+**default browser** matters (`TwaProviderPicker` walks installed browsers in
+Android's preference order and takes the first TWA-capable one), and the UA
+should be checked to confirm Chrome is the host.
 
 **Reading the real failure (support mode).** The app's user-facing copy is
 deliberately generic, so the technical reason is captured instead:
@@ -394,7 +441,19 @@ ever opening a sheet or charging. Both surface in Settings → Smart entry only
 when support mode is armed: open `https://5budget.app/?diag=1` in a browser
 (`?diag=0` disarms). The flag is persisted in localStorage, which the TWA
 shares with Chrome for this origin, so arming it in a browser arms it in the
-app. Off by default — no debug text on ordinary screens.
+app. Off by default — no debug text on ordinary screens. **It is read once per
+JS session**, so fully close the app after arming, otherwise the dump never
+appears.
+
+The dump (v0.2.7, 2026-09-11) is 11 lines: `api=`, `sku=`, `service=` (with a
+`[try N @ HH:MM:SS]` suffix in support mode), `canPay=`, `details=`, `lastFail=`,
+`display=` (the full matching `display-mode` set — **`browser` means a Custom
+Tab**), `viewport=` (inner vs screen height; the delta is the browser-UI
+footprint, i.e. the toolbar), `url=`, `standalone=`, `ua=`. A support-mode
+**Re-probe** button re-acquires the service instead of reusing a cached success
+(`serviceAcquisitionDecision`: a success is reused, a failure is always
+re-tried), so a refusal that was transient reads as a fresh failure rather than
+a stale one.
 
 **Env vars (Cloudflare Worker, Secret-type; add to `worker.js` `ENV_KEYS`):**
 `GOOGLE_PLAY_SERVICE_ACCOUNT`, `GOOGLE_PLAY_PACKAGE_NAME` (`app.fivebudget`),

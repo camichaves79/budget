@@ -1172,6 +1172,14 @@ select.input {
   padding-top: 10px;
 }
 
+/* Support mode only: the dump's title row with its on-demand re-probe button. */
+.play-diag-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pad-sm);
+}
+
 .play-diag-body {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 11px;
