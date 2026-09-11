@@ -768,14 +768,27 @@ stuck purchase; the job now is to make the NEXT one work.
   `~/.config`), and it is not in `.dev.vars` — the credential lives only as a
   Worker secret, and the user had no Worker or Play Console access during this
   session. **That, and nothing else, is what blocks the fix.** To unblock, in
-  order: (1) Play Console → **Setup → API access**: confirm a service account
-  exists and is invited under **Users and permissions** with "View financial
-  data, orders, and cancellation survey responses" + "Manage orders and
-  subscriptions" + read app information; (2) Google Cloud → IAM → Service
-  Accounts → that account → Keys → **Create new key → JSON**; (3) verify it
-  locally with `node tools/play-credentials-check.mjs <key.json>` — step 3 must
-  report **404**; (4) only then paste it (single line) into
+  order, using the CURRENT console (verified against Google's docs 2026-09-11):
+  (1) Google Cloud → [IAM & Admin → Service
+  Accounts](https://console.cloud.google.com/iam-admin/serviceaccounts): create
+  (or find) the service account and **Keys → Add key → Create new key → JSON** —
+  keys are issued ONLY here, never by Play Console; (2) Google Cloud →
+  [enable the Google Play Developer API](https://console.developers.google.com/apis/api/androidpublisher.googleapis.com/)
+  (no Play Console path exists for this); (3) Play Console →
+  [Users & permissions](https://play.google.com/console/users-and-permissions) →
+  **Invite new users** → the service-account email, with *"View financial data,
+  orders, and cancellation survey responses"* + *"Manage orders and
+  subscriptions"* + read app information; (4) verify it locally with
+  `node tools/play-credentials-check.mjs <key.json>` — step 3 must report
+  **404**; (5) only then paste it (single line) into
   `GOOGLE_PLAY_SERVICE_ACCOUNT` on `budget-api` **and click the Deploy banner**.
+  ⚠️ **`Setup → API access` is a DEAD NAV PATH** — repeatedly quoting it cost a
+  round trip. That page survives only at its URL
+  (`play.google.com/console/developers/<developerId>/api-access`), and Google
+  states plainly: *"You no longer need to link your developer account to a Google
+  Cloud Project in order to access the Google Play Developer API."* Also note
+  Google's current wording for billing access is exactly TWO permissions (above) —
+  not a longer list.
 - **`getSubscription` now explains itself** (v0.3.6): it returns a safe `reason`
   (`play api <status> for <pkg> — <Google's message>`, or which env value is
   missing, or that OAuth failed), `redeem-play` passes it through on the 503,

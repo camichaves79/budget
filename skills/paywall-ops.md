@@ -366,14 +366,30 @@ console, which differs from most tutorials:**
 2. **Monetize with Play → Products → Subscriptions** → create
    `smart_entry_yearly` (US$5.00/year, auto-renewing, base plan `p1y`, state
    **Active**).
-3. Authorize the service account. **No GCP-project linking is needed any more**,
-   and API access is account-level (not inside the app): invite the service
-   account as a **user** (Users and permissions → Invite new users) with
-   "View financial data, orders, and cancellation survey responses" **and**
-   "Manage orders and subscriptions"; for app access choose the narrowest option
-   (`read app information (read-only)` — do NOT hand it `admin`). Then download
-   its JSON → `GOOGLE_PLAY_SERVICE_ACCOUNT` (single line, Secret). The
-   `androidpublisher` API must be enabled in that project.
+3. Authorize the service account. **No GCP-project linking is needed any more**
+   (Google: *"You no longer need to link your developer account to a Google Cloud
+   Project in order to access the Google Play Developer API"*). ⚠️ There is **no
+   `Setup → API access` menu entry any more** — that page survives only at its
+   URL (`https://play.google.com/console/developers/<developerId>/api-access`),
+   and quoting the old nav path sends people in circles. The three real places,
+   verified against Google's docs on 2026-09-11:
+   - **Google Cloud → [Service Accounts](https://console.cloud.google.com/iam-admin/serviceaccounts)**
+     — create the service account here, then **Keys → Add key → Create new key →
+     JSON**. Keys are only ever issued by Google Cloud, never by Play Console.
+   - **Google Cloud → [enable the Google Play Developer API](https://console.developers.google.com/apis/api/androidpublisher.googleapis.com/)**
+     — click **Enable**. There is no Play Console path to this; without it every
+     Play call fails (measured signature: HTTP 400 `{"message":"Invalid Value"}`).
+   - **Play Console → [Users & permissions](https://play.google.com/console/users-and-permissions)**
+     → **Invite new users** → the service-account email in the email field. For
+     Play Billing Google requires exactly these two permissions: *"View financial
+     data, orders, and cancellation survey responses"* and *"Manage orders and
+     subscriptions"*; for app access choose the narrowest option (`read app
+     information (read-only)` — do NOT hand it `admin`).
+   Then download its JSON → `GOOGLE_PLAY_SERVICE_ACCOUNT` (single line, Secret).
+   **Verify the key BEFORE deploying it** — `node
+   tools/play-credentials-check.mjs <key.json>` must report **404** at step 3
+   (404 = authorized, "no such purchase"; 400 `Invalid Value` or 401/403 = not
+   authorized, and a `firebase-adminsdk` key can never work here).
 4. Monetization setup → **Real-time developer notifications** → Pub/Sub topic →
    create a **PUSH subscription** → endpoint
    `https://api.5budget.app/api/webhooks/play`. (Optionally pin the push
