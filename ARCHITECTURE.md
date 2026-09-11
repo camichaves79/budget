@@ -61,8 +61,8 @@
 > **UI polish batch, user-approved on the iPhone (2026-09):** Cash Flow
 > summary as ONE shared card with a terracotta negative balance,
 > coin-style bold `$` add button, smart-entry sheet copy refresh, amount
-> echo hidden, toasts centered, Settings copy trimmed. **Version ritual:**
-> every ship bumps `v0.1.N` with N = main's commit count — see
+> echo hidden, toasts centered, Settings copy trimmed. **Version ritual
+> (amended 2026-09-10):** semver `major.minor.patch`, baseline `0.2.0` — see
 > `skills/project-skill.md` §8. **i18n COMPLETE and iPhone-approved
 > (2026-09):** the UI ships in eleven languages — en/es/fr/pt (core) +
 > de (i18n-german) + zh/hi/bn/ru/ur/ar (scripts) — first-run auto-detect + Settings →
@@ -254,5 +254,5 @@ subscription auto-renew.
 Every time the app ships a meaningful change: bump the date + `main` hash above, add/amend
 ADRs, re-check §3 rows and §4 items, and keep it terse — this file is a scoreboard, not a log.
 `skills/project-skill.md` is the companion "how we work" file; they are updated together.
-Every ship also bumps the version to `v0.1.N` (N = `main`'s commit count after the merge),
-with the user's breaking/major/minor classification — see `skills/project-skill.md` §8.
+Every commit bumps the semver version (`major.minor.patch`, baseline `0.2.0`)
+with the user's patch/minor/major classification — see `skills/project-skill.md` §8.

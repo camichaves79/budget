@@ -1,8 +1,8 @@
 /**
  * App version, shown in Settings → About.
  *
- * The version ritual (skills/project-skill.md §8): every shipped change bumps
- * `v0.1.N` with N = main's commit count after the merge. Bump this constant
- * together with `package.json` `version` (+ lockfile) on every ship.
+ * Version ritual (skills/project-skill.md §8): semver `major.minor.patch`.
+ * Bump this constant together with `package.json` `version` (+ lockfile) on
+ * every commit, classified patch/minor/major.
  */
-export const APP_VERSION = '0.1.130';
+export const APP_VERSION = '0.2.0';

@@ -346,15 +346,17 @@ in those tight overrides.
 - **Only commit/push when the user explicitly says so.**
 - **"ship"** = commit → push branch → fast-forward merge into `main` → push → delete
   branch locally and remotely → verify deploys. History stays linear (no merge commits).
-- **Version ritual (2026-09):** every shipped change bumps the visible version.
-  `v0.1.N` with N = the commit count of `main` **after** the merge
-  (`git rev-list --count main`) — the version always equals main's commit
-  count. Update ALL THREE version spots: `package.json` `version` (and the
-  lockfile's), `src/lib/version.ts` (`APP_VERSION`), and the Settings →
-  About line (`Budget v0.1.N`, driven by `APP_VERSION`). Ask the user to classify the change
-  as **breaking / major / minor**; pre-1.0 everything rides the patch slot — a
-  breaking or major change (storage schema, big rewrite) bumps minor/major
-  instead.
+- **Version ritual (2026-09, amended 2026-09-10):** every commit bumps the
+  visible version. The version is **semver** `major.minor.patch` — baseline
+  `0.2.0` (set 2026-09-10; no longer tied to main's commit count). Classify
+  each commit as **patch** (small fix → right slot), **minor** (new feature →
+  middle slot, resets patch to 0), or **major** (breaking change → left slot,
+  resets minor + patch to 0). Update ALL THREE version spots: `package.json`
+  `version` (and the lockfile's), `src/lib/version.ts` (`APP_VERSION`), and the
+  Settings → About line (`Budget v…`, driven by `APP_VERSION`) — and keep
+  `android/twa-manifest.json` `appVersionName` in step (`versionCode` bumps
+  separately on the next AAB). Ask the user to classify each commit as
+  **patch / minor / major**.
 - **Frontend deploy (Cloudflare Pages):** git-connected project `budget` (build
   `npm run build`, output `dist`, `NODE_VERSION=22`), custom domain
   `5budget.app`. The `VITE_*` vars live in Cloudflare Pages → Settings →
