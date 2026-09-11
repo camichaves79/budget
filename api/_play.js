@@ -227,6 +227,35 @@ async function getPlayAccessToken() {
  * @param {string} productId
  * @returns {Promise<{ status: number, purchase: Record<string, unknown> | null, reason?: string }>}
  */
+/**
+ * A non-secret fingerprint of a purchase token, for correlation in logs.
+ *
+ * A purchase token is bearer-like (anyone holding it can query and acknowledge
+ * the purchase), so it must NOT be logged verbatim. But "Google says Invalid
+ * Value" is undiagnosable without knowing WHICH token was sent: how long it is,
+ * whether it carries whitespace or a newline, and whether it looks like a
+ * subscription or a one-time-product token. Length + head/tail + character
+ * classes answer all of that without exposing a usable token. Added 2026-09-11,
+ * after a REAL purchase token drew HTTP 400 while every synthetic token we could
+ * invent drew the identical error — leaving nothing to distinguish.
+ * @param {string} t
+ */
+export function tokenFingerprint(t) {
+  return {
+    len: t.length,
+    head: t.slice(0, 6),
+    tail: t.slice(-4),
+    whitespace: /\s/.test(t),
+    segments: t.split('.').length,
+    charset: /^[A-Za-z0-9._-]+$/.test(t) ? 'url-safe' : 'other',
+  };
+}
+
+/**
+ * @param {string} purchaseToken
+ * @param {string} productId
+ * @returns {Promise<{ status: number, purchase: Record<string, unknown> | null, reason?: string }>}
+ */
 export async function getSubscription(purchaseToken, productId) {
   const token = await getPlayAccessToken();
   const pkg = packageName();
@@ -244,17 +273,31 @@ export async function getSubscription(purchaseToken, productId) {
       { headers: { Authorization: `Bearer ${token}` } },
     );
     if (!res.ok) {
-      // Google's own error text: `error.message` for an authorization failure is
-      // short and does not echo the token. Truncated, and never the token itself.
+      // Google's own error text. `error.message` alone ("Invalid Value") cannot
+      // distinguish a bad token from a bad product id, so log the whole body.
       let detail = '';
+      let raw = '';
       try {
-        const body = /** @type {Record<string, unknown>} */ (await res.json());
+        raw = await res.text();
+        const body = /** @type {Record<string, unknown>} */ (JSON.parse(raw));
         const err = /** @type {Record<string, unknown> | undefined} */ (body?.error);
-        detail = typeof err?.message === 'string' ? err.message.slice(0, 120) : '';
+        detail = typeof err?.message === 'string' ? err.message : '';
+        const errors = /** @type {Array<Record<string, unknown>> | undefined} */ (err?.errors);
+        const reason0 = Array.isArray(errors) && errors[0] ? errors[0].reason : undefined;
+        if (typeof reason0 === 'string') detail = `${detail} (${reason0})`;
       } catch {
-        /* non-JSON error body — the status alone still discriminates */
+        raw = String(raw).slice(0, 200);
       }
-      console.error('play: subscriptions.get', res.status, detail);
+      console.error(
+        'play: subscriptions.get',
+        res.status,
+        JSON.stringify({
+          pkg,
+          productId,
+          token: tokenFingerprint(purchaseToken),
+          google: raw.slice(0, 300),
+        }),
+      );
       return {
         status: res.status,
         purchase: null,

@@ -28,7 +28,7 @@ import {
 } from '../api/_license.js';
 import { checkIpRateLimit, createIpRateLimiter, isAllowedOrigin } from '../api/_http.js';
 import { ensureLicenseForOrder, ensureLicenseForPlayPurchase, saleRowForMerge } from '../api/_licenseops.js';
-import { classifyPlayNotification, getSubscription, parseDeveloperNotification, parsePubSubMessage, validatePubSubClaims, verifyPubSubToken } from '../api/_play.js';
+import { classifyPlayNotification, getSubscription, parseDeveloperNotification, parsePubSubMessage, tokenFingerprint, validatePubSubClaims, verifyPubSubToken } from '../api/_play.js';
 import redeemHandler from '../api/license/redeem.js';
 import redeemPlayHandler from '../api/license/redeem-play.js';
 import playWebhookHandler from '../api/webhooks/play.js';
@@ -1676,6 +1676,25 @@ await (async () => {
 
     const noToken = await getSubscription('', 'smart_entry_yearly');
     check('play getSubscription: explains a missing purchaseToken', noToken.reason, 'no purchaseToken supplied');
+  }
+
+  // ---- purchase-token fingerprint (safe log correlation) ----
+  // A real token must never be logged, but "Google says Invalid Value" is
+  // undiagnosable without knowing which token was sent. These pin the shape.
+  {
+    const clean = tokenFingerprint('kjKdLmnOpQrStUvWxYz.abcdefghijklmnopqrstuvwxyz0123456789AB');
+    check('token fingerprint: length is reported', clean.len, 58);
+    check('token fingerprint: head is 6 chars', clean.head, 'kjKdLm');
+    check('token fingerprint: tail is 4 chars', clean.tail, '89AB');
+    check('token fingerprint: counts dot segments', clean.segments, 2);
+    check('token fingerprint: flags a clean token as url-safe', clean.charset, 'url-safe');
+    check('token fingerprint: clean token has no whitespace', clean.whitespace, false);
+    // The two failure modes that would make Play reject a token outright.
+    const dirty = tokenFingerprint('abcdefghij\n');
+    check('token fingerprint: detects a trailing newline', dirty.whitespace, true);
+    check('token fingerprint: marks a non-url-safe token', dirty.charset, 'other');
+    const spaced = tokenFingerprint('abc def');
+    check('token fingerprint: detects an embedded space', spaced.whitespace, true);
   }
 
   globalThis.fetch = originalFetch;
