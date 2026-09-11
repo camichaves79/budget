@@ -717,21 +717,59 @@ height; the delta is the browser-UI footprint) and `url=` (the verified-origin
 check), plus a `[try N @ HH:MM:SS]` suffix on `service=` so a stale reading is
 visible as stale.
 
+**⚠️ 2026-09-11 (latest) — THE PURCHASE HAPPENED BUT THE LICENSE NEVER MINTED, and
+a real subscription is stranded in Play.** Read this before any Play work. Item 1
+below was executed, the DAL fix worked end to end, the Play sheet opened and a
+**real purchase completed** — and then our server-side redemption failed:
+
+- Play itself confirms the subscription is active; re-tapping Subscribe (after
+  the fix) shows **"You're already subscribed to $5 Budget — Smart Entry
+  (1 year) (5budget). Manage subscriptions."** — so the payment went through.
+- But the accountant CSV is **still exactly 1 row** (no `play` row), there is no
+  license token in the app's localStorage, and the app shows **Free plan** with
+  `camicha747@gmail.com` signed in.
+- The user saw "Couldn't reach the licensing service…" — the blanket
+  `paywall.unreachable` / `licensing.unreachable` copy, so the real fault was
+  masked (fixed in v0.3.4: support mode now appends `HTTP <status> · <code>`).
+- **Prime suspect: `GOOGLE_PLAY_SERVICE_ACCOUNT`** — `getSubscription()` returns
+  `status: 0` with no purchase when `getPlayAccessToken()` fails, and `_play.js`
+  logs `play: token endpoint <status>` for a rejected OAuth JWT. This is the one
+  part of the A18 chain that only runs on a real purchase, so it was never
+  exercised before now. Check the Worker logs for, in order:
+  `play: token endpoint <status>` (bad/revoked key or mangled `private_key` —
+  the `FIREBASE_SERVICE_ACCOUNT` class of bug) → `GOOGLE_PLAY_SERVICE_ACCOUNT
+  missing` → `service account JSON invalid` / `fields missing` → or **none**,
+  which means OAuth worked and the fault is Play Console API authorization (a
+  service account without access makes Google answer 401/403, surfacing as
+  `play-purchase-not-found`).
+- **Recovery**: the purchase token is the only key to this subscription and the
+  server cannot enumerate a user's purchases, so the token must come from the
+  client. The app did not persist it. Cancel in Play → Manage subscriptions (the
+  token stays valid for the paid period, so recovery is still possible if a token
+  can be captured) and fix the server *before* any new purchase.
+- **Note for reading the app's screen/state without eyes or a support build**:
+  `adb shell uiautomator dump /sdcard/ui.xml` + grep `text="…"` prints the whole
+  rendered UI (that is how the "already subscribed" dialog was read), and
+  `tools/twa-display-mode.mjs` evaluates JS inside the live TWA (that is how the
+  signed-in email, version, and loaded bundle hash were read). The loaded bundle
+  hash is how a stale build is caught: the app was still running the pre-fix
+  `index-BPgf-xds.js` after v0.3.4 shipped, until a `Page.reload` with
+  `ignoreCache` — a normal relaunch did not pick it up.
+
 **Remaining on the Play track (next session):**
-1. **The on-device E2E purchase**: the DAL blocker is fixed (v0.3.2), so the next
-   step is to force a re-verification and confirm app mode. **A stored DAL
-   `kFailure` is not re-tried on its own** — after `assetlinks.json` changes, the
-   sequence that works is: force-stop Chrome, reinstall the app from Play (Android's
-   own verifier runs at install), then launch and check
-   `dumpsys package app.fivebudget | grep -A3 "Domain verification state"` — the
-   state must leave `1024` before app mode can be granted. Then the toolbar should
-   be gone and the Play sheet should open: Play
-   sheet → test purchase on the test account → "License active ✓" → Firestore
+1. **The on-device E2E purchase** — DAL is fixed and app mode confirmed, so what
+   remains is the SERVER half above. The DAL-specific sequence, kept because it
+   was the long-standing blocker: **a stored DAL `kFailure` is not re-tried on its
+   own** — after `assetlinks.json` changes, force-stop Chrome, reinstall from Play
+   (Android's own verifier runs at install), then check
+   `dumpsys package app.fivebudget | grep -A3 "Domain verification state"`; the
+   state must leave `1024`. Then the Play sheet opens: Play
+   sheet → test purchase → "License active ✓" → Firestore
    shows `sales`/`licenses`/`entitlements`/`playTokens` (the §6 non-negotiable
    check) → the accountant CSV has a `source=play` row. Baseline captured
    2026-09-11: the CSV holds exactly one row (`source=ls`, order `4681231`,
-   `test_mode=false`), so a Play row will be unambiguous. A license-tester
-   purchase is free and lands as `test_mode: true` — never read it as revenue.
+   `test_mode=false`), so a Play row is unambiguous. A license-tester purchase is
+   free and lands as `test_mode: true` — never read it as revenue.
 2. ~~**Device forensics with `adb`**~~ — **DONE 2026-09-11**, and it produced the
    answer (see the "SOLVED" block at the top of §10). The command set that
    mattered, kept for reuse: `dumpsys package <pkg>` for the installed signing
