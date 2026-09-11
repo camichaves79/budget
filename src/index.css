@@ -453,7 +453,7 @@ select:focus-visible {
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  background: var(--primary);
+  background: #60c784;
   border: 2px solid #fff;
   outline: 2px solid var(--primary);
   color: #fff;
