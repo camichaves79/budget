@@ -37,7 +37,7 @@ import { createHmac, createSign, generateKeyPairSync } from 'node:crypto';
 import { FREE_DAILY_PARSES, nextQuota, remainingFreeToday } from '../src/lib/quota';
 import { initialData } from '../src/state/store';
 import { licenseIsActive, parseLicenseToken } from '../src/lib/license';
-import { playBuildDecision } from '../src/lib/playBuild';
+import { playBuildDecision, persistedPlayBuildUsable } from '../src/lib/playBuild';
 import { supportModeDecision } from '../src/lib/supportMode';
 import {
   classifyPlayFailure,
@@ -697,6 +697,13 @@ check('play build: src=play marks the build', playBuildDecision(false, 'play'), 
 check('play build: persisted flag marks the build', playBuildDecision(true, null), true);
 check('play build: web browser is not the play build', playBuildDecision(false, null), false);
 check('play build: unrelated src param is not the play build', playBuildDecision(false, 'other'), false);
+// A persisted flag must not leak from the TWA into a browser tab: it is only
+// honoured in a standalone (app-mode) context, because that flag hides the
+// Lemon Squeezy checkout and Play Billing cannot work in a plain tab.
+check('play build: persisted flag honoured in standalone (TWA reload)', persistedPlayBuildUsable(true, true), true);
+check('play build: persisted flag IGNORED in a browser tab', persistedPlayBuildUsable(true, false), false);
+check('play build: no flag, standalone still false', persistedPlayBuildUsable(false, true), false);
+check('play build: no flag, browser false', persistedPlayBuildUsable(false, false), false);
 
 // ---- Support mode: opt-in technical surfaces (pure core) ----
 check('support mode: off by default', supportModeDecision(false, null), false);

@@ -76,18 +76,32 @@ export function toAuthUser(user: User | null): AuthUser | null {
  * popup is Firebase's documented zero-server alternative. When the popup is
  * unavailable (blocked in the environment), we fall back to redirect; older
  * browsers and non-blocking setups still complete that path.
+ *
+ * `prompt: 'select_account'` is set deliberately: without it Chrome silently
+ * reuses the account already signed into the browser, so a user with a second
+ * Google account has no way to choose it and can end up licensed to the wrong
+ * identity (the server email-authors licenses, and Play purchases additionally
+ * require the purchaser email to match — see `play-email-mismatch` in
+ * skills/paywall-ops.md). One extra tap on the account picker buys a choice we
+ * cannot otherwise offer.
  */
+function googleProvider(): GoogleAuthProvider {
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: 'select_account' });
+  return provider;
+}
+
 export async function signInWithGoogle(): Promise<'popup' | 'redirect' | 'cancelled' | 'failed'> {
   const auth = getFirebaseAuth();
   if (!auth) return 'failed';
   try {
-    await signInWithPopup(auth, new GoogleAuthProvider());
+    await signInWithPopup(auth, googleProvider());
     return 'popup';
   } catch (err) {
     const code = typeof (err as { code?: unknown }).code === 'string' ? (err as { code?: unknown }).code : '';
     if (code === 'auth/popup-closed-by-user') return 'cancelled';
     try {
-      await signInWithRedirect(auth, new GoogleAuthProvider());
+      await signInWithRedirect(auth, googleProvider());
       return 'redirect';
     } catch {
       return 'failed';

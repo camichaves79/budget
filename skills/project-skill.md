@@ -328,7 +328,7 @@ in those tight overrides.
   install-nudge decision core, the Play-build/support-mode decision cores (incl.
   the display-mode/viewport dump helpers and the service re-acquisition rule) and
   the emoji grapheme cap, the environment-label badge and the staging origin
-  allow-list. 476 checks.
+  allow-list. 480 checks.
 - `npm run build` + `npm run lint` before shipping. Lint has 5 known harmless
   warnings (react-refresh export rules in `store.tsx`/`entitlement.tsx`/
   `AmountInput.tsx` and one set-state-in-effect in `App.tsx`).
@@ -522,7 +522,7 @@ secrets in `ENV_KEYS`); and the Pub/Sub webhook (`POST /api/webhooks/play`,
 OIDC-verified). Play Console side is done too: subscription `smart_entry_yearly`
 (US$5.00/year, base plan `p1y`, Active), service account invited as a user with
 financial-data + manage-orders permissions, worker secrets deployed, AAB on a
-testing track. Suite 476 checks; lint 5 warnings / 0 errors.
+testing track. Suite 480 checks; lint 5 warnings / 0 errors.
 
 **The exact gate behind `OperationError: unsupported context` (proven in
 Chromium source, 2026-09-11).** It is one enum (`kUnsupportedContext`) with
@@ -632,10 +632,39 @@ node tools/cert-fingerprint.mjs /tmp/installed-base.apk
 ```
 `adb` needs **both** `HOME` and `ANDROID_USER_HOME` pointed at a writable dir
 (`ANDROID_USER_HOME` alone is not enough — adb 37.0.1 still aborts on
-`Cannot mkdir ~/.android`). `.smoke/adb/run.sh` is the ready wrapper;
-`.smoke/adb/twa-forensics.sh start|stop <tag>` clears/sizes the log buffers and
+`Cannot mkdir ~/.android`). `tools/adb/adb.sh` is the ready wrapper;
+`tools/adb/twa-forensics.sh start|stop <tag>` clears/sizes the log buffers and
 captures the verdict, because **the main/system buffers roll over in minutes**
-and the launch verdict is gone by the time anyone looks.
+and the launch verdict is gone by the time anyone looks. ⚠️ Do **not** keep
+device artifacts in `.smoke/`: that is the vite test build's `outDir`
+(`emptyOutDir: true`), so **every `npm test` deletes them** — it silently ate a
+session's worth of capture scripts and logs. Artifacts go to
+`/tmp/twa-forensics/<tag>` (override with `FORENSICS_OUT`).
+
+**Also fixed in v0.3.3 — the `budget.playBuild` leak (found on-device).** The
+Play-build flag is persisted in localStorage, and a TWA and a Chrome tab **share
+this origin's localStorage**. That flag hides the Lemon Squeezy checkout and the
+paste-key affordance and makes the Play subscribe button the sole CTA — but Play
+Billing only works in a TWA in app mode, so once it was set, opening
+`5budget.app` in an ordinary browser (or the Chrome-installed PWA) offered a
+button that cannot work while hiding the only path that can: a dead-end
+purchase. `persistedPlayBuildUsable(storedFlag, standalone)` now honours a
+persisted flag **only in a standalone display context**, while an explicit
+`?src=play` still marks the build unconditionally because that is the TWA's own
+start URL. Suite 480 checks.
+
+**Verification tooling for "is this really a TWA?" — no more inference.**
+`tools/twa-display-mode.mjs` evaluates `display-mode`, `navigator.standalone`
+and the viewport **inside the live page** over the Chrome DevTools protocol
+(`adb forward tcp:9222 localabstract:chrome_devtools_remote`). This works on a
+**release, non-debuggable** TWA because Chrome is the debuggable process, not
+the app — and it is what let us confirm app mode directly (`display-mode
+standalone`, no `browser`, `chrome≈90px` = status bar only) and then confirm the
+gate itself: `getDigitalGoodsService('https://play.google.com/billing')` →
+**OK**, returning `smart_entry_yearly`, COP 15,500, `subscriptionPeriod P1Y`. Do
+not try to settle this by colour-scanning screenshots
+(`tools/screenshot-toolbar.mjs`): Chrome themes the toolbar to match the app's
+dark-green header, so the bands are deliberately indistinguishable.
 - Google's own DAL API (`statements:list`) resolves all three statements **from
   the device**;
 - the TWA start URL `/?src=play` returns 200 with zero redirects; the deployed
