@@ -1,0 +1,40 @@
+# Deploys the STAGING API Worker (wrangler.toml → [env.staging], worker name
+# `budget-api-staging`) — environment separation, 2026-09.
+#
+# Why a separate workflow: the production Worker must only ever be deployed
+# from `main` (deploy-worker.yml). This one exists so API work can be tested
+# against a real Worker without touching api.5budget.app.
+#
+# Trigger: pushes to the `staging` branch, or a manual run from any branch
+# (Actions → Deploy staging API Worker → Run workflow). Nothing here can
+# deploy production: the command is pinned to `--env staging`.
+#
+# Reuses the same repo secrets as production, so no new credentials:
+#   CLOUDFLARE_API_TOKEN  — Workers deploy token
+#   CLOUDFLARE_ACCOUNT_ID — 32-hex account id
+#
+# One-time setup on the Cloudflare side (dashboard):
+#   1. Workers → budget-api-staging → Settings → Variables and Secrets: add
+#      the same secret names as production (see .env.example).
+#   2. Workers → budget-api-staging → Settings → Domains & Routes: add the
+#      custom domain `api-staging.5budget.app`.
+name: Deploy staging API Worker
+
+on:
+  push:
+    branches: [staging]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy (staging environment)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --env staging

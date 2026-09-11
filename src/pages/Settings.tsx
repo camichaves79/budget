@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { LANGS, availableLanguages, setLanguage, t, to, useI18n } from '../lib/i18n';
 import type { Lang } from '../lib/i18n';
 import { APP_VERSION } from '../lib/version';
+import { ENV_BADGE, aboutLine } from '../lib/env';
 import { useStore } from '../state/store';
 import { exportData, validateAppData } from '../lib/importExport';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -132,7 +133,7 @@ export function Settings() {
       <h2 className="settings-h">{t('settings.about')}</h2>
       <div className="card">
         <p className="field-hint">
-          {`Budget ${APP_VERSION} · ${t('settings.aboutTitle')}`}
+          {aboutLine(APP_VERSION, ENV_BADGE, t('settings.aboutTitle'))}
           <br />
           {t('settings.aboutData')}
           <br />

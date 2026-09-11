@@ -135,7 +135,38 @@ Collections created at runtime (never touch them by hand): `licenses/{lic}`,
 (existing), `VITE_API_BASE` (= `https://api.5budget.app`),
 `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`,
 `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_APP_ID`, `VITE_CHECKOUT_URL`
-(the store's buy link).
+(the store's buy link), `VITE_ENV_LABEL` (staging badge — unset in Production).
+
+**Staging (2026-09, A19).** Staging is a **second Pages project** (`budget-staging`,
+same repo, **production branch = `staging`**) plus a second Worker
+(`budget-api-staging`). Its **Production** environment variables hold the staging
+values, with **two deliberate omissions**:
+
+| Staging Pages var | Value |
+|---|---|
+| `VITE_API_BASE` | `https://api-staging.5budget.app` |
+| `VITE_PARSE_ENDPOINT` | `https://api-staging.5budget.app/api/parse` |
+| `VITE_PARSE_SECRET` | the staging Worker's `BUDGET_PARSE_SECRET` |
+| `VITE_FIREBASE_*` | same public web-app config as production |
+| `VITE_ENV_LABEL` | `staging` (corner badge + Settings → About suffix) |
+| `VITE_CHECKOUT_URL` | **omitted on purpose** — the LS button stays disabled |
+| `VITE_PLAY_SUBSCRIPTION_ID` | **omitted on purpose** — `playBillingReady` is false |
+
+Staging shares the production Firebase project, so omitting those two is exactly
+what keeps it from minting a licence or writing a ledger row: Firestore and the
+accountant CSV can only ever see real production transactions. The staging
+Worker carries the same secret names as production (minimum for staging:
+`GEMINI_API_KEY`, `GEMINI_FALLBACK_MODEL`, `BUDGET_PARSE_SECRET`), set on that
+Worker in the dashboard.
+
+**Trap (cost a wrong instruction once):** a Pages **custom domain always serves
+that project's PRODUCTION deployment** — Preview/branch deployments are only
+reachable at `<hash|branch>.<project>.pages.dev`. So `staging.5budget.app` must
+be added to the **`budget-staging`** project, never to the production `budget`
+project: on `budget` it would serve the live build with the live env vars.
+Optional extra: the production `budget` project's **Preview** vars may point at
+`https://api-staging.5budget.app` too, so ordinary feature-branch preview URLs
+are functional (any `*.pages.dev` origin is already allow-listed).
 
 ## 6. Verify after setup
 

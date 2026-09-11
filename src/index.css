@@ -119,6 +119,24 @@ select:focus-visible {
   overflow: hidden;
 }
 
+/* Environment badge (env separation, 2026-09): staging builds only, so an
+   installed staging app can never be mistaken for the real one. Fixed over
+   the corner, small enough not to collide with the pinned headers. */
+.env-badge {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 60;
+  padding: 2px 6px;
+  border-bottom-right-radius: 6px;
+  background: var(--terracotta);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  pointer-events: none;
+}
+
 .app-main {
   flex: 1;
   min-height: 0;

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { applyDocumentLanguage, useI18n } from './lib/i18n';
+import { ENV_BADGE } from './lib/env';
 import { useInstallSignal } from './lib/installPrompt';
 import type { Period } from './lib/periods';
 import { currentPeriod, isCurrentPeriod, shiftPeriod } from './lib/periods';
@@ -60,6 +61,14 @@ export default function App() {
 
   return (
     <div className="app">
+      {/* Environment badge (renders only when VITE_ENV_LABEL is set, so never
+          on production): an installed staging build is otherwise identical to
+          the real app — same name, same icon, same standalone display. */}
+      {ENV_BADGE !== '' && (
+        <div className="env-badge" aria-label={ENV_BADGE}>
+          {ENV_BADGE}
+        </div>
+      )}
       <main
         className={tab === 'dashboard' || tab === 'budgets' || tab === 'categories' ? 'app-main fixed-main' : 'app-main'}
         key={tab}

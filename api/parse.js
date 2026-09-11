@@ -112,7 +112,12 @@ const RETRY_BACKOFF_MS = [800, 1600];
 const TRANSIENT_STATUSES = new Set([0, 429, 500, 502, 503, 529]);
 
 /** Origins allowed to call this service (plus localhost for dev). */
-const ALLOWED_ORIGINS = ['https://camichaves79.github.io', 'https://5budget.app'];
+const ALLOWED_ORIGINS = [
+  'https://camichaves79.github.io',
+  'https://5budget.app',
+  // Staging (2026-09, env separation) — see api/_http.js.
+  'https://staging.5budget.app',
+];
 
 const MAX_BODY_BYTES = 10_000;
 const MAX_UTTERANCE_CHARS = 500;

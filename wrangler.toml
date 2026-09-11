@@ -9,3 +9,32 @@ compatibility_flags = ["nodejs_compat"]
 
 [observability]
 enabled = true
+
+# ---------------------------------------------------------------------------
+# Staging (2026-09, environment separation).
+#
+# A SECOND Worker from the same code, so development can never reach
+# api.5budget.app. Deployed by .github/workflows/deploy-worker-staging.yml on
+# pushes to the `staging` branch (or manually). The production Worker above is
+# the default environment and is untouched by `--env staging`.
+#
+# `npx wrangler deploy --env staging` creates the Worker; its secrets are set
+# on the Worker in the dashboard (Settings → Variables and Secrets), exactly
+# like production. The custom domain `api-staging.5budget.app` is attached in
+# the dashboard too (Workers → budget-api-staging → Settings → Domains &
+# Routes) — deliberately NOT declared here, mirroring production and keeping
+# the deploy independent of the API token's DNS permissions.
+#
+# Data: staging shares the production Firebase project, so the client-side
+# money path is disabled there by simply NOT setting VITE_CHECKOUT_URL /
+# VITE_PLAY_SUBSCRIPTION_ID in the Pages Preview environment (the licence
+# section stays inert) — nothing can mint a licence or write a ledger row.
+# ---------------------------------------------------------------------------
+[env.staging]
+name = "budget-api-staging"
+main = "worker.js"
+compatibility_date = "2026-09-07"
+compatibility_flags = ["nodejs_compat"]
+
+[env.staging.observability]
+enabled = true

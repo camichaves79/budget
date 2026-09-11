@@ -4,6 +4,7 @@ import {
   INSTALL_TIP_DELAY_MS, INSTALL_TIP_STORAGE_KEY, decideInstallSignal, isStandalone, uaLooksIos,
 } from '../src/lib/installPrompt';
 import { WELCOME_DELAY_MS, WELCOME_SEEN_KEY, shouldShowWelcome } from '../src/lib/welcome';
+import { aboutLine, envBadgeText } from '../src/lib/env';
 import { AUTO_SEND_PAUSE_MS, MIN_SEND_LENGTH } from '../src/components/SmartEntry';
 import { firstGrapheme } from '../src/lib/emoji';
 import { isValidISODate } from '../src/lib/dates';
@@ -1167,6 +1168,21 @@ check('origin allow-list rejects a lookalike suffix', isAllowedOrigin('https://b
 check('origin allow-list accepts the production domain', isAllowedOrigin('https://5budget.app'), true);
 check('origin allow-list rejects a lookalike of the domain', isAllowedOrigin('https://5budget.app.evil.com'), false);
 check('origin allow-list rejects unknown origins', isAllowedOrigin('https://example.com'), false);
+// Environment separation (2026-09): the staging Pages domain must be allowed,
+// and its near-misses must not be.
+check('origin allow-list accepts the staging domain', isAllowedOrigin('https://staging.5budget.app'), true);
+check('origin allow-list rejects a staging lookalike', isAllowedOrigin('https://staging.5budget.app.evil.com'), false);
+check('origin allow-list rejects the staging domain over http', isAllowedOrigin('http://staging.5budget.app'), false);
+check('origin allow-list rejects an unrelated subdomain', isAllowedOrigin('https://evil.5budget.app'), false);
+
+// ---- environment label (env separation, 2026-09) ----
+check('env: no label means no badge', envBadgeText(''), '');
+check('env: blank label means no badge', envBadgeText('   '), '');
+check('env: an explicit production label means no badge', envBadgeText('production'), '');
+check('env: a staging label is shouted', envBadgeText('staging'), 'STAGING');
+check('env: the label is trimmed and upper-cased', envBadgeText('  Preview  '), 'PREVIEW');
+check('env: about line has no suffix without a badge', aboutLine('0.2.8', '', 'About'), 'Budget 0.2.8 · About');
+check('env: about line names the environment', aboutLine('0.2.8', 'STAGING', 'About'), 'Budget 0.2.8 · STAGING · About');
 
 // ---- Cloudflare Worker entry (A15 Phase 2): Node-style handlers behind a
 //      Web Request adapter — the handlers themselves stay unmodified ----

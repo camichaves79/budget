@@ -8,7 +8,13 @@
  * Request API for these functions.
  */
 
-const ALLOWED_ORIGINS = ['https://camichaves79.github.io', 'https://5budget.app'];
+const ALLOWED_ORIGINS = [
+  'https://camichaves79.github.io',
+  'https://5budget.app',
+  // Staging (2026-09, env separation): the staging Pages domain, served by
+  // the budget-api-staging Worker. Same code, a separate data path.
+  'https://staging.5budget.app',
+];
 
 /** @param {string | null} origin */
 export function isAllowedOrigin(origin) {

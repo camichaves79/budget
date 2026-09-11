@@ -167,6 +167,7 @@ src/
                     # sign-in, getRedirectResult, idToken provider
     checkout.ts    # Lemon Squeezy overlay loader (lemonsqueezy.js) + fallback
                     # to top-level redirect; builds embed URL from VITE_CHECKOUT_URL
+    env.ts          # environment label (VITE_ENV_LABEL → corner badge, A19)
     installPrompt.ts # PWA install detection (install-app-signal): standalone/
                     # iOS sniffing, beforeinstallprompt capture, one-time
                     # localStorage dismissal, useInstallSignal hook
@@ -231,7 +232,8 @@ public/             # favicon.svg (mint + banknote + "$5"), manifest.webmanifest
                     # sw.js (network-first, no pre-cache, prod-only registration)
 tools/              # icon.svg (icon source of truth) + og.svg (share-card
                     # source) + render-icons.mjs (sharp: icons + public/og.png)
-.github/workflows/deploy.yml  # GitHub Pages on push to main; bakes VITE_* repo secrets
+.github/workflows/  # deploy-worker.yml (prod Worker, push to main) +
+                    # deploy-worker-staging.yml ([env.staging], `staging` branch)
 ```
 
 **Smart-entry flow:** tab-bar + (any section → Cash Flow) → SmartEntry textarea →
@@ -325,7 +327,8 @@ in those tight overrides.
   math, order→ledger mapping, webhook signature, CSV export) plus the
   install-nudge decision core, the Play-build/support-mode decision cores (incl.
   the display-mode/viewport dump helpers and the service re-acquisition rule) and
-  the emoji grapheme cap. 465 checks.
+  the emoji grapheme cap, the environment-label badge and the staging origin
+  allow-list. 476 checks.
 - `npm run build` + `npm run lint` before shipping. Lint has 5 known harmless
   warnings (react-refresh export rules in `store.tsx`/`entitlement.tsx`/
   `AmountInput.tsx` and one set-state-in-effect in `App.tsx`).
@@ -359,10 +362,40 @@ in those tight overrides.
   `android/twa-manifest.json` `appVersionName` in step (`versionCode` bumps
   separately on the next AAB). Ask the user to classify each commit as
   **patch / minor / major**.
+- **Environments: production + staging (2026-09, A19).** Production is
+  `5budget.app` + `api.5budget.app` (Pages project `budget`, production branch
+  `main`); staging is `staging.5budget.app` + `api-staging.5budget.app` (Pages
+  project **`budget-staging`**, production branch **`staging`**; Worker
+  `budget-api-staging`). The `staging` branch is the staging deploy branch:
+  merge a feature branch into it to test on staging, merge into `main` to
+  release. Only `main` ever deploys production, so branch work is safe by
+  construction. The flow for a change:
+  1. branch → push → Pages preview (`<hash>.budget-7ad.pages.dev`) → test on a
+     phone;
+  2. merge into `staging` → staging site + staging Worker redeploy;
+  3. merge into `main` → production deploy (Pages `budget`) +
+     `deploy-worker.yml` (Worker `budget-api`).
+  `wrangler.toml` `[env.staging]` defines the staging Worker;
+  `.github/workflows/deploy-worker-staging.yml` deploys it on the `staging`
+  branch (or workflow_dispatch) with the same repo secrets. Both API modules
+  accept any `*.pages.dev` origin already, plus `https://staging.5budget.app`
+  (added to `ALLOWED_ORIGINS` in `api/_http.js` and `api/parse.js`). Staging
+  shares the production Firebase project, so its env **omits
+  `VITE_CHECKOUT_URL` and `VITE_PLAY_SUBSCRIPTION_ID`** — that is what makes
+  the money path inert there (no licence mint, no ledger row).
+  `VITE_ENV_LABEL=staging` renders a corner badge (`src/lib/env.ts`) so a
+  staging build is never mistaken for the real app.
+  **Trap:** a Pages **custom domain always serves that project's PRODUCTION
+  deployment** (previews are only reachable at
+  `<hash|branch>.<project>.pages.dev`), so `staging.5budget.app` belongs on the
+  `budget-staging` project — adding it to `budget` would serve the live build
+  with the live env vars. **A staging environment cannot help with Play/TWA
+  work**: a TWA is bound to one origin and one package, so billing can only ever
+  be exercised against production.
 - **Frontend deploy (Cloudflare Pages):** git-connected project `budget` (build
   `npm run build`, output `dist`, `NODE_VERSION=22`), custom domain
-  `5budget.app`. The `VITE_*` vars live in Cloudflare Pages → Settings →
-  Environment variables (Production + Preview; both endpoints point at
+  `5budget.app` (production). The `VITE_*` vars live in Cloudflare Pages →
+  Settings → Environment variables (Production points at
   `https://api.5budget.app`). Verify with
   `curl -s -o /dev/null -w "%{http_code}" https://5budget.app/` and the
   Deployments tab. Saving env vars redeploys automatically; otherwise push a
@@ -489,7 +522,7 @@ secrets in `ENV_KEYS`); and the Pub/Sub webhook (`POST /api/webhooks/play`,
 OIDC-verified). Play Console side is done too: subscription `smart_entry_yearly`
 (US$5.00/year, base plan `p1y`, Active), service account invited as a user with
 financial-data + manage-orders permissions, worker secrets deployed, AAB on a
-testing track. Suite 465 checks; lint 5 warnings / 0 errors.
+testing track. Suite 476 checks; lint 5 warnings / 0 errors.
 
 **The exact gate behind `OperationError: unsupported context` (proven in
 Chromium source, 2026-09-11).** It is one enum (`kUnsupportedContext`) with
@@ -633,7 +666,7 @@ visible as stale.
    Settings → Smart entry. Remember it is read once per JS session — fully close
    the app after arming in a browser.
 
-Everything below is **shipped and live** (main = v0.2.7, 2026-09-12):
+Everything below is **shipped and live** (main = v0.3.0, 2026-09-12):
 
 - Smart entry end-to-end: PWA → Vercel microservice → Gemini 3.6 Flash → instant save
   with fading toasts; review form only for ambiguous parses. Full spec (revised):
