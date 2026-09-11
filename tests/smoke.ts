@@ -37,7 +37,7 @@ import { FREE_DAILY_PARSES, nextQuota, remainingFreeToday } from '../src/lib/quo
 import { initialData } from '../src/state/store';
 import { licenseIsActive, parseLicenseToken } from '../src/lib/license';
 import { playBuildDecision } from '../src/lib/playBuild';
-import { classifyPlayFailure, playBillingReady } from '../src/lib/playBilling';
+import { classifyPlayFailure, formatPlayDiagnostics, playBillingReady } from '../src/lib/playBilling';
 import { decodeJwtParts, fromFields, setDocMerge, signJwt, toFields, verifyJwtSignature } from '../api/_firebase.js';
 import worker, { createNodeRes, hydrateEnv, toNodeReq } from '../worker.js';
 import type { Category } from '../src/lib/types';
@@ -698,6 +698,57 @@ check('play billing: a dismissed sheet is a user cancel', classifyPlayFailure('A
 check('play billing: an unsupported payment method is an error', classifyPlayFailure('NotSupportedError'), 'error');
 check('play billing: an invalid-state failure is an error', classifyPlayFailure('InvalidStateError'), 'error');
 check('play billing: a nameless failure is an error', classifyPlayFailure(''), 'error');
+
+// ---- Play Billing diagnostics dump (pure formatter) ----
+check(
+  'play diag: a healthy snapshot reads back verbatim',
+  formatPlayDiagnostics({
+    apiPresent: true,
+    sku: 'smart_entry_yearly',
+    service: 'ok',
+    canPay: 'yes',
+    details: 'smart_entry_yearly "Smart entry" 5.00 USD subscription',
+    lastFailure: '',
+    standalone: true,
+    userAgent: 'UA/1',
+  }),
+  [
+    'api=yes',
+    'sku=smart_entry_yearly',
+    'service=ok',
+    'canPay=yes',
+    'details=smart_entry_yearly "Smart entry" 5.00 USD subscription',
+    'lastFail=(none)',
+    'standalone=yes',
+    'ua=UA/1',
+  ].join('\n'),
+);
+check(
+  'play diag: a broken snapshot shouts and fills every blank',
+  formatPlayDiagnostics({
+    apiPresent: false,
+    sku: '',
+    service: '',
+    canPay: '',
+    details: '',
+    lastFailure: 'show aborted (AbortError)',
+    standalone: false,
+    userAgent: '',
+  }).split('\n'),
+  [
+    'api=NO',
+    'sku=(unset)',
+    'service=(not probed)',
+    'canPay=(not probed)',
+    'details=(not probed)',
+    'lastFail=show aborted (AbortError)',
+    'standalone=no',
+    'ua=',
+  ],
+);
+check('play diag: no payment app is shouted', formatPlayDiagnostics({
+  apiPresent: true, sku: 's', service: 'ok', canPay: 'NO', details: 'x', lastFailure: '', standalone: false, userAgent: '',
+}).split('\n')[3], 'canPay=NO');
 
 // ---- Play Pub/Sub push: message parse + claim validation (pure) ----
 const pushEnvelope = JSON.stringify({

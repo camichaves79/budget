@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { t } from '../lib/i18n';
 import type { FormEvent } from 'react';
+import { formatPlayDiagnostics, probePlay } from '../lib/playBilling';
 import { useEntitlement } from '../state/entitlement';
 
 /**
@@ -34,6 +35,9 @@ export function LicenseSection() {
   const [note, setNote] = useState<{ text: string; kind: 'error' | 'success' } | null>(null);
   const [busy, setBusy] = useState(false);
   const [subscribing, setSubscribing] = useState(false);
+  // Play build only: a support dump of the billing surface (lib/playBilling.ts).
+  // Probing never opens a sheet and never charges, so it is safe on render.
+  const [playDiag, setPlayDiag] = useState<string | null>(null);
 
   // The one-shot license events ("License active ✓") normally surface as the
   // dashboard toast, but a purchase completed HERE fires while the dashboard
@@ -54,6 +58,19 @@ export function LicenseSection() {
   // at boot surface the moment the section mounts.
   const shownNote =
     note ?? (redeemError ? { text: redeemError, kind: 'error' as const } : null);
+
+  // Probe on mount so the dump is there even if the attempt happened elsewhere
+  // (the dashboard paywall shares the same module state).
+  useEffect(() => {
+    if (!playBuild || licensedActive) return;
+    let alive = true;
+    void probePlay().then((snapshot) => {
+      if (alive) setPlayDiag(formatPlayDiagnostics(snapshot));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [playBuild, licensedActive]);
 
   const unlock = async () => {
     setNote(null);
@@ -88,6 +105,8 @@ export function LicenseSection() {
     setSubscribing(true);
     const outcome = await buyPlay();
     setSubscribing(false);
+    // Re-probe: the dump now carries the reason the attempt recorded.
+    void probePlay().then((snapshot) => setPlayDiag(formatPlayDiagnostics(snapshot)));
     if (outcome === 'unavailable') setNote({ text: t('paywall.playUnavailable'), kind: 'error' });
     else if (outcome === 'error')
       setNote({ text: redeemError ?? t('paywall.unreachable'), kind: 'error' });
@@ -226,6 +245,13 @@ export function LicenseSection() {
         )}
 
         {shownNote && <p className={shownNote.kind === 'success' ? 'note-success' : 'error-text'}>{shownNote.text}</p>}
+
+        {playBuild && !licensedActive && playDiag !== null && (
+          <div className="play-diag">
+            <div className="setting-name">{t('license.playDiag')}</div>
+            <pre className="play-diag-body">{playDiag}</pre>
+          </div>
+        )}
       </div>
     </>
   );

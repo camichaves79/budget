@@ -1165,6 +1165,23 @@ select.input {
   margin: 8px 0 0;
 }
 
+/* Play build only: support dump of the Play billing surface (Settings). */
+.play-diag {
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.play-diag-body {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 6px 0 0;
+}
+
 .segmented {
   display: flex;
   background: var(--bg);
