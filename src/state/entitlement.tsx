@@ -29,7 +29,7 @@ import {
 import type { LicensePayload } from '../lib/license';
 import { FREE_DAILY_PARSES, loadQuota, nextQuota, remainingFreeToday, saveQuota } from '../lib/quota';
 import { checkLicenseKey, lookupLicense, redeemLicense, redeemPlay } from '../lib/licenseService';
-import { useI18n } from '../lib/i18n';
+import { t, useI18n } from '../lib/i18n';
 import {
   authConfigured as authEnvConfigured,
   getUserIdToken,
@@ -41,7 +41,7 @@ import {
 import type { AuthUser } from '../lib/auth';
 import { checkoutConfigured, openCheckout } from '../lib/checkout';
 import { detectPlayBuild } from '../lib/playBuild';
-import { PLAY_SUBSCRIPTION_ID, playBillingSupported, purchasePlaySubscription } from '../lib/playBilling';
+import { PLAY_SUBSCRIPTION_ID, playBillingReady, playBillingSupported, purchasePlaySubscription } from '../lib/playBilling';
 
 const PENDING_ORDER_KEY = 'budget.pendingOrder.v1';
 
@@ -318,11 +318,24 @@ export function EntitlementProvider({ children }: { children: ReactNode }) {
 
   /** Play Billing: sign-in → Digital Goods purchase → server redeem. */
   const buyPlay = useCallback(async (): Promise<'ok' | 'unavailable' | 'cancelled' | 'error'> => {
-    if (!playBillingSupported()) return 'unavailable';
+    // Clear first: a stale message from an earlier attempt must not outlive it.
+    setRedeemError(null);
+    // Gate on capability AND configuration, before sign-in: a build with no
+    // Play SKU must say so instead of prompting a sign-in it cannot use.
+    if (!playBillingReady(playBillingSupported(), PLAY_SUBSCRIPTION_ID)) return 'unavailable';
     const idToken = await getUserIdToken();
     if (!idToken) return 'error';
     const purchase = await purchasePlaySubscription(PLAY_SUBSCRIPTION_ID);
-    if (!purchase) return 'cancelled';
+    // Never treat a failed attempt as a cancel: only an AbortError is one.
+    if (purchase.status === 'unavailable') return 'unavailable';
+    if (purchase.status === 'cancelled') return 'cancelled';
+    if (purchase.status === 'error') {
+      // The Play sheet never opened (bad SKU, item unavailable, no Play Store):
+      // that is not a licensing-service problem, so do not let the UI fall
+      // through to its generic "check your connection" copy.
+      setRedeemError(t('paywall.playUnavailable'));
+      return 'error';
+    }
     const result = await redeemPlay(purchase.purchaseToken, purchase.productId, idToken);
     if (result.ok) {
       applyToken(result.license, 'licensed');

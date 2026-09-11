@@ -37,6 +37,7 @@ import { FREE_DAILY_PARSES, nextQuota, remainingFreeToday } from '../src/lib/quo
 import { initialData } from '../src/state/store';
 import { licenseIsActive, parseLicenseToken } from '../src/lib/license';
 import { playBuildDecision } from '../src/lib/playBuild';
+import { classifyPlayFailure, playBillingReady } from '../src/lib/playBilling';
 import { decodeJwtParts, fromFields, setDocMerge, signJwt, toFields, verifyJwtSignature } from '../api/_firebase.js';
 import worker, { createNodeRes, hydrateEnv, toNodeReq } from '../worker.js';
 import type { Category } from '../src/lib/types';
@@ -687,6 +688,16 @@ check('play build: src=play marks the build', playBuildDecision(false, 'play'), 
 check('play build: persisted flag marks the build', playBuildDecision(true, null), true);
 check('play build: web browser is not the play build', playBuildDecision(false, null), false);
 check('play build: unrelated src param is not the play build', playBuildDecision(false, 'other'), false);
+
+// ---- Play Billing: purchase gating + failure classification (pure) ----
+check('play billing: ready when supported and SKU set', playBillingReady(true, 'smart_entry_yearly'), true);
+check('play billing: not ready without a SKU', playBillingReady(true, ''), false);
+check('play billing: blank SKU counts as unset', playBillingReady(true, '   '), false);
+check('play billing: not ready when the API is absent', playBillingReady(false, 'smart_entry_yearly'), false);
+check('play billing: a dismissed sheet is a user cancel', classifyPlayFailure('AbortError'), 'cancelled');
+check('play billing: an unsupported payment method is an error', classifyPlayFailure('NotSupportedError'), 'error');
+check('play billing: an invalid-state failure is an error', classifyPlayFailure('InvalidStateError'), 'error');
+check('play billing: a nameless failure is an error', classifyPlayFailure(''), 'error');
 
 // ---- Play Pub/Sub push: message parse + claim validation (pure) ----
 const pushEnvelope = JSON.stringify({
