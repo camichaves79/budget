@@ -37,6 +37,7 @@ import { FREE_DAILY_PARSES, nextQuota, remainingFreeToday } from '../src/lib/quo
 import { initialData } from '../src/state/store';
 import { licenseIsActive, parseLicenseToken } from '../src/lib/license';
 import { playBuildDecision } from '../src/lib/playBuild';
+import { supportModeDecision } from '../src/lib/supportMode';
 import { classifyPlayFailure, formatPlayDiagnostics, playBillingReady } from '../src/lib/playBilling';
 import { decodeJwtParts, fromFields, setDocMerge, signJwt, toFields, verifyJwtSignature } from '../api/_firebase.js';
 import worker, { createNodeRes, hydrateEnv, toNodeReq } from '../worker.js';
@@ -688,6 +689,13 @@ check('play build: src=play marks the build', playBuildDecision(false, 'play'), 
 check('play build: persisted flag marks the build', playBuildDecision(true, null), true);
 check('play build: web browser is not the play build', playBuildDecision(false, null), false);
 check('play build: unrelated src param is not the play build', playBuildDecision(false, 'other'), false);
+
+// ---- Support mode: opt-in technical surfaces (pure core) ----
+check('support mode: off by default', supportModeDecision(false, null), false);
+check('support mode: persisted flag arms it', supportModeDecision(true, null), true);
+check('support mode: ?diag=1 arms it', supportModeDecision(false, '1'), true);
+check('support mode: ?diag=0 disarms a persisted flag', supportModeDecision(true, '0'), false);
+check('support mode: a junk param falls back to the flag', supportModeDecision(true, 'yes'), true);
 
 // ---- Play Billing: purchase gating + failure classification (pure) ----
 check('play billing: ready when supported and SKU set', playBillingReady(true, 'smart_entry_yearly'), true);

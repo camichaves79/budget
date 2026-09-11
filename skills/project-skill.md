@@ -118,7 +118,7 @@ and (except for smart entry) never leaves the device.
   the bundler to lose. Client dep: `firebase` (auth module only, modular
   imports) — the one deliberate dependency addition, justified by A13.
 - No router, no UI library, no icon library (inline stroke SVGs)
-- Lint: `oxlint` · Tests: hand-rolled smoke suite (`tests/smoke.ts`, 366 checks)
+- Lint: `oxlint` · Tests: hand-rolled smoke suite (`tests/smoke.ts`, 452 checks)
 - npm scripts: `dev` · `build` (tsc -b && vite build) · `lint` · `preview` ·
   `test` (bundles tests/smoke.ts via `vite.test.config.ts` into `.smoke/` and runs it)
 - **Local npm quirk:** the global npm cache in this environment has permission issues.
@@ -323,7 +323,8 @@ in those tight overrides.
   limiter, request sanitizer, Gemini array parser, retry policy, response cache),
   **license/paywall logic** (token sign/verify/meter, free-allowance quota, LS fee
   math, order→ledger mapping, webhook signature, CSV export) plus the
-  install-nudge decision core and the emoji grapheme cap. 366 checks.
+  install-nudge decision core, the Play-build/support-mode decision cores and
+  the emoji grapheme cap. 452 checks.
 - `npm run build` + `npm run lint` before shipping. Lint has 5 known harmless
   warnings (react-refresh export rules in `store.tsx`/`entitlement.tsx`/
   `AmountInput.tsx` and one set-state-in-effect in `App.tsx`).
@@ -475,27 +476,67 @@ in those tight overrides.
 
 ## 10. Current state & next-session context
 
-**IN PROGRESS — Play Store + Play Billing (A18, branch `play-billing-logic`,
-NOT yet shipped, NOT yet committed):** the full Play Billing integration is
-implemented across four phases on one branch. (1) Pure logic + tests:
-`estimatePlayFeeCents` (15%) / `playPurchaseToLedger` / a `source` CSV column
-+ default in `api/_license.js`, RTDN parse/classify in `api/_play.js`,
-`?src=play` detection in `src/lib/playBuild.ts`. (2) Client: Digital Goods
-purchase (`src/lib/playBilling.ts`), `playBuild` + `buyPlay` in
-`entitlement.tsx`, `redeemPlay` in `licenseService.ts`, Play branches in
-`PaywallCard`/`LicenseSection`, 3 new i18n keys ×11 languages, client var
-`VITE_PLAY_SUBSCRIPTION_ID`. (3) Server: Play Developer API client
-(`api/_play.js`), `ensureLicenseForPlayPurchase` + `playTokens` map
-(`api/_licenseops.js`), `POST /api/license/redeem-play`, worker route + 5
-`GOOGLE_PLAY_*` env keys. (4) Webhook: Pub/Sub OIDC verify + message parse
-(`api/_play.js`), `POST /api/webhooks/play` (grant→extend / loss→revoke /
-risk→note). Suite now 426 checks; lint 5 warnings / 0 errors. Remaining:
-Play Console setup + Bubblewrap keystore/update/validate/build/AAB + on-device
-approval, then the ship ritual (version bump + docs header hash). One branch
-per the user's "one branch for this feature" — no separate docs branch.
+**SHIPPED — Play Store + Play Billing (A18), live on `main` at v0.2.6
+(2026-09-12).** All four phases are on main: pure logic + tests
+(`estimatePlayFeeCents` 15%, `playPurchaseToLedger`, the `source` CSV column +
+default, RTDN parse/classify, `playBuildDecision`); the client Digital Goods
+flow (`src/lib/playBilling.ts`, `buyPlay` in `state/entitlement.tsx`,
+`redeemPlay`, Play branches in `PaywallCard`/`LicenseSection`, 3 i18n keys ×11
+languages, `VITE_PLAY_SUBSCRIPTION_ID`); the server (`api/_play.js`,
+`POST /api/license/redeem-play`, the `playTokens` map, 5 `GOOGLE_PLAY_*` worker
+secrets in `ENV_KEYS`); and the Pub/Sub webhook (`POST /api/webhooks/play`,
+OIDC-verified). Play Console side is done too: subscription `smart_entry_yearly`
+(US$5.00/year, base plan `p1y`, Active), service account invited as a user with
+financial-data + manage-orders permissions, worker secrets deployed, AAB on a
+testing track. Suite 452 checks; lint 5 warnings / 0 errors.
 
-Everything below is **shipped and live** (main ≈ `2e31abf`, v0.1.126,
-2026-09-09):
+**2026-09-12 — the on-device purchase was blocked all session, and the cause was
+Digital Asset Links, not the app.** The chain, in the order it was proven:
+"Google Play Billing is not available in this view…" → the app could not say why
+(only an `AbortError`-vs-everything-else distinction existed) → added a
+support-mode diagnostics probe → `getDigitalGoodsService` threw
+`OperationError: unsupported context` → traced through Chromium source to
+`DigitalGoodsFactoryImpl.getResponseCode()` returning `kUnsupportedContext` when
+`CustomTabActivity#isInTwaMode()` is false → `SharedActivityCoordinator`
+allows TWA mode only while DAL verification has not `FAILURE` → the published
+`public/.well-known/assetlinks.json` listed **one** fingerprint (Play's
+post-quantum certificate) while Chrome compares the certificate the installed
+app actually carries (the **classical** app-signing key). Publishing all three
+(commit `306c7d1`, v0.2.5) fixed verification, but only after a **device
+reboot**, because Chrome caches the statement list in its browser process.
+
+**Two traps that each cost hours — always check these first:**
+- A Chrome-installed home-screen shortcut ("Add to Home screen") is
+  indistinguishable from the Play-installed app: same name, same icon, and
+  `display: standalone` makes it report `standalone=yes` as well. It is not a
+  TWA, so billing can never work there, and once localStorage is cleared it
+  falls back to the **Lemon Squeezy** checkout (no `?src=play` in its start
+  URL). Launch from **Play Store → Manage apps & device → Manage → Open**.
+- Chrome's DAL statement cache means a plain app relaunch can keep serving the
+  pre-fix answer: force-stop Chrome or reboot the device after changing
+  `assetlinks.json`.
+
+**Remaining on the Play track (next session):**
+1. **The on-device E2E purchase, still not completed**: Play sheet → test
+   purchase on the test account → "License active ✓" → Firestore shows
+   `sales`/`licenses`/`entitlements`/`playTokens` (the §6 non-negotiable check)
+   → the accountant CSV has a `source=play` row.
+2. Play Console → Real-time developer notifications (Pub/Sub PUSH →
+   `https://api.5budget.app/api/webhooks/play`) — renewals/refunds only, not
+   needed for the first purchase.
+3. Closed test with **12 testers × 14 continuous days** before production
+   access can even be requested (2 testers today; the clock has not started —
+   this is the long pole).
+4. Set `info@5budget.app` as the Play **developer contact** + store-listing
+   contact (unverified).
+5. `android/twa-manifest.json` `versionCode` is still 133 and only bumps on the
+   next AAB build. This machine has **no JDK and no Android SDK**, so an AAB
+   rebuild needs the toolchain installed (Bubblewrap itself runs via `npx`).
+6. Support mode stays available for device debugging: arm with
+   `https://5budget.app/?diag=1` (disarm `?diag=0`) and read the Play dump in
+   Settings → Smart entry.
+
+Everything below is **shipped and live** (main = v0.2.6, 2026-09-12):
 
 - Smart entry end-to-end: PWA → Vercel microservice → Gemini 3.6 Flash → instant save
   with fading toasts; review form only for ambiguous parses. Full spec (revised):

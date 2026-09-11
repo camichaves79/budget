@@ -53,7 +53,7 @@
   `currency_rate`); payout reports are the reconciliation truth;
   chargebacks: **$15 dispute fee**. Store currency is COP — expect COP
   payout reports.
-- **Play fee (Android, A18 — not yet shipped):** **15%** of the price, no
+- **Play fee (Android, A18 — shipped):** **15%** of the price, no
   fixed per-transaction fee (Google's subscription rate; it can drop to 10%
   after a subscriber's 12-month anniversary — the ledger keeps 15% as the
   conservative estimate, `estimatePlayFeeCents`). Play has no per-order
@@ -299,7 +299,7 @@ auth boundary: `OAuthProvider('apple.com')` + a Service ID + private key.)
   ever missing its `invoice_url`, re-send the LS `order_created` webhook —
   the handler regenerates it.
 
-## 10. Play Billing (Android) ops — A18 (implemented, not yet shipped)
+## 10. Play Billing (Android) ops — A18 (shipped to `main`, v0.2.6)
 
 The Android build is the same PWA inside a Bubblewrap **Trusted Web Activity**
 (`app.fivebudget`, `startUrl "/"` + `?src=play`). Google is the Android
@@ -329,22 +329,72 @@ writes a new `sales/{orderId}` row; `loss` (REVOKED/EXPIRED/voided) marks
 `refunded`; `risk` (CANCELED/ON_HOLD/GRACE/PAUSED) sets `at-risk`. Never trust
 the notification alone — every path re-queries the Play API for state.
 
-**Play Console setup (user-side, in order):**
+**Play Console setup (user-side, in order) — corrected against the 2026-09
+console, which differs from most tutorials:**
 1. Verify the developer account + link a Google Payments **merchant account**.
-2. Monetize → Subscriptions → create `smart_entry_yearly` (US$5.00/year, base
-   plan `p1y`).
-3. API access → link the service account (grant `androidpublisher`); export its
-   JSON → `GOOGLE_PLAY_SERVICE_ACCOUNT` (single line, Secret).
+2. **Monetize with Play → Products → Subscriptions** → create
+   `smart_entry_yearly` (US$5.00/year, auto-renewing, base plan `p1y`, state
+   **Active**).
+3. Authorize the service account. **No GCP-project linking is needed any more**,
+   and API access is account-level (not inside the app): invite the service
+   account as a **user** (Users and permissions → Invite new users) with
+   "View financial data, orders, and cancellation survey responses" **and**
+   "Manage orders and subscriptions"; for app access choose the narrowest option
+   (`read app information (read-only)` — do NOT hand it `admin`). Then download
+   its JSON → `GOOGLE_PLAY_SERVICE_ACCOUNT` (single line, Secret). The
+   `androidpublisher` API must be enabled in that project.
 4. Monetization setup → **Real-time developer notifications** → Pub/Sub topic →
    create a **PUSH subscription** → endpoint
    `https://api.5budget.app/api/webhooks/play`. (Optionally pin the push
    service-account email via `GOOGLE_PLAY_PUBSUB_EMAIL`.)
-5. Bubblewrap: enable `features.playBilling.enabled: true` **and**
+5. **License testing** — a list of tester emails/Google Groups; your own
+   publishing account always counts as a licensed tester. Tester purchases are
+   free, carry a "test purchase" notice, and are attributed to the account that
+   installed the app. (Google's docs place this under Settings → License
+   testing; console revisions move it — trust the labels, not the path.)
+6. Bubblewrap: enable `features.playBilling.enabled: true` **and**
    `alphaDependencies.enabled: true` in `android/twa-manifest.json`; generate
    the keystore (record the password); `bubblewrap update --manifest android`
    → `validate --url=https://5budget.app` → `build --manifest android` → AAB.
-6. Upload to an **internal testing track**, add license testers, install on a
-   device, and run the end-to-end test below.
+7. Upload to a **testing track** and install from the Play Store. Always launch
+   it from **Play Store → Manage apps & device → Manage → Open**: a
+   Chrome-installed home-screen shortcut looks identical (same icon, same name,
+   `display: standalone`) but is NOT the TWA, so billing can never work there.
+
+**Digital Asset Links — required for Play Billing to work at all (2026-09-12).**
+This cost an entire session; it is not optional plumbing:
+- Chrome grants the Digital Goods service **only** to a `CustomTabActivity` in
+  TWA mode. In Chromium,
+  `chrome/android/java/.../digitalgoods/DigitalGoodsFactoryImpl.java` returns
+  `kUnsupportedContext` ("OperationError: unsupported context") when
+  `CustomTabActivity#isInTwaMode()` is false, and
+  `SharedActivityCoordinator#appModeUiAllowedFor` allows TWA mode only while
+  Digital Asset Links verification has **not** returned `FAILURE`.
+- `/.well-known/assetlinks.json` must therefore list **every** certificate Play
+  signs the installed app with. Play now exposes **three**: a **classical**
+  app-signing key (what Chrome actually reads), a **post-quantum** app-signing
+  key, and the developer **upload** key — all under **Protected with Play**
+  (the old "App integrity" page redirects there). Publishing only the
+  post-quantum fingerprint produced `FAILURE` while the file looked perfect.
+- Chrome caches the fetched statement list **in the browser process**, and a TWA
+  launch reuses the running Chrome. After changing the file, **force-stop
+  Chrome or reboot the device**, otherwise the app keeps reporting the old
+  answer.
+- The visible symptoms of a failed verification: Chrome stays out of app mode
+  (URL bar visible, so `display-mode` still reports `standalone`) and Play
+  Billing is refused with the misleading "not available in this view" copy.
+
+**Reading the real failure (support mode).** The app's user-facing copy is
+deliberately generic, so the technical reason is captured instead:
+`lastPlayFailure()` inside `src/lib/playBilling.ts` records the exact step
+(`no SKU configured`, `no service (…)`, `show aborted (…)`, `show failed (…)`,
+`sheet completed without a purchase token`), and `probePlay()` reports API
+presence, service acquisition, `canMakePayment()` and `getDetails()` without
+ever opening a sheet or charging. Both surface in Settings → Smart entry only
+when support mode is armed: open `https://5budget.app/?diag=1` in a browser
+(`?diag=0` disarms). The flag is persisted in localStorage, which the TWA
+shares with Chrome for this origin, so arming it in a browser arms it in the
+app. Off by default — no debug text on ordinary screens.
 
 **Env vars (Cloudflare Worker, Secret-type; add to `worker.js` `ENV_KEYS`):**
 `GOOGLE_PLAY_SERVICE_ACCOUNT`, `GOOGLE_PLAY_PACKAGE_NAME` (`app.fivebudget`),
@@ -353,7 +403,7 @@ defaults to `https://<host>/api/webhooks/play`), `GOOGLE_PLAY_PUBSUB_EMAIL`
 (optional). Client (Pages Production + local `.env`): `VITE_PLAY_SUBSCRIPTION_ID`.
 
 **Client error-code map (Android "Subscribe" failures):**
-- "Google Play Billing is not available in this view…" → `paywall.playUnavailable` (Digital Goods API absent — not the TWA, or the `playBilling` feature is off).
+- "Google Play Billing is not available in this view…" → `paywall.playUnavailable`. This copy is deliberately generic and covers several faults: the Digital Goods API is absent (not the TWA / the `playBilling` feature is off / a Chrome-installed shortcut), DAL verification failed, or `PaymentRequest.show()` threw. In support mode (`?diag=1`) the dump's `lastFail=` line names the real reason — do not debug this from the copy alone.
 - "This purchase belongs to a different email…" → `play-email-mismatch` (the Play account ≠ signed-in Google account).
 - "Your payment hasn't been confirmed yet…" → `play-not-paid` (`paymentState ≠ 1`).
 - "That purchase reference wasn't found…" → `play-purchase-not-found` (bad token/productId, or the service account lacks access).
