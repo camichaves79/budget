@@ -5,6 +5,8 @@
       "namespace": "android_app",
       "package_name": "app.fivebudget",
       "sha256_cert_fingerprints": [
+        "78:9C:A6:5F:32:B2:85:00:48:E5:F5:77:43:8E:9A:9E:8F:A3:4B:C0:99:E1:D4:D1:B9:E7:78:7A:EB:FE:FF:E2",
+        "7E:AE:C0:70:10:38:41:1F:87:A4:47:78:E6:B7:75:91:EA:31:FC:75:34:38:BF:13:F2:C3:8A:33:FC:4B:43:95",
         "00:06:17:52:B0:32:C1:A1:77:D5:86:1A:61:E8:0D:BA:20:C2:61:87:92:CD:87:19:B0:50:31:0C:EA:BD:B3:B2"
       ]
     }
