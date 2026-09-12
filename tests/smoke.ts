@@ -28,7 +28,7 @@ import {
 } from '../api/_license.js';
 import { checkIpRateLimit, createIpRateLimiter, isAllowedOrigin } from '../api/_http.js';
 import { ensureLicenseForOrder, ensureLicenseForPlayPurchase, saleRowForMerge } from '../api/_licenseops.js';
-import { classifyPlayNotification, getSubscription, parseDeveloperNotification, parsePubSubMessage, tokenFingerprint, validatePubSubClaims, verifyPubSubToken } from '../api/_play.js';
+import { classifyPlayNotification, getSubscription, isUnusablePlayIdentity, parseDeveloperNotification, parsePubSubMessage, tokenFingerprint, validatePubSubClaims, verifyPubSubToken } from '../api/_play.js';
 import redeemHandler from '../api/license/redeem.js';
 import redeemPlayHandler from '../api/license/redeem-play.js';
 import playWebhookHandler from '../api/webhooks/play.js';
@@ -1695,6 +1695,35 @@ await (async () => {
     check('token fingerprint: marks a non-url-safe token', dirty.charset, 'other');
     const spaced = tokenFingerprint('abc def');
     check('token fingerprint: detects an embedded space', spaced.whitespace, true);
+  }
+
+  // ---- Play identity guard ----
+  // GOOGLE_PLAY_SERVICE_ACCOUNT held the Firebase admin key for most of a
+  // session; that key signs fine and Google even issues it an access token, so
+  // the mistake only showed up later as an opaque `400 Invalid Value` from the
+  // Play API. These pin the by-name detection that now names it immediately.
+  {
+    check(
+      'play identity: the firebase-adminsdk key is rejected by name',
+      isUnusablePlayIdentity('firebase-adminsdk-fbsvc@budget-app-11d48.iam.gserviceaccount.com'),
+      true,
+    );
+    check(
+      'play identity: the default compute account is rejected by name',
+      isUnusablePlayIdentity('1234567890-compute@developer.gserviceaccount.com'),
+      true,
+    );
+    check(
+      'play identity: a dedicated play service account is accepted',
+      isUnusablePlayIdentity('play-billing@budget-app-11d48.iam.gserviceaccount.com'),
+      false,
+    );
+    check('play identity: an empty email is not flagged', isUnusablePlayIdentity(''), false);
+    check(
+      'play identity: case does not defeat detection',
+      isUnusablePlayIdentity('Firebase-Adminsdk-fbsvc@x.iam.gserviceaccount.com'),
+      true,
+    );
   }
 
   globalThis.fetch = originalFetch;

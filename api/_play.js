@@ -151,6 +151,28 @@ const PLAY_API = 'https://androidpublisher.googleapis.com/androidpublisher/v3';
 let playServiceAccount = /** @type {{ client_email: string, private_key: string } | null} */ (null);
 let playServiceAccountLoaded = false;
 
+/**
+ * Is this service-account email one that can never reach the Play API?
+ *
+ * `firebase-adminsdk-*` keys sign fine and Google WILL issue them an access
+ * token (the token endpoint does not scope-check), so a wrong key is not
+ * self-evident: the failure only appears later as an authorization error from
+ * the Play API. Measured 2026-09-11, when GOOGLE_PLAY_SERVICE_ACCOUNT held the
+ * Firebase admin key and produced `play: subscriptions.get 400 Invalid Value`
+ * across most of a session. Detecting the identity by name turns that into an
+ * immediate, named error.
+ *
+ * Exported for the smoke suite.
+ * @param {string} email
+ * @returns {boolean}
+ */
+export function isUnusablePlayIdentity(email) {
+  const e = (email ?? '').toLowerCase();
+  if (e === '') return false;
+  // Firebase/GCP service-account families that have no Play Console access.
+  return e.includes('firebase-adminsdk') || e.endsWith('@developer.gserviceaccount.com');
+}
+
 /** @returns {{ client_email: string, private_key: string } | null} */
 function getPlayServiceAccount() {
   if (playServiceAccountLoaded) return playServiceAccount;
@@ -164,6 +186,21 @@ function getPlayServiceAccount() {
     const sa = JSON.parse(raw);
     if (typeof sa.client_email === 'string' && typeof sa.private_key === 'string') {
       playServiceAccount = /** @type {{ client_email: string, private_key: string }} */ (sa);
+      // Announce the identity ONCE per isolate. A service account's email is not
+      // a secret (it is an address, and it must be visible in Play Console to be
+      // granted access), and naming the identity is what makes a misconfigured
+      // key obvious in the log stream instead of surfacing as an opaque
+      // "Invalid Value" three steps later.
+      console.log('play: authenticating as', playServiceAccount.client_email);
+      if (isUnusablePlayIdentity(playServiceAccount.client_email)) {
+        console.error(
+          'play: THIS IDENTITY CANNOT CALL THE PLAY API —',
+          playServiceAccount.client_email,
+          'is a Firebase/GCP-default account. GOOGLE_PLAY_SERVICE_ACCOUNT must hold a',
+          'dedicated service account that has been invited in Play Console ->',
+          'Users and permissions with the two billing permissions.',
+        );
+      }
       return playServiceAccount;
     }
   } catch (err) {
