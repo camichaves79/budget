@@ -526,6 +526,24 @@ defaults to `https://<host>/api/webhooks/play`), `GOOGLE_PLAY_PUBSUB_EMAIL`
 - "That purchase reference wasn't found…" → `play-purchase-not-found` (bad token/productId, or the service account lacks access).
 - Worker logs for `play: token endpoint <status>` = the Play OAuth JWT was rejected (wrong/revoked `GOOGLE_PLAY_SERVICE_ACCOUNT`).
 
+**★ Permissions propagate in STAGES — wait up to 24 h before believing a failure
+(Google, verbatim, from the official `chromeos/pwa-play-billing` sample README):**
+
+> *"Click Invite user. Note that this takes a good while to propagate, so if you
+> are getting permission errors while trying to make purchases, you need to wait
+> up to 24 hours. Note that the permissions seem to propagate in stages, so it is
+> possible to successfully purchase an item and then get errors while confirming
+> it. If this happens just wait a little more!"*
+
+This is not folklore — it is the documented behaviour of the grant, and it
+produced two charged-but-unlicensed purchases on 2026-09-11 within ~40 minutes of
+ticking the two billing permissions. **Do not debug a `purchases.subscriptions`
+failure in the first 24 hours after granting permissions**, and never conclude the
+code is broken from one. The same sample adds two setup details worth following:
+the service account should hold the **"Service Account User"** role in Google
+Cloud, and Play Console permissions must be granted to **all financial data on
+both the app and the account**.
+
 **Verify after setup:**
 ```bash
 # 1. Redeem a Play purchase token (from a license-tester purchase):

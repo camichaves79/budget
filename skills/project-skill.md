@@ -546,6 +546,48 @@ v0.3.11 now logs a safe token fingerprint plus Google's full error body, so the
 next attempt is diagnostic instead of blind — see `skills/next-session-prompt.md`
 for the exact three-layer capture procedure.
 
+**★ LEADING HYPOTHESIS (from Google's own sample, added 2026-09-11 late) — the
+Play Console permission grant was still propagating.** The official
+[`chromeos/pwa-play-billing`](https://github.com/chromeos/pwa-play-billing)
+sample README states, verbatim:
+
+> *"Click Invite user. Note that this takes a good while to propagate, so if you
+> are getting permission errors while trying to make purchases, you need to **wait
+> up to 24 hours**. Note that the permissions seem to **propagate in STAGES**, so
+> it is possible to **successfully purchase an item and then get errors while
+> confirming it**. If this happens just wait a little more!"*
+
+That describes this failure exactly. Timeline: the two billing permissions were
+ticked at **~17:24**; within ~2 minutes stage 1 landed (the API moved 401 → 400),
+and the failing purchase followed shortly after. `400 Invalid Value` is also
+consistent with a **partially**-effective grant: the call authenticates (so not
+401) but the `purchases/subscriptions` resource is not yet readable.
+
+**⇒ So before any further purchase, WAIT 24 HOURS from the permission grant and
+retry.** That may be the whole fix, and it would mean the two failed purchases
+were not a code defect at all. Only if a retry a full day later still returns
+`400` should the token-decode path in `skills/next-session-prompt.md` be used.
+
+**⚠️ CORRECTION (two of them) — 2026-09-11 late, after reading Google's own
+material.** `configure.md` in the repo root is a condensation of Google's
+guidance (the `chromeos/pwa-play-billing` sample uses the same
+`serviceAccountEmail` + `serviceAccountPrivateKey` shape), and two of my
+earlier statements were wrong:
+1. **`Setup → Developer account → API access` DOES exist** — the official sample
+   places it under *"Settings" > "Developer account" > "API access"* in the
+   **general user menu** (not the app menu). The android-publisher doc's "no
+   longer need to link your project" note is about *linking*, not the page's
+   existence. Keys are still created only in Google Cloud.
+2. The Chrome TWA billing guide DOES list DAL as a hard prerequisite ("a
+   Bubblewrap project with a working Digital Asset Links configuration"), so
+   `configure.md` omitting it is a condensation artifact, not an error. Its
+   guidance to fall back gracefully outside the TWA is also correct, and was
+   where our own first implementation was wrong (fixed v0.3.3).
+Also from the sample: the service account should hold the **"Service Account
+User"** role in Google Cloud, and Play Console permissions must be granted to
+**all financial data on both the app and the account** — with the staged
+propagation above.
+
 **⚠️ CORRECTION — `400 Invalid Value` is NOT evidence of a working credential.**
 An earlier claim in this session said the reverse. Measured: every synthetic
 token shape returns 400 with a good key AND with the Firebase key; only the

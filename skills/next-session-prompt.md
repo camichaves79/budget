@@ -14,7 +14,33 @@ READ FIRST: skills/project-skill.md §10 (current state + next-session context),
 skills/paywall-ops.md §10 (Play Billing ops, incl. the CURRENT Play Console /
 Google Cloud paths), ARCHITECTURE.md A18 + A19.
 
-## THE ONE REMAINING UNKNOWN (start here)
+## DO THIS FIRST — WAIT 24 HOURS, THEN RETRY ★
+
+Google's own [`chromeos/pwa-play-billing`](https://github.com/chromeos/pwa-play-billing)
+sample says, verbatim:
+
+> *"Note that this takes a good while to propagate, so if you are getting
+> permission errors while trying to make purchases, you need to **wait up to 24
+> hours**. Note that the permissions seem to **propagate in STAGES**, so it is
+> possible to **successfully purchase an item and then get errors while
+> confirming it**. If this happens just wait a little more!"*
+
+That is exactly this failure. The two billing permissions were ticked at
+**~17:24**; stage 1 propagated within ~2 minutes (the API moved 401 -> 400) and
+the failing purchase followed shortly after. So **the first action of the next
+session is a retry a full day after the grant**, on a licence-tester account
+(free). If it mints, this whole thing was propagation and the two refunded
+charges were never a code defect.
+
+Only if it STILL returns `play: subscriptions.get 400 Invalid Value` after 24h
+should you work the token-decode path below.
+
+Also read `configure.md` in the repo root — it is a condensation of Google's
+own guidance (same `serviceAccountEmail` + `serviceAccountPrivateKey` shape as
+the official sample), and the repo now carries a status table mapping it to this
+implementation.
+
+## THE ONE REMAINING UNKNOWN (only if the 24h retry fails)
 
 A real Play purchase charges the buyer and returns a purchase token, and the
 Worker's verification of that token fails:

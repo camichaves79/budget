@@ -116,7 +116,20 @@ failures this document does not mention. Its code surface is correct; the
 | Env var shape | this directive's split (`..._EMAIL` + `..._PRIVATE_KEY`) is BETTER than the single JSON blob this repo used: with separate variables the service-account **identity is visible at a glance**, whereas one opaque `GOOGLE_PLAY_SERVICE_ACCOUNT` silently held the Firebase admin key for most of a session and surfaced only as an opaque `400 Invalid Value`. `api/_play.js` now logs the identity on load and rejects a `firebase-adminsdk` key by name |
 | Validation rule here | the directive checks only `expiryTimeMillis > now`. The live server additionally requires `paymentState === 1` and that the purchaser email matches the signed-in account (`play-email-mismatch`) — stricter, and the source of its own failure modes |
 
-**Verdict:** useful as an implementation checklist, misleading as a setup guide.
-Follow its code shape; take the DAL file and the Play Console permissions from
-`skills/paywall-ops.md` §10. Nothing in this document would have prevented the
-two failures that actually blocked the launch.
+**Verdict — REVISED 2026-09-11 late, after reading Google's own material.** The
+first version of this table called the document "misleading as a setup guide".
+That was unfair: it is a faithful condensation of Google's guidance (the official
+`chromeos/pwa-play-billing` sample uses the same `serviceAccountEmail` +
+`serviceAccountPrivateKey` shape), and its DAL + permissions material lives in
+the linked Chrome docs, where DAL is in fact listed as a hard prerequisite ("a
+Bubblewrap project with a working Digital Asset Links configuration"). Treat its
+omissions as condensation, not error — and follow it as the code checklist it is.
+
+**The most valuable sentence in Google's material is NOT in this file and cost
+this project two purchases.** From the sample README: Play Console service-account
+permissions "propagate in STAGES", and *"it is possible to successfully purchase
+an item and then get errors while confirming it"* — wait up to 24 hours. That
+describes the `play: subscriptions.get 400 Invalid Value` failure exactly, and it
+means the two refunded charges were most likely propagation, not a code defect.
+Recorded in `skills/project-skill.md` §10 and at the top of
+`skills/next-session-prompt.md`.
