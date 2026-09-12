@@ -34,6 +34,7 @@ import redeemPlayHandler from '../api/license/redeem-play.js';
 import playWebhookHandler from '../api/webhooks/play.js';
 import webhookHandler from '../api/webhooks/ls.js';
 import { createHmac, createSign, generateKeyPairSync } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { FREE_DAILY_PARSES, nextQuota, remainingFreeToday } from '../src/lib/quota';
 import { initialData } from '../src/state/store';
 import { licenseIsActive, parseLicenseToken } from '../src/lib/license';
@@ -1724,6 +1725,44 @@ await (async () => {
       isUnusablePlayIdentity('Firebase-Adminsdk-fbsvc@x.iam.gserviceaccount.com'),
       true,
     );
+  }
+
+  // ---- Worker config must live in the REPO, not only in the dashboard ----
+  // `deploy-worker.yml` runs `wrangler deploy` on every push to main, which
+  // overwrites plain-text variables that exist only in the Cloudflare dashboard
+  // while secrets survive. GOOGLE_PLAY_PACKAGE_NAME was set there at ~18:00 on
+  // 2026-09-11 and was gone by 22:15 (the live Worker said so itself). With it
+  // empty the Play URL becomes `.../applications//purchases/...` and Google
+  // answers the generic `400 Invalid Value` — indistinguishable from a bad
+  // purchase token, and the shape of the unexplained failing purchase.
+  // These pin the non-secret Play config to wrangler.toml so no future deploy
+  // can drop it silently.
+  {
+    const toml = readFileSync(`${process.cwd()}/wrangler.toml`, 'utf8');
+    const start = toml.indexOf('[vars]');
+    const end = toml.indexOf('\n[', start + 1);
+    const varsBlock = start === -1 ? '' : toml.slice(start, end === -1 ? undefined : end);
+    check(
+      'worker config: the Play package name is declared in wrangler.toml',
+      /GOOGLE_PLAY_PACKAGE_NAME\s*=\s*"app\.fivebudget"/.test(varsBlock),
+      true,
+    );
+    check(
+      'worker config: the Play subscription id is declared in wrangler.toml',
+      /GOOGLE_PLAY_SUBSCRIPTION_ID\s*=\s*"smart_entry_yearly"/.test(varsBlock),
+      true,
+    );
+    // ...and that the binding reaches the handlers (the 2026-09-07 trap: deployed
+    // Workers expose bindings as non-enumerable getters, so hydration is by name).
+    const prevForHydrate = process.env.GOOGLE_PLAY_PACKAGE_NAME;
+    hydrateEnv({ GOOGLE_PLAY_PACKAGE_NAME: 'app.fivebudget' });
+    check(
+      'worker config: hydrateEnv forwards the package-name binding',
+      process.env.GOOGLE_PLAY_PACKAGE_NAME,
+      'app.fivebudget',
+    );
+    if (prevForHydrate === undefined) delete process.env.GOOGLE_PLAY_PACKAGE_NAME;
+    else process.env.GOOGLE_PLAY_PACKAGE_NAME = prevForHydrate;
   }
 
   globalThis.fetch = originalFetch;

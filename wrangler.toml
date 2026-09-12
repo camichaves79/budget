@@ -7,6 +7,38 @@ main = "worker.js"
 compatibility_date = "2026-09-07"
 compatibility_flags = ["nodejs_compat"]
 
+# ---------------------------------------------------------------------------
+# NON-SECRET configuration, declared HERE on purpose (2026-09-11).
+#
+# `deploy-worker.yml` runs `wrangler deploy` on every push to `main`. That
+# uploads this file's bindings, and a PLAIN-TEXT variable that exists only in
+# the dashboard is overwritten by it, while SECRETS survive it (Cloudflare
+# cannot re-send a secret it never sees). Measured, with the exact symptom:
+# `GOOGLE_PLAY_PACKAGE_NAME` was set in the dashboard at ~18:00 on 2026-09-11
+# and was gone again by 22:15 — the live Worker answered
+# `GOOGLE_PLAY_PACKAGE_NAME is not set on the worker` — after four pushes to
+# `main`. `GOOGLE_PLAY_SERVICE_ACCOUNT`, `FIREBASE_SERVICE_ACCOUNT` and
+# `BUDGET_PARSE_SECRET` (all secrets) were untouched.
+#
+# Why that matters more than a 503: with an empty package name the Play URL
+# collapses to `.../applications//purchases/subscriptions/...`, which Google
+# answers with the generic `400 Invalid Value` — the same answer a bad purchase
+# token gets. Before v0.3.6 nothing logged it, which is the shape of the
+# unexplained 400 behind the two charged-but-unlicensed purchases.
+#
+# Reference: cloudflare/workers-sdk#8871 and #4453 (`--keep-vars` was added for
+# this class of loss). Declaring the values here removes the failure mode
+# instead of relying on every future deploy remembering them.
+#
+# NOTE: top-level vars are inherited by `[env.staging]`, so the staging Worker
+# receives these two names as well. That cannot enable a purchase there — the
+# staging frontend ships no `VITE_PLAY_SUBSCRIPTION_ID`, so the Play button
+# never renders and the endpoint is never called.
+# ---------------------------------------------------------------------------
+[vars]
+GOOGLE_PLAY_PACKAGE_NAME = "app.fivebudget"
+GOOGLE_PLAY_SUBSCRIPTION_ID = "smart_entry_yearly"
+
 [observability]
 enabled = true
 
