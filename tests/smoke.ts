@@ -23,7 +23,7 @@ import {
 import {
   DEFAULT_LICENSE_DAILY_CAP, LICENSE_TERM_SECONDS, createLicenseMeter, emailsMatch, estimateLsFeeCents,
   estimateNetCents, estimatePlayFeeCents, estimatePlayNetCents, ledgerToCsv, makeLicensePayload,
-  orderToLedger, playPurchaseToLedger, signLicense, verifyLicenseToken, verifyWebhookSignature,
+  orderToLedger, playOwnershipDecision, playPurchaseToLedger, signLicense, verifyLicenseToken, verifyWebhookSignature,
   webhookToLedger,
 } from '../api/_license.js';
 import { checkIpRateLimit, createIpRateLimiter, isAllowedOrigin } from '../api/_http.js';
@@ -1473,7 +1473,7 @@ await (async () => {
 await (async () => {
   const jwkPub = { ...rsa.publicKey.export({ format: 'jwk' }), kid: 'local-kid' };
   const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url');
-  const makeIdToken = (email: string) => {
+  const makeIdToken = (email: string, uid = 'uid-1') => {
     const now = Math.floor(Date.now() / 1000);
     const header = { alg: 'RS256', kid: 'local-kid', typ: 'JWT' };
     const payload = {
@@ -1481,7 +1481,7 @@ await (async () => {
       iss: 'https://securetoken.google.com/test-project',
       iat: now,
       exp: now + 3600,
-      sub: 'uid-1',
+      sub: uid,
       email,
     };
     const input = `${b64(header)}.${b64(payload)}`;
@@ -1489,7 +1489,6 @@ await (async () => {
     signer.update(input);
     return `${input}.${signer.sign(privPem).toString('base64url')}`;
   };
-
   const playStartMs = Date.parse('2026-09-05T10:00:00Z');
   const playPurchase = {
     orderId: 'GPA.1234-5678-9012-34567',
@@ -1543,6 +1542,9 @@ await (async () => {
   };
   const commits: Array<{ name: string; fields: Record<string, unknown>; fieldPaths: string[] }> = [];
   const acknowledgeCalls: string[] = [];
+  // The live Play API no longer returns the buyer `emailAddress` (measured
+  // 2026-09-12), so a test must be able to serve a purchase WITHOUT it.
+  let purchaseOverride: Record<string, unknown> | null = null;
 
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (url: string | URL, opts: { method?: string; body?: string } = {}) => {
@@ -1555,7 +1557,7 @@ await (async () => {
       return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
     if (u.includes('androidpublisher.googleapis.com') && u.includes('/purchases/subscriptions/')) {
-      return new Response(JSON.stringify(playPurchase), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify(purchaseOverride ?? playPurchase), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
     if (u === 'https://oauth2.googleapis.com/token') {
       return new Response(JSON.stringify({ access_token: 'fake', expires_in: 3600 }), {
@@ -1572,7 +1574,7 @@ await (async () => {
       return new Response(JSON.stringify({ writeResults: [{}] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
     if (u.includes('firestore.googleapis.com')) {
-      const get = /\/documents\/(sales|licenses)\/([^/?]+)$/.exec(u);
+      const get = /\/documents\/(sales|licenses|playTokens)\/([^/?]+)$/.exec(u);
       if (get) {
         const found = store[`${get[1]}/${get[2]}`];
         if (found) {
@@ -1615,8 +1617,8 @@ await (async () => {
   }
 
   // redeem-play handler: email mismatch, then success + acknowledge.
-  const runRedeemPlay = async (email: string) => {
-    const body = JSON.stringify({ purchaseToken: 'tok-x', productId: 'smart_entry_yearly', idToken: makeIdToken(email) });
+  const runRedeemPlay = async (email: string, uid = 'uid-1') => {
+    const body = JSON.stringify({ purchaseToken: 'tok-x', productId: 'smart_entry_yearly', idToken: makeIdToken(email, uid) });
     const req = {
       method: 'POST',
       headers: { origin: 'https://5budget.app', 'x-budget-secret': 'testparse' },
@@ -1660,6 +1662,77 @@ await (async () => {
       true,
     );
   }
+
+  // ---- ownership when Google returns NO buyer email (measured 2026-09-12) ----
+  // The live subscriptions resource no longer carries `emailAddress`, so the
+  // email comparison alone rejected every real purchase. The rule now falls back
+  // to binding the token to the first account that redeems it. These pin both
+  // halves so neither can silently regress.
+  {
+    check(
+      'play ownership: a matching buyer email passes',
+      playOwnershipDecision({ accountEmail: 'Buyer@Example.com', buyerEmail: ' buyer@example.com ', uid: 'uid-1' }),
+      'ok',
+    );
+    check(
+      'play ownership: a different buyer email is refused',
+      playOwnershipDecision({ accountEmail: 'attacker@example.com', buyerEmail: 'buyer@example.com', uid: 'uid-1' }),
+      'email-mismatch',
+    );
+    check(
+      'play ownership: the email rule wins over token binding when present',
+      playOwnershipDecision({ accountEmail: 'attacker@example.com', buyerEmail: 'buyer@example.com', tokenOwnerUid: 'uid-1', uid: 'uid-1' }),
+      'email-mismatch',
+    );
+    check(
+      'play ownership: no buyer email + unbound token passes',
+      playOwnershipDecision({ accountEmail: 'camicha747@gmail.com', buyerEmail: null, tokenOwnerUid: null, uid: 'uid-1' }),
+      'ok',
+    );
+    check(
+      'play ownership: no buyer email + the token is already mine passes',
+      playOwnershipDecision({ accountEmail: 'camicha747@gmail.com', buyerEmail: undefined, tokenOwnerUid: 'uid-1', uid: 'uid-1' }),
+      'ok',
+    );
+    check(
+      'play ownership: no buyer email + another account owns the token is refused',
+      playOwnershipDecision({ accountEmail: 'attacker@example.com', buyerEmail: '', tokenOwnerUid: 'uid-1', uid: 'uid-9' }),
+      'account-mismatch',
+    );
+  }
+
+  // redeem-play, with the purchase as Google actually returns it now.
+  const noEmailPurchase = { ...playPurchase };
+  delete (noEmailPurchase as { emailAddress?: string }).emailAddress;
+  {
+    // The token is unbound: the fallback must let the buyer through, and the
+    // mint must still happen (this is the path a real purchase now takes).
+    purchaseOverride = noEmailPurchase;
+    commits.length = 0;
+    acknowledgeCalls.length = 0;
+    const r = await runRedeemPlay('camicha747@gmail.com');
+    const parsed = JSON.parse(r.body) as { ok?: boolean; license?: string };
+    check(
+      'redeem-play succeeds without a buyer email (token-binding fallback)',
+      [r.statusCode, parsed.ok === true, typeof parsed.license === 'string' && parsed.license.length > 20],
+      [200, true, true],
+    );
+    check('redeem-play fallback still acknowledges', acknowledgeCalls.length, 1);
+  }
+  {
+    // The same token, already minted for uid-1, presented by a SECOND account.
+    store['playTokens/tok-x'] = { fields: { license_id: sv('lic-play-existing'), orderId: sv('GPA.1234-5678-9012-34567'), updatedAt: sv('2026-09-12T00:00:00.000Z') } };
+    commits.length = 0;
+    const r = await runRedeemPlay('attacker@example.com', 'uid-9');
+    check(
+      'redeem-play refuses a token already bound to another account',
+      [r.statusCode, (JSON.parse(r.body) as { code?: string }).code],
+      [409, 'play-email-mismatch'],
+    );
+    check('redeem-play refuses without minting', commits.length, 0);
+    delete store['playTokens/tok-x'];
+  }
+  purchaseOverride = null;
 
   // getSubscription must always explain WHY it failed. A bare
   // `play-not-configured` named nothing and cost a session, so assert the

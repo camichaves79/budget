@@ -116,6 +116,41 @@ export async function ensureLicenseForOrder(attributes, uid) {
 }
 
 /**
+ * The Firebase uid a Play purchase token is ALREADY bound to, or null.
+ *
+ * `ensureLicenseForPlayPurchase` records `playTokens/{purchaseToken}` ->
+ * `license_id` on every mint, and `licenses/{lic}` carries the `uid` it was
+ * bound to. This resolves that chain, which is what lets the ownership rule
+ * survive Google no longer returning the purchaser `emailAddress` (measured
+ * 2026-09-12 — see `playOwnershipDecision`): the first account to redeem a token
+ * owns it, and a second account presenting the same token is refused.
+ *
+ * Returns null for an unbound/unknown token and for any read failure, so the
+ * caller treats "cannot tell" as "no existing owner" rather than as an error —
+ * the token still has to verify against Google first.
+ * @param {string | null | undefined} purchaseToken
+ * @returns {Promise<string | null>}
+ */
+export async function playTokenOwner(purchaseToken) {
+  const token = typeof purchaseToken === 'string' ? purchaseToken.trim() : '';
+  if (token === '') return null;
+  const fire = db();
+  if (!fire) return null;
+  try {
+    const map = await fire.collection('playTokens').doc(token).get();
+    if (!map.exists) return null;
+    const licenseId = /** @type {Record<string, unknown>} */ (map.data() ?? {}).license_id;
+    if (typeof licenseId !== 'string' || licenseId === '') return null;
+    const lic = await fire.collection('licenses').doc(licenseId).get();
+    if (!lic.exists) return null;
+    const uid = /** @type {Record<string, unknown>} */ (lic.data() ?? {}).uid;
+    return typeof uid === 'string' && uid !== '' ? uid : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Mint-or-return the signed license for a verified Google Play subscription
  * purchase — the Play twin of `ensureLicenseForOrder`. Same license shape and
  * the same `licenses`/`entitlements` collections; the sales row is keyed by

@@ -17,8 +17,8 @@
 
 import { checkIpRateLimit, createIpRateLimiter, handleCors, hasSharedSecret, readJsonBody, send } from '../_http.js';
 import { verifyIdTokenSafe } from '../_firebase.js';
-import { emailsMatch } from '../_license.js';
-import { ensureLicenseForPlayPurchase } from '../_licenseops.js';
+import { playOwnershipDecision } from '../_license.js';
+import { ensureLicenseForPlayPurchase, playTokenOwner } from '../_licenseops.js';
 import { acknowledgeSubscription, getSubscription } from '../_play.js';
 
 /** Dampens token replay/enumeration (defense-in-depth under the email check). */
@@ -101,8 +101,26 @@ async function redeem(req, res, cors) {
     return;
   }
 
-  // Ownership: the Play purchaser's email must match the signed-in account.
-  if (!emailsMatch(verified.email, purchase.emailAddress)) {
+  // Ownership: the Play purchaser must be the signed-in account. Google's
+  // classic subscriptions resource used to return the buyer's `emailAddress`
+  // and this was a plain email comparison; measured 2026-09-12 with a real
+  // token, the field is no longer returned, so the rule falls back to binding
+  // the purchase token to the first account that redeems it. See
+  // `playOwnershipDecision` for the exact rule and why it is safe.
+  const buyerEmail = typeof purchase.emailAddress === 'string' ? purchase.emailAddress : null;
+  const tokenOwnerUid = buyerEmail === null ? await playTokenOwner(purchaseToken) : null;
+  if (buyerEmail === null) {
+    // Support-mode/log-only: which rule applied, without any secret.
+    console.log(
+      'play: purchase has no buyer email — ownership via token binding',
+      tokenOwnerUid ? (tokenOwnerUid === uid ? '(already yours)' : '(bound to another account)') : '(unbound)',
+    );
+  }
+  const ownership = playOwnershipDecision({ accountEmail: verified.email, buyerEmail, tokenOwnerUid, uid });
+  if (ownership !== 'ok') {
+    // One client-visible code for both rules: the copy already tells the user
+    // the purchase belongs to a different Google account, and adding a code
+    // would mean new strings in 11 languages.
     send(res, 409, { ok: false, code: 'play-email-mismatch' }, cors);
     return;
   }

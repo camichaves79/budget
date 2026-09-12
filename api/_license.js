@@ -177,6 +177,41 @@ export function emailsMatch(accountEmail, buyerEmail) {
   return a !== '' && a === b;
 }
 
+/**
+ * Who may redeem a verified Google Play purchase?
+ *
+ * The classic `purchases.subscriptions` resource used to carry the purchaser's
+ * `emailAddress`, and matching it against the signed-in account was the entire
+ * ownership proof for the Play path. Measured against the live API on
+ * 2026-09-12 with a REAL purchase token: the field is no longer returned at all
+ * (the resource carries only startTimeMillis, expiryTimeMillis, autoRenewing,
+ * priceCurrencyCode, priceAmountMicros, countryCode, developerPayload,
+ * paymentState, orderId, acknowledgementState, kind). Requiring it therefore
+ * rejected every real purchase with `play-email-mismatch` — a fault that could
+ * only surface once a genuine token existed, which is why it survived so long.
+ *
+ * The rule degrades EXPLICITLY rather than silently:
+ *   1. buyer email present -> it must match the signed-in account (unchanged,
+ *      and still the strict rule whenever Google supplies it);
+ *   2. buyer email absent  -> the purchase must not already belong to a
+ *      DIFFERENT account. Possession of the purchase token is the proof there:
+ *      it is only obtainable through Play Billing on a device signed into the
+ *      buying account, and the first redemption binds it
+ *      (`playTokens/{token}` -> `licenses/{lic}.uid`), so one token can never be
+ *      claimed twice.
+ *
+ * @param {{ accountEmail?: unknown, buyerEmail?: unknown, tokenOwnerUid?: unknown, uid?: unknown }} input
+ * @returns {'ok' | 'email-mismatch' | 'account-mismatch'}
+ */
+export function playOwnershipDecision({ accountEmail, buyerEmail, tokenOwnerUid, uid }) {
+  const buyer = typeof buyerEmail === 'string' ? buyerEmail.trim() : '';
+  if (buyer !== '') return emailsMatch(accountEmail, buyer) ? 'ok' : 'email-mismatch';
+  const owner = typeof tokenOwnerUid === 'string' ? tokenOwnerUid.trim() : '';
+  if (owner === '') return 'ok';
+  const me = typeof uid === 'string' ? uid.trim() : '';
+  return me !== '' && owner === me ? 'ok' : 'account-mismatch';
+}
+
 /* ---------- Lemon Squeezy webhook signature ---------- */
 
 /**
