@@ -510,7 +510,57 @@ in those tight overrides.
 
 ## 10. Current state & next-session context
 
-**▶ SESSION SUMMARY — 2026-09-11, v0.3.2 → v0.3.11. Read this before anything
+**▶ PLAY BILLING E2E — SOLVED 2026-09-12 (v0.3.15 + v0.3.16). Read this first;
+it supersedes the "STILL OPEN — one unknown" and "leading hypothesis
+(propagation)" blocks below, which were written before the measurement.** A real
+purchase now mints a licence end to end: order `GPA.3305-9810-4634-23661`,
+COP 15,500, `paymentState 1`, acknowledged, licence `7bc6ea9f-6926-40a4-866f-
+aa35bdd8dfd9` bound to `camicha747@gmail.com` until 2027-09-12, app shows
+"License active ✓", CSV holds the `play` row, and all four Firestore docs
+(`sales`/`licenses`/`entitlements`/`playTokens`) exist. Procedure, evidence and
+every trap: **`skills/play-retry-runbook.md`**.
+
+There were TWO faults, both invisible until a genuine token existed, and both
+were found BEFORE the purchase, purchase-free:
+
+1. **`GOOGLE_PLAY_PACKAGE_NAME` was unset on the production Worker** (v0.3.15).
+   With an empty package name the URL becomes
+   `.../applications//purchases/...`, which Google answers with the generic
+   `400 Invalid Value` — that is the original mystery, and the two charged-but-
+   unlicensed purchases were this, not propagation and not a code defect. The
+   token was always valid (Google: 200; the Worker's own `getSubscription`: 200
+   once the package name is set). Cause of the loss: `deploy-worker.yml` runs
+   `wrangler deploy` on every push to `main`, which overwrites plain-text vars
+   that exist only in the dashboard while SECRETS survive. Fix: declare non-
+   secret config in `wrangler.toml` `[vars]`, with smoke checks pinning it.
+2. **The ownership rule required `purchase.emailAddress`, which Google no longer
+   returns** (v0.3.16) — measured field list: startTimeMillis, expiryTimeMillis,
+   autoRenewing, priceCurrencyCode, priceAmountMicros, countryCode,
+   developerPayload, paymentState, orderId, acknowledgementState, kind. So every
+   real purchase would have answered `409 play-email-mismatch`. Fixed by
+   `playOwnershipDecision`: strict email when present, otherwise the token must
+   not already be bound to another account (first redemption binds it via
+   `playTokens/{token}` → `licenses/{lic}.uid`).
+
+⚠️ **Two repo claims are now corrected by measurement, and both misled a
+session:**
+- **`voidedpurchases.list -> 200` does NOT identify the service account.** The
+  Firebase admin key returns 200 for it too, and both keys return `400 Invalid
+  Value` for every bogus token. Only the v0.3.13 log line
+  `play: authenticating as <client_email>` names the identity. The earlier
+  "Firebase key → 401 permissionDenied" fingerprint is not reproducible.
+- **`400 Invalid Value` is not evidence about the credential OR the token** — it
+  is also what an empty package segment in the URL produces.
+
+⚠️ **Known limitation of the new ownership rule, observed live:** Play chooses
+the billing account from the INSTALLER (`Finsky: Account determined from
+installer data`), so the purchase was paid by one account while the app was
+signed in as another — and because no buyer email is available, the licence went
+to the signed-in account. Possession of the token plus first-redemption binding
+is the whole proof. Hardening (RTDN-driven revocation, or a Play-side account
+identifier) is on the open list below.
+
+**SESSION SUMMARY — 2026-09-11, v0.3.2 → v0.3.11. Read this before anything
 else in §10; the sections below are the detailed record.** The full hand-off for
 the next session is `skills/next-session-prompt.md`.
 

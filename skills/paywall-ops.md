@@ -562,3 +562,47 @@ curl -s -H "x-budget-admin: $ADMIN" \
 Then: internal-track install → in-app purchase via Digital Goods API → app
 toasts "License active ✓" → Firestore shows `sales`/`licenses`/`entitlements`/
 `playTokens` (the §6 non-negotiable check) → CSV has a `play` row.
+
+### 10b. VERIFIED END TO END 2026-09-12 — and the ops traps that got us there
+
+A real purchase minted a licence through the whole chain (order
+`GPA.3305-9810-4634-23661`). Full procedure, evidence and command order live in
+**`skills/play-retry-runbook.md`**; the operational lessons that belong in THIS
+document:
+
+- **`GOOGLE_PLAY_PACKAGE_NAME` must never live only in the dashboard.** It was
+  set at ~18:00 on 2026-09-11 and wiped by the next `wrangler deploy` (every
+  push to `main`), while secrets survived. An empty package name makes the Play
+  URL `.../applications//purchases/...`, and Google answers that with the generic
+  `400 Invalid Value` — indistinguishable from a bad token, and before v0.3.6
+  not even logged. Non-secret config is declared in `wrangler.toml` `[vars]`
+  since v0.3.15, with smoke checks that fail the suite if it disappears.
+- **Google no longer returns `emailAddress`** on `purchases.subscriptions.get`
+  (measured 2026-09-12). Ownership is now: strict email match when the field IS
+  present, otherwise the purchase token must not already be bound to another
+  account (`playTokens/{token}` → `licenses/{lic}.uid`; v0.3.16).
+- **Play bills the INSTALLER's account**, not the app's signed-in account:
+  `Finsky: Account determined from installer data`. Combined with the missing
+  buyer email, a purchase paid by one account can entitle a different signed-in
+  account. Treat that as a known limitation, not a bug to rediscover.
+- **A refunded purchase can stay ACTIVE** and block every later purchase with
+  "You're already subscribed" (order GPA.3369-2577-4782-70001 did, until
+  2027-09-11, after being refunded on 2026-09-11 — while Play Console's own
+  subscription page listed nothing). Clear it with the service account:
+  `POST …/purchases/subscriptions/smart_entry_yearly/tokens/{token}:revoke` →
+  HTTP 204.
+- **`ITEM_ALREADY_OWNED` (7) from the purchase flow, while the API says
+  EXPIRED and `listPurchases()` returns nothing**, is the Play Store app's
+  persisted owned-items cache: `pm clear --cache-only com.android.vending` then a
+  fresh Play sync clears it.
+- **`getDigitalGoodsService` OK + `getDetails` → `clientAppUnavailable`** means
+  the billing client in the long-running Chrome process is stuck connecting:
+  restart **Chrome**, not the app and not Play Store.
+- **Read the client layer, not just the logs**: `tools/play-capture.mjs` injects
+  a `fetch` recorder into the live TWA over DevTools and captures the exact
+  `purchaseToken`/`productId` the app sent plus the server's reply, which makes
+  `play-credentials-check.mjs <key> --token <token>` a direct question to Google
+  — no Cloudflare dashboard needed.
+- **`voidedpurchases.list -> 200` does not identify the service account** (the
+  Firebase admin key returns 200 as well). Only the Worker log line
+  `play: authenticating as <client_email>` does.
